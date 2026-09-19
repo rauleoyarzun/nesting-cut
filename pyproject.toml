@@ -14,6 +14,10 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "pywebview",
+    # Obligatorio para recibir archivos subidos (POST /api/archivos).
+    # Sin esto FastAPI rechaza el multipart con un error que no
+    # nombra la causa, y sólo en la máquina donde falta.
+    "python-multipart",
 ]
 
 [project.optional-dependencies]
