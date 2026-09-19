@@ -114,10 +114,10 @@ plataformas. Lo arma GitHub Actions.
 ```
 src/nesting/          el motor de hoy. Un solo cambio: el callback de avance.
 src/nesting/cli.py    sigue funcionando igual. No es un camino que se abandona.
+src/nesting/params.py los parámetros de una corrida, con su validación
 src/nesting_app/      nuevo
     api.py            las rutas HTTP
     jobs.py           el registro de trabajos y el hilo que los corre
-    params.py         los parámetros de una corrida, con su validación
     materials_store.py  el catálogo editable en la carpeta del usuario
     archivos.py       la puerta de plataforma: escritorio contra web
     rutas.py          dónde están los datos, congelado o no
@@ -150,14 +150,27 @@ POST   /api/materiales/restaurar
 
 `pendiente` → `corriendo` → `listo` | `cancelado` | `error`
 
-### 4.2 El avance se mide en piezas
+### 4.2 El avance se mide en piezas, dentro de un intento
 
 Cuántas placas van a hacer falta **no se sabe de antemano**: el motor las
 descubre mientras trabaja. "Placa 2 de 3" sería inventado.
 
-Cuántas piezas hay sí se sabe desde el principio, y cuántas se ubicaron sólo
-puede subir. El avance es `piezas_ubicadas / piezas_totales`, más el número de
-placa en curso como dato suelto: *"ubicadas 61 de 93 — placa 1"*.
+Cuántas piezas hay sí se sabe desde el principio. Pero `pack()` corre varias
+pasadas completas y se queda con la mejor —1 en `rapido`, 3 en `normal`, 12 en
+`lento`, según `EFFORT_RESTARTS`— y **cada pasada reinicia el conteo**. Un
+porcentaje que retrocede es peor que no tener ninguno.
+
+El avance honesto lleva las dos cosas, y la cantidad de intentos se sabe desde
+el arranque porque sale de `EFFORT_RESTARTS[esfuerzo]`:
+
+> *intento 2 de 3 · ubicadas 61 de 93 · placa 1*
+
+La barra se llena con `piezas_ubicadas / piezas_totales` y se reinicia visible
+en cada intento, que es lo que de verdad está pasando.
+
+Después de los intentos hay un paso más, `_compact_last_sheet`, que se informa
+como *"compactando la última placa"* sin barra: es una sola pasada corta y
+fingir un porcentaje ahí sería inventar otra vez.
 
 ### 4.3 Cancelar es cooperativo
 
