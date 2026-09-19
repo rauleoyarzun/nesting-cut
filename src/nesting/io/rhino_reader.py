@@ -171,24 +171,35 @@ def _convert(curve, scale: float, style: Style, tol: float) -> list:
         end = _point(curve.PointAtEnd, scale)
         return [Line(start, end, style)]
 
-    raw = _curve_points(curve, tol / scale)
-    _require_planar(raw)
-    points = _drop_repeats(tuple(_point(p, scale) for p in raw))
+    raw = _curve_pieces(curve, tol / scale)
+    _require_planar([point for point, _ in raw])
+    pieces = _drop_repeats([(_point(p, scale), bulge) for p, bulge in raw])
 
     # Una curva cerrada vuelve a su punto de partida, y ese punto repetido al
     # final sobra: `closed` ya lo dice, y escribirlo deja un tramo de largo
-    # cero en la polilinea de salida.
+    # cero en la polilinea de salida. El bulge que queda último pasa a ser el
+    # del tramo de cierre, que es exactamente lo que era.
     closed = bool(curve.IsClosed)
-    if closed and len(points) > 2 and _same_point(points[0], points[-1]):
-        points = points[:-1]
+    if closed and len(pieces) > 2 and _same_point(pieces[0][0], pieces[-1][0]):
+        pieces = pieces[:-1]
 
-    if len(points) < 2:
+    if len(pieces) < 2:
         return []
-    return [Polyline(points, closed, style)]
+
+    points = tuple(point for point, _ in pieces)
+    bulges = tuple(bulge for _, bulge in pieces)
+    # Sin un solo arco no se guarda nada: `()` es "todo recto", y es lo que
+    # hace que un dibujo sin curvas salga byte por byte como salía antes.
+    return [Polyline(points, closed, style, bulges if any(bulges) else ())]
 
 
-def _curve_points(curve, tol: float):
-    """Los puntos de `curve`, EXACTOS en todo tramo que sea recto.
+def _curve_pieces(curve, tol: float) -> list[tuple[object, float]]:
+    """Los vértices de `curve`, EXACTOS en todo tramo que sea recto o un arco.
+
+    Devuelve pares `(vértice, bulge)`, donde el bulge es el del tramo que
+    ARRANCA en ese vértice (ver `Polyline.bulges`); el último par cierra la
+    lista con bulge 0, que es el que después pasa a ser el del tramo de cierre
+    si la curva es cerrada.
 
     Una curva unida de Rhino es un `PolyCurve`: varios tramos que forman UN
     dibujo. Muestrearla entera por parámetro, como si fuera una curva
@@ -204,19 +215,19 @@ def _curve_points(curve, tol: float):
     se concatenan, que es como estaban unidos en el archivo.
     """
     if isinstance(curve, rhino3dm.PolyCurve):
-        points: list = []
+        pieces: list[tuple[object, float]] = []
         for index in range(curve.SegmentCount):
-            # El punto repetido de cada juntura lo saca `_drop_repeats`, ya
+            # El vértice repetido de cada juntura lo saca `_drop_repeats`, ya
             # en milímetros, para que "el mismo punto" se decida en un solo
             # lugar y en una sola unidad.
-            points.extend(_curve_points(curve.SegmentCurve(index), tol))
-        return points
+            pieces.extend(_curve_pieces(curve.SegmentCurve(index), tol))
+        return pieces
 
     if isinstance(curve, rhino3dm.PolylineCurve):
-        return [curve.Point(i) for i in range(curve.PointCount)]
+        return [(curve.Point(i), 0.0) for i in range(curve.PointCount)]
 
     if isinstance(curve, rhino3dm.LineCurve):
-        return [curve.PointAtStart, curve.PointAtEnd]
+        return [(curve.PointAtStart, 0.0), (curve.PointAtEnd, 0.0)]
 
     # Grado 1 es una polilínea escrita como NURBS, que es como vienen los
     # tramos rectos de un `PolyCurve` guardado por Rhino. Con grado 1 cada
@@ -224,9 +235,38 @@ def _curve_points(curve, tol: float):
     # nudos devuelve exactamente sus vértices -- sin tocar las coordenadas
     # homogéneas, que para una curva racional no son las del vértice.
     if isinstance(curve, rhino3dm.NurbsCurve) and curve.Degree == 1:
-        return [curve.PointAt(knot) for knot in curve.Knots]
+        return [(curve.PointAt(knot), 0.0) for knot in curve.Knots]
 
-    return _sample(curve, tol)
+    bulge = _bulge_of(curve)
+    if bulge is not None:
+        return [(curve.PointAtStart, bulge), (curve.PointAtEnd, 0.0)]
+
+    return [(point, 0.0) for point in _sample(curve, tol)]
+
+
+def _bulge_of(curve) -> float | None:
+    """El bulge de `curve` si es un arco de círculo, o None si no lo es.
+
+    Un arco de verdad -- un filete, un redondeo -- no necesita ni un nodo
+    intermedio: la polilínea del DXF lo guarda como tramo arqueado y el CNC
+    lo corta con una sola orden. Poligonizarlo sería meter decenas de nodos
+    para aproximar algo que se puede escribir exacto.
+
+    El bulge es `tan(barrido / 4)`, con signo positivo antihorario, así que
+    el sentido sale de hacia dónde mira la normal del plano del arco. Una
+    circunferencia entera queda afuera a propósito: su barrido es una vuelta
+    completa y `tan(90°)` no existe, además de que no tiene dos extremos
+    distintos donde apoyar el tramo.
+    """
+    if curve.IsClosed or not curve.IsArc():
+        return None
+    arc = curve.TryGetArc()
+    if arc is None:
+        return None
+    sweep = arc.AngleRadians
+    if arc.Plane.ZAxis.Z < 0:
+        sweep = -sweep
+    return math.tan(sweep / 4.0)
 
 
 _JOINT_TOLERANCE_MM = 1e-9
@@ -243,13 +283,20 @@ def _same_point(a: Point, b: Point) -> bool:
     )
 
 
-def _drop_repeats(points: tuple[Point, ...]) -> tuple[Point, ...]:
-    """Saca los puntos repetidos consecutivos, que salen de las junturas."""
-    kept: list[Point] = []
-    for point in points:
-        if not kept or not _same_point(kept[-1], point):
-            kept.append(point)
-    return tuple(kept)
+def _drop_repeats(pieces: list[tuple[Point, float]]) -> list[tuple[Point, float]]:
+    """Saca los vértices repetidos consecutivos, que salen de las junturas.
+
+    El que sobrevive se queda con el bulge del que llega: el repetido es el
+    final del tramo anterior (bulge 0, no arranca nada) y el que llega es el
+    arranque del siguiente, que es el que sabe si ese tramo es un arco.
+    """
+    kept: list[tuple[Point, float]] = []
+    for point, bulge in pieces:
+        if kept and _same_point(kept[-1][0], point):
+            kept[-1] = (kept[-1][0], bulge)
+        else:
+            kept.append((point, bulge))
+    return kept
 
 
 def _sample(curve, tol: float) -> list:

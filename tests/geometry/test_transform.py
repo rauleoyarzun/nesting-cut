@@ -171,3 +171,39 @@ def test_non_90_degree_multiples_still_use_ordinary_trigonometry():
     x37, y37 = apply_point(t37, (1.0, 0.0))
     rad37 = math.radians(37.0)
     assert approx(x37, math.cos(rad37)) and approx(y37, math.sin(rad37))
+
+
+# --- Los arcos de una polilínea (`bulges`) tienen que moverse con ella. El
+# espejado es el caso que importa: invierte el sentido de giro, y el signo
+# del bulge ES el sentido de giro. ---
+
+ARCO = Polyline(((0.0, 0.0), (10.0, 0.0), (10.0, 10.0)), True, STYLE,
+                bulges=(0.5, 0.0, -0.25))
+
+
+def test_a_rotation_leaves_the_bulges_alone():
+    movido = apply_entity(Transform(37.0, False, 5.0, -2.0), ARCO)
+    assert movido.bulges == ARCO.bulges
+
+
+def test_mirroring_flips_the_sign_of_every_bulge():
+    espejado = apply_entity(Transform(0.0, True, 0.0, 0.0), ARCO)
+    assert espejado.bulges == (-0.5, 0.0, 0.25)
+
+
+def test_flattening_commutes_with_the_transform():
+    """La invariante que sostiene todo: aplanar y después mover tiene que dar
+    lo mismo que mover y después aplanar. Si no, el motor mide una cosa, el
+    verificador otra y el archivo de salida trae una tercera."""
+    from nesting.geometry.flatten import flatten
+
+    for t in (Transform(0.0, False, 0.0, 0.0),
+              Transform(90.0, False, 12.0, -3.0),
+              Transform(37.0, True, -5.0, 8.0),
+              Transform(180.0, True, 0.0, 0.0)):
+        movido_despues = apply_points(t, flatten(ARCO, tolerance=0.01))
+        movido_antes = flatten(apply_entity(t, ARCO), tolerance=0.01)
+
+        assert len(movido_antes) == len(movido_despues), t
+        for a, b in zip(movido_antes, movido_despues):
+            assert approx(a[0], b[0], 1e-9) and approx(a[1], b[1], 1e-9), (t, a, b)

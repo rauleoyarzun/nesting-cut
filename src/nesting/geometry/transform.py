@@ -96,7 +96,13 @@ def apply_entity(t: Transform, e: Entity) -> Entity:
             )
 
         case Polyline():
-            return Polyline(apply_points(t, e.points), e.closed, e.style)
+            # Espejar invierte el sentido de giro, y el signo del bulge ES el
+            # sentido de giro (positivo = antihorario). Rotar y trasladar no
+            # lo tocan: un arco antihorario sigue siéndolo. Sin esta vuelta de
+            # signo, una pieza espejada saldría con cada arco para el lado
+            # contrario -- la pieza equivocada, cortada en material de verdad.
+            bulges = tuple(-b for b in e.bulges) if t.mirror else e.bulges
+            return Polyline(apply_points(t, e.points), e.closed, e.style, bulges)
 
     raise TypeError(f"unsupported entity type: {type(e).__name__}")
 

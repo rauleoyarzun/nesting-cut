@@ -29,6 +29,8 @@ def flatten(e: Entity, tolerance: float) -> tuple[Point, ...]:
             return (e.start, e.end)
 
         case Polyline():
+            if e.bulges:
+                return _flatten_bulged(e, tolerance)
             if e.closed and e.points and e.points[0] != e.points[-1]:
                 return tuple(e.points) + (e.points[0],)
             return tuple(e.points)
@@ -65,6 +67,71 @@ def flatten(e: Entity, tolerance: float) -> tuple[Point, ...]:
             return tuple(out)
 
     raise TypeError(f"unsupported entity type: {type(e).__name__}")
+
+
+def _flatten_bulged(e: Polyline, tolerance: float) -> tuple[Point, ...]:
+    """Aplana una polilínea que trae arcos (ver `Polyline.bulges`).
+
+    Cada tramo se resuelve por separado y arranca donde terminó el anterior,
+    con el vértice ORIGINAL, no con uno recalculado: los puntos del arco
+    salen de senos y cosenos, y dejar que la deriva de esa cuenta reemplace
+    un vértice del dibujo movería geometría exacta por nada.
+    """
+    points = list(e.points)
+    if len(points) < 2:
+        return tuple(points)
+
+    segments = list(zip(points, points[1:], e.bulges))
+    if e.closed and points[0] != points[-1]:
+        segments.append((points[-1], points[0], e.bulges[-1]))
+
+    out: list[Point] = [points[0]]
+    for start, end, bulge in segments:
+        out.extend(_arc_points(start, end, bulge, tolerance))
+    return tuple(out)
+
+
+def _arc_points(
+    start: Point, end: Point, bulge: float, tolerance: float
+) -> list[Point]:
+    """Los puntos de un tramo arqueado, SIN el de arranque y CON el final.
+
+    El bulge del DXF es `tan(barrido / 4)`, con signo positivo antihorario.
+    De ahí salen el radio y el centro sin más datos que la cuerda:
+
+        radio  = cuerda * (1 + b²) / (4 |b|)
+        centro = medio de la cuerda + normal_izquierda * (cuerda/2)(1 - b²)/(2b)
+
+    El término del centro es cero cuando |b| = 1 (media vuelta: el centro ES
+    el medio de la cuerda) y cambia de lado cuando |b| > 1, que es justo lo
+    que corresponde a un barrido mayor a media vuelta.
+    """
+    chord = math.dist(start, end)
+    if bulge == 0.0 or chord == 0.0:
+        return [end]
+
+    sweep = 4.0 * math.atan(bulge)
+    radius = chord * (1.0 + bulge * bulge) / (4.0 * abs(bulge))
+
+    normal = (-(end[1] - start[1]) / chord, (end[0] - start[0]) / chord)
+    apothem = (chord / 2.0) * (1.0 - bulge * bulge) / (2.0 * bulge)
+    center = (
+        (start[0] + end[0]) / 2.0 + normal[0] * apothem,
+        (start[1] + end[1]) / 2.0 + normal[1] * apothem,
+    )
+
+    count = _segment_count(radius, abs(sweep), tolerance)
+    count = max(count, math.ceil(MIN_CIRCLE_SEGMENTS * abs(sweep) / (2 * math.pi)))
+    first = math.atan2(start[1] - center[1], start[0] - center[0])
+    step = sweep / count
+
+    points = [
+        (center[0] + radius * math.cos(first + i * step),
+         center[1] + radius * math.sin(first + i * step))
+        for i in range(1, count)
+    ]
+    points.append(end)
+    return points
 
 
 def _segment_count(radius: float, sweep: float, tolerance: float) -> int:

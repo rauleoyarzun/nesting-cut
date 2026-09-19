@@ -198,3 +198,71 @@ def test_full_circle_arc_has_at_least_eight_segments_even_with_a_loose_tolerance
     arc = Arc((0.0, 0.0), 1.0, 0.0, 360.0, STYLE)
     pts = flatten(arc, tolerance=100.0)
     assert len(pts) >= 8
+
+
+# --- Un tramo de polilínea con `bulge` es un arco. Aplanarlo mal es el peor
+# error posible acá: el motor y el verificador miden sobre estos puntos, así
+# que una cuerda donde hay un arco los deja creer que hay material libre
+# donde la pieza de al lado va a estar. ---
+
+BULGED = Polyline(
+    ((0.0, 0.0), (10.0, 0.0)), closed=False, style=STYLE, bulges=(0.5, 0.0)
+)
+
+
+def arc_of(start, end, bulge):
+    """El arco que el DXF define para ese bulge, según ezdxf (oráculo ajeno)."""
+    from ezdxf.math import bulge_to_arc
+
+    center, _, _, radius = bulge_to_arc(start, end, bulge)
+    return (center.x, center.y), radius
+
+
+def test_a_bulged_segment_flattens_onto_its_arc():
+    center, radius = arc_of((0.0, 0.0), (10.0, 0.0), 0.5)
+    points = flatten(BULGED, tolerance=0.01)
+
+    assert len(points) > 2, "un arco no se aplana en una sola cuerda"
+    assert points[0] == pytest.approx((0.0, 0.0)), "el arranque, exacto"
+    assert points[-1] == pytest.approx((10.0, 0.0)), "el final, exacto"
+    for p in points:
+        assert math.dist(p, center) == pytest.approx(radius, abs=1e-9), (
+            "todo punto aplanado cae sobre el arco"
+        )
+
+
+@pytest.mark.parametrize("tolerance", [1.0, 0.1, 0.01, 0.001])
+def test_the_flattened_bulge_respects_the_tolerance(tolerance):
+    center, radius = arc_of((0.0, 0.0), (10.0, 0.0), 0.5)
+    points = flatten(BULGED, tolerance=tolerance)
+    assert max_deviation_from_circle(points, center, radius) <= tolerance
+
+
+def test_a_negative_bulge_arcs_the_other_way():
+    arriba = flatten(BULGED, tolerance=0.01)
+    abajo = flatten(
+        Polyline(((0.0, 0.0), (10.0, 0.0)), False, STYLE, bulges=(-0.5, 0.0)),
+        tolerance=0.01,
+    )
+    assert [p[1] for p in arriba[1:-1]] == pytest.approx(
+        [-p[1] for p in abajo[1:-1]]
+    ), "el signo del bulge espeja el arco sobre la cuerda"
+
+
+def test_a_zero_bulge_is_still_a_straight_segment():
+    recta = Polyline(((0.0, 0.0), (1.0, 0.0), (1.0, 1.0)), False, STYLE,
+                     bulges=(0.0, 0.0, 0.0))
+    assert flatten(recta, tolerance=0.1) == ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0))
+
+
+def test_the_last_bulge_arcs_the_closing_segment():
+    """El último bulge es el del tramo de cierre, que no tiene vértice propio."""
+    ring = Polyline(((0.0, 0.0), (10.0, 0.0)), closed=True, style=STYLE,
+                    bulges=(1.0, 1.0))
+    points = flatten(ring, tolerance=0.01)
+
+    assert points[0] == pytest.approx((0.0, 0.0))
+    assert points[-1] == pytest.approx((0.0, 0.0)), "vuelve al arranque"
+    assert max_deviation_from_circle(points, (5.0, 0.0), 5.0) <= 0.01, (
+        "dos medias vueltas son la circunferencia completa"
+    )

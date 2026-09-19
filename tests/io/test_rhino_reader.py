@@ -349,3 +349,105 @@ def test_a_polycurve_mixing_a_curve_keeps_the_straight_corners_exact(tmp_path):
     assert straight_run == [(0.0, 0.0), (100.0, 0.0), (100.0, 50.0)], (
         "los dos tramos rectos no llevan ni un nodo de mas"
     )
+
+
+# --- Un arco de verdad (un filete, un redondeo) no tiene por qué salir
+# poligonizado: la polilínea del DXF sabe guardar tramos arqueados, y el CNC
+# los corta con una sola orden. La pieza sigue siendo UNA entidad. ---
+
+
+def arc_segment(start, through, end):
+    return rhino3dm.NurbsCurve.CreateFromArc(
+        rhino3dm.Arc(rhino3dm.Point3d(*start, 0), rhino3dm.Point3d(*through, 0),
+                     rhino3dm.Point3d(*end, 0))
+    )
+
+
+def polycurve_with_arc():
+    curve = rhino3dm.PolyCurve()
+    curve.AppendSegment(rhino3dm.LineCurve(rhino3dm.Point3d(0, 0, 0),
+                                           rhino3dm.Point3d(100, 0, 0)))
+    curve.AppendSegment(arc_segment((100, 0), (110, 25), (100, 50)))
+    curve.AppendSegment(rhino3dm.LineCurve(rhino3dm.Point3d(100, 50, 0),
+                                           rhino3dm.Point3d(0, 50, 0)))
+    curve.AppendSegment(rhino3dm.LineCurve(rhino3dm.Point3d(0, 50, 0),
+                                           rhino3dm.Point3d(0, 0, 0)))
+    return curve
+
+
+def test_an_arc_segment_stays_an_arc_inside_the_polyline(tmp_path):
+    model = new_model(rhino3dm.UnitSystem.Millimeters)
+    model.Objects.AddCurve(polycurve_with_arc(), None)
+    drawing = read_3dm(save(model, tmp_path))
+
+    assert len(drawing.entities) == 1, "sigue siendo una sola pieza"
+    polyline = drawing.entities[0]
+    assert [(round(x, 6), round(y, 6)) for x, y in polyline.points] == [
+        (0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)
+    ], "el arco no agrega ni un nodo: son los 4 vertices del contorno"
+    assert polyline.bulges[0] == 0.0, "el primer tramo es recto"
+    assert polyline.bulges[1] != 0.0, "el segundo es el arco"
+    assert polyline.bulges[2] == polyline.bulges[3] == 0.0
+
+
+def distance_to_path(point, path):
+    """Distancia de `point` a la poligonal `path`, midiendo a los SEGMENTOS.
+
+    Medir sólo a los vértices confunde "la curva se movió" con "el muestreo
+    de la curva es grueso": entre dos vértices de un arco de 55 mm hay
+    milímetros de aire, y ese aire no es un error de la geometría.
+    """
+    import math
+
+    worst = float("inf")
+    for (ax, ay), (bx, by) in zip(path, path[1:]):
+        dx, dy = bx - ax, by - ay
+        length_squared = dx * dx + dy * dy
+        if length_squared == 0.0:
+            worst = min(worst, math.dist(point, (ax, ay)))
+            continue
+        t = ((point[0] - ax) * dx + (point[1] - ay) * dy) / length_squared
+        t = max(0.0, min(1.0, t))
+        worst = min(worst, math.dist(point, (ax + t * dx, ay + t * dy)))
+    return worst
+
+
+def test_the_arc_of_the_polyline_lands_on_the_original_curve(tmp_path):
+    """Que no agregue nodos no sirve de nada si mueve la curva.
+
+    Un bulge con el signo cambiado pasaría los tests de estructura sin
+    problema y dejaría el arco para el otro lado: acá se mide contra la
+    curva de Rhino, punto por punto.
+    """
+    from nesting.geometry.flatten import flatten
+
+    source = polycurve_with_arc()
+    model = new_model(rhino3dm.UnitSystem.Millimeters)
+    model.Objects.AddCurve(source, None)
+    drawing = read_3dm(save(model, tmp_path))
+
+    flattened = flatten(drawing.entities[0], tolerance=0.01)
+    domain = source.Domain
+    worst = 0.0
+    for i in range(4001):
+        q = source.PointAt(domain.T0 + (domain.T1 - domain.T0) * i / 4000)
+        worst = max(worst, distance_to_path((q.X, q.Y), flattened))
+    assert worst < 0.01, f"el contorno se corrió {worst:.4f} mm del original"
+
+
+def test_a_lone_arc_becomes_a_two_point_arced_polyline(tmp_path):
+    model = new_model(rhino3dm.UnitSystem.Millimeters)
+    model.Objects.AddCurve(arc_segment((0, 0), (5, -5), (10, 0)), None)
+    drawing = read_3dm(save(model, tmp_path))
+
+    polyline = drawing.entities[0]
+    assert len(polyline.points) == 2
+    assert polyline.bulges[0] == pytest.approx(1.0), "media vuelta antihoraria"
+
+
+def test_a_drawing_without_arcs_carries_no_bulges(tmp_path):
+    """Lo que no tiene arcos tiene que salir EXACTAMENTE como antes."""
+    model = new_model(rhino3dm.UnitSystem.Millimeters)
+    model.Objects.AddCurve(polycurve_of_lines(HEX_NUT), None)
+    drawing = read_3dm(save(model, tmp_path))
+    assert drawing.entities[0].bulges == ()
