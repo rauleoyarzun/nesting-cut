@@ -182,6 +182,19 @@ def test_el_contorno_de_placa_se_descarta_igual_que_en_la_cli(tmp_path, deposito
     resultado = corredor.acomodar(fuente, params(), lambda a: True, salida)
 
     assert resultado.placas == 1
+
+
+def test_el_contorno_de_placa_genera_un_aviso(tmp_path, deposito):
+    """El aviso del rectángulo descartado sólo puede generarse adentro de
+    `acomodar()` -- necesita las medidas del material -- y es lo que le
+    explica al usuario, en la revisión, por qué ese rectángulo no aparece
+    como pieza."""
+    fuente = deposito.registrar_local(dxf_con_contorno_de_placa(tmp_path))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(fuente, params(), lambda a: True, salida)
+
     assert any("rectángulo" in a and "placa" in a for a in resultado.avisos), (
         f"esperaba un aviso sobre el contorno descartado, avisos={resultado.avisos!r}"
     )
@@ -209,6 +222,34 @@ def test_el_aviso_del_contorno_de_placa_llega_hasta_el_trabajo(tmp_path, deposit
         )
     finally:
         registro.cerrar()
+
+
+def test_un_esfuerzo_desconocido_no_pierde_los_avisos_ya_calculados(
+    tmp_path, deposito
+):
+    """`pack()` puede fallar por muchos motivos (esfuerzo desconocido, pieza
+    demasiado grande, resolución inválida) y ninguno de ellos tiene por qué
+    pasar por `_con_avisos` a mano: el envoltorio único de `acomodar()` los
+    tiene que atrapar a todos. Este es el caso más barato de armar, con un
+    archivo que además trae el rectángulo de la placa para probar que ese
+    aviso -- que sólo se genera adentro de `acomodar()` -- no se pierde."""
+    fuente = deposito.registrar_local(dxf_con_contorno_de_placa(tmp_path))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    with pytest.raises(Exception) as capturado:
+        corredor.acomodar(
+            fuente,
+            NestParams(material="mdf18", esfuerzo="no-existe-este-esfuerzo"),
+            lambda a: True,
+            salida,
+        )
+
+    avisos = getattr(capturado.value, "avisos", ())
+    assert any("rectángulo" in a and "placa" in a for a in avisos), (
+        f"esperaba que el aviso del contorno de placa viajara colgado del "
+        f"error, avisos={avisos!r}"
+    )
 
 
 def test_write_preview_que_falla_no_impide_terminar_bien(tmp_path, deposito, monkeypatch):

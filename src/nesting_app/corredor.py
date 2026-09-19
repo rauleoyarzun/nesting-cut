@@ -8,7 +8,7 @@ dijo. Guardar donde el usuario quiere es un paso posterior y explícito.
 from dataclasses import dataclass
 from pathlib import Path
 
-from nesting.engine.packer import Avance, layout_cost, pack, replicate
+from nesting.engine.packer import Avance, Cancelado, layout_cost, pack, replicate
 from nesting.engine.raster.masks import MaskCache
 from nesting.engine.raster.oracle import RasterOracle
 from nesting.geometry.verify import verify
@@ -148,74 +148,85 @@ def acomodar(
             for parte in contornos_placa
         )
 
+    # A partir de acá, cualquier excepción que se escape lleva colgados los
+    # avisos ya calculados -- son la explicación de por qué no quedó nada,
+    # y `Resultado` no llega a existir para cargarlos por las buenas. Un
+    # único `try` para todo el resto de la función, en vez de un
+    # `_con_avisos` en cada `raise`, es lo que garantiza que un error nuevo
+    # el día de mañana (una pieza demasiado grande, un esfuerzo desconocido,
+    # una resolución inválida, un `sep` o `borde` negativo, lo que sea) no
+    # vuelva a perderlos en silencio por faltarle el envoltorio.
+    #
+    # `Cancelado` es la única excepción que tiene que pasar sin tocar:
+    # `Registro` lo distingue de un error para marcar el trabajo como
+    # cancelado, no como fallido.
     try:
-        write_diagnostic(carpeta / NOMBRE_DIAGNOSTICO, piezas, descartes)
-    except OSError as error:
-        raise _con_avisos(
-            OSError(
+        try:
+            write_diagnostic(carpeta / NOMBRE_DIAGNOSTICO, piezas, descartes)
+        except OSError as error:
+            raise OSError(
                 f"no se pudo escribir el diagnóstico en "
                 f"{carpeta / NOMBRE_DIAGNOSTICO}: {error}. Verifique que el "
                 "directorio de destino exista."
-            ),
-            avisos,
-        ) from error
+            ) from error
 
-    if not piezas:
-        raise _con_avisos(
-            ValueError(
+        if not piezas:
+            raise ValueError(
                 f"no se encontró ninguna pieza en {fuente.nombre}. "
                 "Mirá la revisión para ver qué se descartó y por qué."
-            ),
-            avisos,
+            )
+
+        piezas = replicate(piezas, params.copias)
+        config = a_config(params)
+        cache = MaskCache()
+        resultado = pack(
+            piezas, material, config, lambda: RasterOracle(cache=cache), progreso=progreso
         )
 
-    piezas = replicate(piezas, params.copias)
-    config = a_config(params)
-    cache = MaskCache()
-    resultado = pack(
-        piezas, material, config, lambda: RasterOracle(cache=cache), progreso=progreso
-    )
-
-    violaciones = verify(
-        piezas, resultado.placements, material.sheet_w, material.sheet_h,
-        sep=config.sep, margin=config.margin,
-    )
-    if violaciones:
-        # Antes de escribir nada, y sin escribir nada. Esta es la regla más
-        # dura del motor y no se ablanda por venir de una interfaz.
-        raise _con_avisos(
-            VerificacionFallidaError([v.detail for v in violaciones]), avisos
+        violaciones = verify(
+            piezas, resultado.placements, material.sheet_w, material.sheet_h,
+            sep=config.sep, margin=config.margin,
         )
+        if violaciones:
+            # Antes de escribir nada, y sin escribir nada. Esta es la regla
+            # más dura del motor y no se ablanda por venir de una interfaz.
+            raise VerificacionFallidaError([v.detail for v in violaciones])
 
-    try:
-        write_dxf(
-            carpeta / NOMBRE_DXF, drawing, piezas, resultado.placements,
-            material.sheet_w, material.sheet_h,
-        )
-    except OSError as error:
-        raise _con_avisos(
-            OSError(
+        try:
+            write_dxf(
+                carpeta / NOMBRE_DXF, drawing, piezas, resultado.placements,
+                material.sheet_w, material.sheet_h,
+            )
+        except OSError as error:
+            raise OSError(
                 f"no se pudo escribir la salida en {carpeta / NOMBRE_DXF}: "
                 f"{error}. Verifique que el directorio de destino exista."
-            ),
-            avisos,
-        ) from error
+            ) from error
 
-    try:
-        write_preview(
-            carpeta / NOMBRE_PREVIEW, piezas, resultado.placements,
-            material.sheet_w, material.sheet_h, resultado.utilization,
-            colors=_colores(drawing, piezas),
-        )
-    except (ValueError, OSError) as error:
-        # Cosmético, no estructural: el DXF (lo que de verdad va a la
-        # fresadora) ya se escribió arriba, con éxito. Igual que en la CLI,
-        # fallar acá con una excepción le haría creer al usuario que no
-        # quedó nada. Se degrada a aviso y se sigue.
-        avisos.append(
-            f"no se pudo generar la previsualización: {error}. El DXF sí se "
-            "escribió correctamente y está listo para usar."
-        )
+        try:
+            write_preview(
+                carpeta / NOMBRE_PREVIEW, piezas, resultado.placements,
+                material.sheet_w, material.sheet_h, resultado.utilization,
+                colors=_colores(drawing, piezas),
+            )
+        except (ValueError, OSError) as error:
+            # Cosmético, no estructural: el DXF (lo que de verdad va a la
+            # fresadora) ya se escribió arriba, con éxito. Igual que en la
+            # CLI, fallar acá con una excepción le haría creer al usuario
+            # que no quedó nada. Se degrada a aviso y se sigue, así que no
+            # pasa por el `except` de abajo.
+            avisos.append(
+                f"no se pudo generar la previsualización: {error}. El DXF sí se "
+                "escribió correctamente y está listo para usar."
+            )
+    except Cancelado:
+        raise
+    except Exception as error:
+        # Se cuelgan los avisos y se relanza el mismo objeto -- ni un tipo
+        # ni un mensaje distinto -- porque `Registro` clasifica por tipo
+        # para decidir si es un problema del usuario o un bug nuestro.
+        _con_avisos(error, avisos)
+        raise
 
     _, alto_usado = layout_cost(resultado, piezas)
     return Resultado(
