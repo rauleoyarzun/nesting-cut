@@ -69,6 +69,7 @@ def write_dxf(
             dx=placement.transform.dx + offset_x,
             dy=placement.transform.dy,
         )
+        placed: list[Entity] = []
         for entity_id in part.entity_ids:
             if not (0 <= entity_id < len(drawing.entities)):
                 raise InvalidEntityIdError(
@@ -76,7 +77,10 @@ def write_dxf(
                     f"de rango para el dibujo de entrada ({len(drawing.entities)} "
                     f"entidad(es); rango válido 0..{len(drawing.entities) - 1})"
                 )
-            _emit(msp, doc, apply_entity(moved, drawing.entities[entity_id]))
+            placed.append(apply_entity(moved, drawing.entities[entity_id]))
+
+        for item in _bezier_runs(placed):
+            _emit(msp, doc, item)
 
     doc.saveas(str(path))
 
@@ -89,7 +93,42 @@ def _draw_sheet_outline(msp, x0: float, sheet_w: float, sheet_h: float) -> None:
     )
 
 
-def _emit(msp, doc, e: Entity) -> None:
+def _bezier_runs(entities: Sequence[Entity]) -> list:
+    """Group each chain of `Bezier` segments that continue one another.
+
+    The curved part of a drawing arrives as a chain of cubic segments -- the
+    pieces of ONE stroke in the source file, not loose curves. Emitting one
+    SPLINE per segment hands the machine a part cut into dozens of unconnected
+    entities, the same breakage as a contour cut into loose lines.
+
+    A run only forms where one segment's end IS the next one's start, compared
+    exactly: both points came out of the same source point through the same
+    transform, so they are bit for bit identical whenever the source really
+    joined them. Anything less strict would let this MOVE a point to make the
+    join, which is the one thing the writer must never do.
+    """
+    runs: list = []
+    for entity in entities:
+        if (
+            isinstance(entity, Bezier)
+            and runs
+            and isinstance(runs[-1], list)
+            and runs[-1][-1].style == entity.style
+            and runs[-1][-1].p3 == entity.p0
+        ):
+            runs[-1].append(entity)
+        elif isinstance(entity, Bezier):
+            runs.append([entity])
+        else:
+            runs.append(entity)
+    return runs
+
+
+def _emit(msp, doc, e) -> None:
+    if isinstance(e, list):
+        _emit_bezier_path(msp, doc, e)
+        return
+
     attribs = _attribs(e.style, doc)
 
     match e:
@@ -102,12 +141,33 @@ def _emit(msp, doc, e: Entity) -> None:
         case Polyline():
             msp.add_lwpolyline(e.points, close=e.closed, dxfattribs=attribs)
         case Bezier():
-            # A cubic Bezier is exactly a clamped degree-3 B-spline with these knots.
-            spline = msp.add_spline(degree=3, dxfattribs=attribs)
-            spline.control_points = [e.p0, e.p1, e.p2, e.p3]
-            spline.knots = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+            _emit_bezier_path(msp, doc, [e])
         case _:
             raise TypeError(f"unsupported entity type: {type(e).__name__}")
+
+
+def _emit_bezier_path(msp, doc, curves: Sequence[Bezier]) -> None:
+    """Write a chain of cubic Beziers as one clamped degree-3 B-spline.
+
+    A single cubic Bezier is exactly such a spline over `[0, 1]`; a chain of
+    `n` of them is the same thing over `[0, n]`, with each joint repeated as
+    an interior knot of multiplicity 3. That multiplicity is what keeps the
+    curve merely continuous there instead of smoothing the corner away, so
+    the joined spline passes through exactly the same points as the segments
+    it replaces -- a corner in the drawing stays a corner.
+    """
+    control: list = [curves[0].p0, curves[0].p1, curves[0].p2, curves[0].p3]
+    for curve in curves[1:]:
+        control.extend([curve.p1, curve.p2, curve.p3])
+
+    knots = [0.0] * 4
+    for joint in range(1, len(curves)):
+        knots.extend([float(joint)] * 3)
+    knots.extend([float(len(curves))] * 4)
+
+    spline = msp.add_spline(degree=3, dxfattribs=_attribs(curves[0].style, doc))
+    spline.control_points = control
+    spline.knots = knots
 
 
 _BYBLOCK_OR_BYLAYER = (0, 256)

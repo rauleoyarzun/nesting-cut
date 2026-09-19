@@ -303,3 +303,48 @@ def test_a_true_colour_entity_with_byalyer_aci_keeps_its_true_colour(tmp_path):
     lines = [e for e in reread.entities if isinstance(e, Line)]
     assert len(lines) == 1
     assert lines[0].style.rgb == true_colour
+
+
+# --- Una pieza curva llega como una cadena de Bezier que se continuan una a
+# otra: son los tramos de UN trazo del archivo de origen, no curvas sueltas.
+# Escribir una SPLINE por tramo deja la pieza partida en decenas de entidades
+# inconexas, que es el mismo problema que un contorno partido en rectas
+# sueltas. ---
+
+
+def test_a_chain_of_beziers_is_written_as_one_spline(tmp_path):
+    first = Bezier((0.0, 0.0), (10.0, 20.0), (30.0, 20.0), (40.0, 0.0), STYLE)
+    second = Bezier((40.0, 0.0), (50.0, -20.0), (70.0, -20.0), (80.0, 0.0), STYLE)
+    part = Part(id=0, outer=((0.0, 0.0), (40.0, 0.0), (80.0, 0.0)), holes=(),
+                entity_ids=(0, 1))
+
+    out = tmp_path / "out.dxf"
+    write_dxf(out, drawing_with([first, second]), [part],
+              [Placement(0, 0, Transform.identity())], 1000.0, 1000.0)
+
+    splines = [e for e in read_back(out).modelspace() if e.dxftype() == "SPLINE"]
+    assert len(splines) == 1, "los dos tramos son un solo trazo"
+    control = [(round(p[0], 9), round(p[1], 9)) for p in splines[0].control_points]
+    assert control == [
+        (0.0, 0.0), (10.0, 20.0), (30.0, 20.0),
+        (40.0, 0.0),
+        (50.0, -20.0), (70.0, -20.0), (80.0, 0.0),
+    ], "los mismos puntos de control, con la juntura una sola vez"
+    assert splines[0].dxf.degree == 3
+    assert list(splines[0].knots) == [0.0] * 4 + [1.0] * 3 + [2.0] * 4, (
+        "nudos interiores de multiplicidad 3: cada juntura es un nodo del trazo"
+    )
+
+
+def test_beziers_that_do_not_meet_stay_separate(tmp_path):
+    first = Bezier((0.0, 0.0), (10.0, 20.0), (30.0, 20.0), (40.0, 0.0), STYLE)
+    apart = Bezier((100.0, 0.0), (110.0, 20.0), (130.0, 20.0), (140.0, 0.0), STYLE)
+    part = Part(id=0, outer=((0.0, 0.0), (40.0, 0.0), (140.0, 0.0)), holes=(),
+                entity_ids=(0, 1))
+
+    out = tmp_path / "out.dxf"
+    write_dxf(out, drawing_with([first, apart]), [part],
+              [Placement(0, 0, Transform.identity())], 1000.0, 1000.0)
+
+    splines = [e for e in read_back(out).modelspace() if e.dxftype() == "SPLINE"]
+    assert len(splines) == 2, "unir lo que no se toca inventaria geometria"
