@@ -34,10 +34,12 @@ where = ["src"]
 # `web/*` toma archivos/carpetas no ocultos directamente en web/ (nivel 1).
 # `web/.*` toma archivos/carpetas ocultos (comenzando con .) en web/ (nivel 1).
 # `web/**/*` toma archivos a cualquier profundidad en subcarpetas de web/ (recursivo).
-# Se necesitan los tres porque: (1) glob no incluye .ocultos con `*`, (2) `**` sin `/*`
-# no coincide con archivos finales. Sin esto, subcarpetas como web/img/ o web/fuentes/
-# (y sus contenidos) se pierden al empaquetar sin error ni aviso.
-nesting_app = ["web/*", "web/.*", "web/**/*"]
+# `web/**/.*` toma archivos ocultos a cualquier profundidad en subcarpetas de web/.
+# Se necesitan los cuatro porque: (1) glob no incluye .ocultos con `*`, (2) `**` sin `/*`
+# no coincide con archivos finales, (3) los .ocultos en nivel 1 no son capturados por `web/**/*`.
+# Sin esto, subcarpetas como web/img/ o web/fuentes/ (y sus contenidos) se pierden al
+# empaquetar sin error ni aviso.
+nesting_app = ["web/*", "web/.*", "web/**/*", "web/**/.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

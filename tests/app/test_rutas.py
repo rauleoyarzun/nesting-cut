@@ -95,15 +95,23 @@ def test_cada_plataforma_usa_su_carpeta(plataforma, variable, esperado, tmp_path
     assert tmp_path in base.parents
 
 
-def test_todo_archivo_de_la_interfaz_entra_en_el_paquete():
+def test_todo_archivo_de_la_interfaz_entra_en_el_paquete(tmp_path):
     """`package-data` con un patrón no recursivo deja afuera las subcarpetas
     sin decir una palabra: el wheel se arma bien y al programa le falta media
     interfaz recién cuando alguien lo instala y lo abre.
 
-    Se verifica contra el `pyproject.toml` usando glob (que es lo que setuptools
-    usa), no fnmatch (cuyo `*` cruza barras, así que no sería una verificación real).
-    No se arma un wheel porque tarda y necesita herramientas de construcción que
-    no son dependencia de los tests.
+    Este test arma un árbol de prueba sintético en tmp_path porque verificar contra
+    la carpeta real no ejercita el patrón recursivo mientras esa carpeta esté plana
+    (solo tiene `.gitkeep`). El árbol incluye:
+    - archivo plano visible: web/index.html (prueba `web/*`)
+    - archivo plano oculto: web/.gitkeep (prueba `web/.*`)
+    - archivo en subcarpeta: web/img/logo.svg (prueba `web/**/*`)
+    - archivo dos niveles abajo: web/fuentes/latin/x.woff2 (prueba `web/**/*`)
+    - archivo oculto en subcarpeta: web/img/.DS_Store (prueba `web/**/.*`)
+
+    Se verifica contra el `pyproject.toml` usando glob (que es lo que setuptools usa).
+    No se arma un wheel porque tarda y necesita herramientas de construcción que no son
+    dependencia de los tests.
     """
     import glob
     import tomllib
@@ -112,22 +120,34 @@ def test_todo_archivo_de_la_interfaz_entra_en_el_paquete():
     with (raiz / "pyproject.toml").open("rb") as f:
         patrones = tomllib.load(f)["tool"]["setuptools"]["package-data"]["nesting_app"]
 
-    paquete = raiz / "src" / "nesting_app"
-    archivos = [
-        str(p.relative_to(paquete)) for p in (paquete / "web").rglob("*") if p.is_file()
-    ]
-    assert archivos, "la prueba no sirve si no hay ningún archivo en web/"
+    # Armar árbol sintético en tmp_path
+    web = tmp_path / "web"
+    web.mkdir()
 
+    # Crear los archivos de prueba
+    (web / "index.html").write_text("<html></html>")
+    (web / ".gitkeep").write_text("")
+    (web / "img").mkdir()
+    (web / "img" / "logo.svg").write_text("<svg></svg>")
+    (web / "img" / ".DS_Store").write_text("")
+    (web / "fuentes").mkdir()
+    (web / "fuentes" / "latin").mkdir()
+    (web / "fuentes" / "latin" / "x.woff2").write_bytes(b"")
+
+    # Recopilar todos los archivos creados
+    archivos = [
+        str(p.relative_to(tmp_path)) for p in web.rglob("*") if p.is_file()
+    ]
+    assert archivos, "el árbol sintético no tiene archivos"
+
+    # Verificar que cada archivo lo toma al menos un patrón
     for archivo in archivos:
-        # glob.glob es lo que usa setuptools. Para cada patrón, incluye los
-        # archivos bajo la raíz del paquete que lo satisfacen. Se verifica que
-        # al menos un patrón coincida con el archivo.
         coincide = False
         for patron in patrones:
-            # glob necesita un path absoluto para buscar
-            ruta_patron = str(paquete / patron)
+            # glob necesita un path absoluto para buscar, relativizado a tmp_path
+            ruta_patron = str(tmp_path / patron)
             archivos_encontrados = glob.glob(ruta_patron, recursive=True)
-            if str(paquete / archivo) in archivos_encontrados:
+            if str(tmp_path / archivo) in archivos_encontrados:
                 coincide = True
                 break
 
