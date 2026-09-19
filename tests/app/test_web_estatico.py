@@ -6,6 +6,7 @@ alguien abre la pantalla y un botón no hace nada.
 """
 
 import re
+import unicodedata
 
 import pytest
 
@@ -97,7 +98,14 @@ def test_los_controles_miden_44_px(css):
 def test_no_hay_emojis_en_la_interfaz(html):
     """Los íconos son SVG con trazo. Un emoji se ve distinto en cada sistema
     y en una herramienta de taller queda fuera de lugar."""
-    assert not re.search(r"[\U0001F300-\U0001FAFF☀-➿]", html)
+    # Los rangos que faltaban dejaban pasar banderas, ⭐, ⌛ y ‼. Se mide por
+    # categoría Unicode además de por rango: "So" (símbolo otro) cubre los
+    # emojis sueltos sin tener que enumerar bloques a mano.
+    sospechosos = [
+        c for c in html
+        if unicodedata.category(c) == "So" or "\U0001F000" <= c <= "\U0001FAFF"
+    ]
+    assert not sospechosos, f"hay símbolos que no son texto: {sospechosos}"
 
 
 def test_el_css_se_carga_desde_el_html(html):

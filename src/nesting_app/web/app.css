@@ -88,7 +88,7 @@ body {
   font: inherit; color: var(--texto);
 }
 select.control { padding: 0 12px; appearance: none; cursor: pointer; }
-.control:focus-within { border-color: var(--acento); box-shadow: 0 0 0 3px rgba(4,120,87,.12); }
+.control:focus-within { border-color: var(--acento); box-shadow: 0 0 0 3px color-mix(in srgb, var(--acento) 12%, transparent); }
 .unidad { padding-left: 8px; font-size: 12px; color: var(--texto-2); }
 .campo-con-error .control { border-color: var(--rojo); }
 .error-campo { margin: 0; font-size: 12px; color: var(--rojo); }
@@ -176,7 +176,7 @@ select.control { padding: 0 12px; appearance: none; cursor: pointer; }
 
 /* --- carteles --- */
 .cartel {
-  position: fixed; inset: 0; background: rgba(17,24,39,.45);
+  position: fixed; inset: 0; background: color-mix(in srgb, var(--texto) 45%, transparent);
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .cartel-caja {
