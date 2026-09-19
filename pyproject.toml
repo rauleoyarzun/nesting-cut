@@ -23,7 +23,9 @@ dependencies = [
 [project.optional-dependencies]
 # httpx sólo lo usa TestClient de FastAPI en los tests de la API; ningún
 # módulo de src/ lo importa, por eso va en dev y no en dependencies.
-dev = ["pytest", "httpx"]
+# pyinstaller arma el ejecutable de escritorio (packaging/); tampoco lo
+# importa ningún módulo de src/.
+dev = ["pytest", "httpx", "pyinstaller"]
 
 [project.scripts]
 nest = "nesting.cli:main"

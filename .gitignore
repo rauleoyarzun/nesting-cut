@@ -32,3 +32,7 @@ bench/files/
 # avance (.superpowers/sdd/progress.md) SÍ se versiona: es la memoria de
 # por qué las cosas quedaron como quedaron.
 .superpowers/sdd/ui/
+
+# Salida de PyInstaller: se rehace con packaging/construir.sh.
+build/
+dist/

@@ -294,7 +294,11 @@ cinco botones (mm, cm, m, in, ft) y se sigue.
   pasó. Windows 11 lo trae siempre; Windows 10 casi siempre.
 - Un `.exe` sin firmar dispara la advertencia de SmartScreen. Se acepta en
   esta versión; firmarlo cuesta plata y trámite.
-- Peso estimado: 250-400 MB en disco, 100-150 MB comprimido. A medir.
+- Peso medido (macOS arm64, PyInstaller 6.22.3): 106 MB en disco
+  (`dist/Nesting/`), 56 MB comprimido (`dist/Nesting-darwin-arm64.zip`).
+  Bastante menos que la estimación original de 250-400 MB / 100-150 MB,
+  que asumía un binario universal2 (x86_64 + arm64); este es arm64 puro.
+  Falta medir el peso en Windows, que lleva su propio runtime y DLLs.
 
 ## 7. Errores
 
