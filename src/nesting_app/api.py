@@ -10,6 +10,7 @@ import hmac
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from starlette.datastructures import Headers
@@ -17,13 +18,14 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from nesting.model.material import Material
+from nesting.params import NestParams, ParamsInvalidosError, validar
 from nesting_app import corredor, materials_store, rutas
 from nesting_app.archivos import (
     Deposito,
     ExtensionNoSoportadaError,
     FuenteDesconocidaError,
 )
-from nesting_app.jobs import Registro
+from nesting_app.jobs import Registro, TrabajoDesconocidoError
 
 VETA_POR_NOMBRE = {
     "libre": materials_store.VETA_LIBRE,
@@ -72,6 +74,52 @@ class PedidoAnalisis(BaseModel):
     fuente_id: str
     unidades: str | None = None
     tol_cierre: float = Field(default=0.1, gt=0)
+
+
+class ParamsEntrada(BaseModel):
+    """Los parámetros tal como los manda la interfaz.
+
+    Las reglas de rango NO están acá: viven en `nesting.params.validar`, que
+    es el mismo código que usa la CLI. Pydantic sólo verifica que los tipos
+    sean los que son.
+    """
+
+    material: str
+    sep: float = 5.0
+    borde: float = 10.0
+    copias: int = 1
+    angulos: list[float] = Field(default_factory=lambda: [0.0, 90.0, 180.0, 270.0])
+    espejo: bool = True
+    unidades: str | None = None
+    tol_cierre: float = 0.1
+    resolucion: float = 2.0
+    esfuerzo: str = "normal"
+
+    def a_params(self) -> NestParams:
+        return NestParams(
+            material=self.material,
+            sep=self.sep,
+            borde=self.borde,
+            copias=self.copias,
+            angulos=tuple(self.angulos),
+            espejo=self.espejo,
+            unidades=self.unidades,
+            tol_cierre=self.tol_cierre,
+            resolucion=self.resolucion,
+            esfuerzo=self.esfuerzo,
+        )
+
+
+class PedidoTrabajo(BaseModel):
+    fuente_id: str
+    params: ParamsEntrada
+
+
+ARCHIVOS_DEL_RESULTADO = {
+    "salida.dxf": "application/dxf",
+    "preview.png": "image/png",
+    "diagnostico.png": "image/png",
+}
 
 
 class _ExigirTokenEnApi:
@@ -223,6 +271,113 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
             "descartes": analisis.descartes,
             "unidades": analisis.unidades,
         }
+
+    # --- trabajos -----------------------------------------------------------
+
+    def _avance_a_dict(avance) -> dict | None:
+        if avance is None:
+            return None
+        return {
+            "intento": avance.intento,
+            "intentos": avance.intentos,
+            "ubicadas": avance.ubicadas,
+            "totales": avance.totales,
+            "placa": avance.placa,
+            "compactando": avance.compactando,
+        }
+
+    @app.post("/api/trabajos")
+    def crear_trabajo(pedido: PedidoTrabajo) -> dict:
+        try:
+            fuente = deposito.obtener(pedido.fuente_id)
+        except FuenteDesconocidaError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+        params = pedido.params.a_params()
+        try:
+            validar(params)
+        except ParamsInvalidosError as error:
+            # El campo va aparte del mensaje para que la interfaz pueda poner
+            # el texto justo debajo del control que lo tiene mal.
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "campo": error.rota.campo,
+                    "mensaje": f"tiene que ser {error.rota.regla}",
+                    "valor": error.rota.valor,
+                },
+            ) from error
+
+        try:
+            materiales = materials_store.leer()
+        except ValueError as error:
+            raise HTTPException(status_code=500, detail=str(error)) from error
+        if params.material not in materiales:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no existe ningún material llamado {params.material!r}",
+            )
+
+        trabajo = registro.crear(fuente, params, corredor.acomodar)
+        return {"id": trabajo.id}
+
+    @app.get("/api/trabajos/{trabajo_id}")
+    def ver_trabajo(trabajo_id: str) -> dict:
+        try:
+            trabajo = registro.obtener(trabajo_id)
+        except TrabajoDesconocidoError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+        resultado = None
+        if trabajo.resultado is not None:
+            resultado = {
+                "placas": trabajo.resultado.placas,
+                "aprovechamiento": trabajo.resultado.aprovechamiento,
+                "total": trabajo.resultado.total,
+                "segundos": trabajo.resultado.segundos,
+                "sobrante_mm": trabajo.resultado.sobrante_mm,
+            }
+        return {
+            "estado": str(trabajo.estado),
+            "avance": _avance_a_dict(trabajo.avance),
+            "avisos": trabajo.avisos,
+            "error": trabajo.error,
+            "es_bug": trabajo.es_bug,
+            "detalle_tecnico": trabajo.detalle_tecnico,
+            "resultado": resultado,
+        }
+
+    @app.post("/api/trabajos/{trabajo_id}/cancelar")
+    def cancelar_trabajo(trabajo_id: str) -> dict:
+        try:
+            registro.cancelar(trabajo_id)
+        except TrabajoDesconocidoError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return {"ok": True}
+
+    @app.get("/api/trabajos/{trabajo_id}/{nombre}")
+    def bajar_archivo(trabajo_id: str, nombre: str) -> FileResponse:
+        if nombre not in ARCHIVOS_DEL_RESULTADO:
+            raise HTTPException(status_code=404, detail=f"no existe {nombre!r}")
+        try:
+            trabajo = registro.obtener(trabajo_id)
+        except TrabajoDesconocidoError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+        # El diagnóstico se escribe ANTES de acomodar, así que existe aunque
+        # el trabajo haya fallado -- y es justo cuando más sirve, porque el
+        # usuario necesita ver qué se descartó.
+        carpeta = registro.carpeta / trabajo_id
+        archivo = carpeta / nombre
+        if not archivo.is_file():
+            raise HTTPException(
+                status_code=409,
+                detail=f"el trabajo está en estado {trabajo.estado} y todavía "
+                       f"no produjo {nombre}",
+            )
+        return FileResponse(
+            archivo, media_type=ARCHIVOS_DEL_RESULTADO[nombre], filename=nombre
+        )
 
     _montar_interfaz(app)
     return app
