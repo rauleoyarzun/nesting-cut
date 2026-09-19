@@ -93,3 +93,44 @@ def test_cada_plataforma_usa_su_carpeta(plataforma, variable, esperado, tmp_path
     base = rutas._base_de_datos()
     assert base.name == esperado
     assert tmp_path in base.parents
+
+
+def test_todo_archivo_de_la_interfaz_entra_en_el_paquete():
+    """`package-data` con un patrón no recursivo deja afuera las subcarpetas
+    sin decir una palabra: el wheel se arma bien y al programa le falta media
+    interfaz recién cuando alguien lo instala y lo abre.
+
+    Se verifica contra el `pyproject.toml` usando glob (que es lo que setuptools
+    usa), no fnmatch (cuyo `*` cruza barras, así que no sería una verificación real).
+    No se arma un wheel porque tarda y necesita herramientas de construcción que
+    no son dependencia de los tests.
+    """
+    import glob
+    import tomllib
+
+    raiz = Path(__file__).resolve().parents[2]
+    with (raiz / "pyproject.toml").open("rb") as f:
+        patrones = tomllib.load(f)["tool"]["setuptools"]["package-data"]["nesting_app"]
+
+    paquete = raiz / "src" / "nesting_app"
+    archivos = [
+        str(p.relative_to(paquete)) for p in (paquete / "web").rglob("*") if p.is_file()
+    ]
+    assert archivos, "la prueba no sirve si no hay ningún archivo en web/"
+
+    for archivo in archivos:
+        # glob.glob es lo que usa setuptools. Para cada patrón, incluye los
+        # archivos bajo la raíz del paquete que lo satisfacen. Se verifica que
+        # al menos un patrón coincida con el archivo.
+        coincide = False
+        for patron in patrones:
+            # glob necesita un path absoluto para buscar
+            ruta_patron = str(paquete / patron)
+            archivos_encontrados = glob.glob(ruta_patron, recursive=True)
+            if str(paquete / archivo) in archivos_encontrados:
+                coincide = True
+                break
+
+        assert coincide, (
+            f"{archivo} no lo toma ningún patrón de package-data: {patrones}"
+        )

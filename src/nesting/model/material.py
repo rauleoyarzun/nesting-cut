@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+
 def _default_materials_path() -> Path:
     """Dónde está el catálogo que viene con el programa.
 
