@@ -56,8 +56,25 @@ def test_un_recurso_que_no_existe_se_queja_nombrandolo():
 
 
 def test_la_carpeta_web_es_un_recurso():
+    """No alcanza con que sea un directorio: tiene que ser el que está
+    dentro del paquete (`src/nesting_app/web`), no cualquier otro. Un test
+    que sólo pide `.is_dir()` lo satisface una carpeta vacía en cualquier
+    lado -- que es exactamente el bug que hubo acá."""
+    assert not rutas.esta_congelado()
+
     web = rutas.recurso("web")
+
+    assert web == Path(__file__).resolve().parents[2] / "src" / "nesting_app" / "web"
     assert web.is_dir()
+
+
+def test_todo_lo_declarado_en_el_repo_existe():
+    """Un recurso declarado en `EN_EL_REPO` y ausente del repo recién rompe
+    el programa cuando alguien lo abre. Que lo detecte un test."""
+    raiz = Path(__file__).resolve().parents[2]
+
+    for relativo in rutas.EN_EL_REPO.values():
+        assert (raiz / relativo).exists(), f"falta {relativo!r} en el repo"
 
 
 @pytest.mark.parametrize(

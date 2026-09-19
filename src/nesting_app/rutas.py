@@ -15,17 +15,34 @@ from pathlib import Path
 
 NOMBRE_APP = "nesting"
 
+EN_EL_REPO = {
+    "materials.yaml": "materials.yaml",
+    "web": "src/nesting_app/web",
+}
+"""Dónde vive cada recurso cuando se corre desde el repositorio.
+
+Congelado no hace falta: PyInstaller aplana todos los recursos declarados
+en la raíz de `_MEIPASS`, sin conservar la estructura del proyecto. Este
+mapa existe porque en el repo NO están todos en el mismo lado -- el
+catálogo está en la raíz y la interfaz adentro del paquete, que es donde
+tiene que estar para que `pip install` la instale.
+"""
+
 
 def esta_congelado() -> bool:
     """Si estamos adentro de un ejecutable armado con PyInstaller."""
     return bool(getattr(sys, "frozen", False))
 
 
-def _raiz_de_recursos() -> Path:
-    if esta_congelado():
-        return Path(sys._MEIPASS)  # noqa: SLF001 - así lo expone PyInstaller
+def _raiz_del_repo() -> Path:
     # src/nesting_app/rutas.py -> src/nesting_app -> src -> la raíz del repo
     return Path(__file__).resolve().parents[2]
+
+
+def _ruta_del_recurso(nombre: str) -> Path:
+    if esta_congelado():
+        return Path(sys._MEIPASS) / nombre  # noqa: SLF001 - así lo expone PyInstaller
+    return _raiz_del_repo() / EN_EL_REPO.get(nombre, nombre)
 
 
 def recurso(nombre: str) -> Path:
@@ -34,10 +51,10 @@ def recurso(nombre: str) -> Path:
     Que falte no es un problema del usuario: es un error de empaquetado, y
     el mensaje lo nombra para que quien arme el paquete sepa qué agregar.
     """
-    ruta = _raiz_de_recursos() / nombre
+    ruta = _ruta_del_recurso(nombre)
     if not ruta.exists():
         raise FileNotFoundError(
-            f"falta el recurso {nombre!r} en {_raiz_de_recursos()}. "
+            f"falta el recurso {nombre!r} en {ruta}. "
             "Si esto pasa en el ejecutable, hay que agregarlo a los datos "
             "declarados en el .spec de PyInstaller."
         )
