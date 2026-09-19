@@ -27,6 +27,7 @@ dev = ["pytest", "httpx"]
 
 [project.scripts]
 nest = "nesting.cli:main"
+nest-app = "nesting_app.desktop:main"
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -1,0 +1,154 @@
+"""El armado del servidor local, el puente de archivos y el autotest."""
+
+import sys
+import urllib.request
+
+import pytest
+
+from nesting_app import desktop, rutas
+from nesting_app.archivos import Deposito
+from nesting_app.jobs import Registro
+
+
+@pytest.fixture
+def servidor(tmp_path, monkeypatch):
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+    registro = Registro(tmp_path / "trabajos")
+    token, puerto, url = desktop.servidor(Deposito(tmp_path / "fuentes"), registro)
+    yield token, puerto, url
+    registro.cerrar()
+    desktop.apagar()
+
+
+def test_escucha_solo_en_localhost(servidor):
+    """Escuchar en 0.0.0.0 expondría el programa a toda la red local: la
+    máquina de al lado podría mandarle trabajos y leer rutas de archivos."""
+    _, _, url = servidor
+    assert url.startswith("http://127.0.0.1:")
+
+
+def test_el_puerto_lo_elige_el_sistema(servidor):
+    """Un puerto fijo choca el día que el usuario tenga otra cosa escuchando
+    ahí, y el programa no abriría sin decir por qué."""
+    _, puerto, _ = servidor
+    assert puerto > 0
+
+
+def test_el_token_es_largo_y_distinto_en_cada_arranque(tmp_path, monkeypatch):
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+    tokens = set()
+    for i in range(3):
+        registro = Registro(tmp_path / f"t{i}")
+        token, _, _ = desktop.servidor(Deposito(tmp_path / f"f{i}"), registro)
+        tokens.add(token)
+        registro.cerrar()
+        desktop.apagar()
+
+    assert len(tokens) == 3
+    assert all(len(t) >= 32 for t in tokens)
+
+
+def test_la_pagina_trae_el_token_adentro(servidor):
+    """Es cómo lo recibe el JavaScript. En la web lo va a inyectar el
+    servidor con la sesión del usuario, sin tocar el JavaScript."""
+    token, _, url = servidor
+
+    html = urllib.request.urlopen(url, timeout=5).read().decode("utf-8")
+
+    assert f'name="token" content="{token}"' in html
+    assert 'name="escritorio" content="1"' in html
+
+
+def test_sin_token_la_api_rechaza(servidor):
+    _, _, url = servidor
+
+    with pytest.raises(Exception) as capturado:
+        urllib.request.urlopen(f"{url}/api/materiales", timeout=5)
+
+    assert "401" in str(capturado.value)
+
+
+def test_con_token_la_api_responde(servidor):
+    token, _, url = servidor
+    pedido = urllib.request.Request(f"{url}/api/materiales", headers={"X-Token": token})
+
+    respuesta = urllib.request.urlopen(pedido, timeout=5)
+
+    assert respuesta.status == 200
+
+
+def test_autotest_sale_con_cero(tmp_path, monkeypatch, capsys):
+    """La prueba que corre sobre el ejecutable congelado. Los bugs de
+    empaquetado no aparecen en ningún otro test."""
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+
+    assert desktop.main(["--autotest"]) == 0
+    assert "ok" in capsys.readouterr().out.lower()
+
+
+def test_autotest_falla_si_falta_un_recurso(tmp_path, monkeypatch, capsys):
+    """Es exactamente el modo en que rompe un ejecutable mal armado."""
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+    monkeypatch.setattr(
+        rutas, "recurso",
+        lambda nombre: (_ for _ in ()).throw(FileNotFoundError(f"falta {nombre}")),
+    )
+
+    assert desktop.main(["--autotest"]) == 1
+    assert "falta" in capsys.readouterr().err.lower()
+
+
+def test_webview2_solo_se_verifica_en_windows(monkeypatch):
+    """En Mac y Linux la pregunta no tiene sentido y tiene que dar False sin
+    tocar el registro de Windows."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert desktop.falta_webview2() is False
+
+
+def test_el_puente_rechaza_guardar_fuera_de_lo_que_el_usuario_eligio(tmp_path):
+    """El destino lo elige el usuario en un diálogo nativo. Aceptar una ruta
+    que el JavaScript arme sola sería dejarlo escribir donde quiera."""
+    puente = desktop.Puente()
+
+    with pytest.raises(PermissionError):
+        puente.guardar(str(tmp_path / "no_elegido.dxf"), [1, 2, 3])
+
+
+def test_el_puente_guarda_lo_que_el_usuario_eligio(tmp_path):
+    puente = desktop.Puente()
+    destino = tmp_path / "elegido.dxf"
+    puente._autorizar(str(destino))
+
+    puente.guardar(str(destino), [65, 66])
+
+    assert destino.read_bytes() == b"AB"
+
+
+def test_arranca_sin_nada_pendiente_de_guardar():
+    assert desktop.Puente().hay_sin_guardar is False
+
+
+def test_la_interfaz_puede_marcar_que_hay_algo_sin_guardar():
+    """El DXF vive en una carpeta temporal hasta que el usuario lo guarda.
+    Cerrar el programa sin guardarlo pierde media hora de acomodo, y sin
+    este aviso se pierde en silencio."""
+    puente = desktop.Puente()
+
+    puente.marcar_sin_guardar(True)
+    assert puente.hay_sin_guardar is True
+
+    puente.marcar_sin_guardar(False)
+    assert puente.hay_sin_guardar is False
+
+
+def test_guardar_deja_de_marcar_pendiente(tmp_path):
+    """Guardar es justamente lo que resuelve el pendiente. Que el JavaScript
+    tenga que acordarse de avisarlo aparte sería una forma de olvidarse."""
+    puente = desktop.Puente()
+    puente.marcar_sin_guardar(True)
+    destino = tmp_path / "elegido.dxf"
+    puente._autorizar(str(destino))
+
+    puente.guardar(str(destino), [65])
+
+    assert puente.hay_sin_guardar is False
