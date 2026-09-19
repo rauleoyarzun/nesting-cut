@@ -159,25 +159,41 @@ document.querySelectorAll("[data-unidad]").forEach((boton) => {
 // se arma un blob local -- ver la nota crítica al pie del archivo.
 let urlImagenActual = null;
 
+// Dos solapas pueden pedir su imagen casi al mismo tiempo (por ejemplo el
+// usuario pasa de "revisión" a "previsualización" antes de que la primera
+// responda) y las respuestas pueden llegar en cualquier orden. `pedidoImagen`
+// numera cada llamada: si al resolver ya no es la última que se hizo, la
+// respuesta llegó tarde y se descarta -- se libera el blob propio y no se
+// toca el lienzo, que ya le pertenece a un pedido más nuevo.
+let pedidoImagen = 0;
+
 async function mostrarImagen(nombre) {
   if (!estado.trabajoId) return;
-  if (urlImagenActual) {
-    URL.revokeObjectURL(urlImagenActual);
-    urlImagenActual = null;
-  }
-  $("lienzo").innerHTML = "";
+  const miPedido = ++pedidoImagen;
   try {
     const blob = await (await api(`/api/trabajos/${estado.trabajoId}/${nombre}`)).blob();
-    urlImagenActual = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    if (miPedido !== pedidoImagen) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    if (urlImagenActual) URL.revokeObjectURL(urlImagenActual);
+    urlImagenActual = url;
+    $("lienzo").innerHTML = "";
     const img = new Image();
     img.alt = nombre === "preview.png" ? "Cómo quedó el acomodo" : "Qué se descartó";
-    img.src = urlImagenActual;
+    img.src = url;
     $("lienzo").append(img);
   } catch (error) {
-    // 409: el archivo todavía no existe (por ejemplo la previsualización
-    // antes de acomodar). No es un bug, así que no usa el cartel de error:
-    // sólo deja el lienzo en un estado legible.
-    $("lienzo").textContent = "Todavía no hay imagen para mostrar.";
+    if (miPedido !== pedidoImagen) return;
+    if (error.estado === 409) {
+      // No es un bug: el archivo todavía no existe (por ejemplo la
+      // previsualización antes de acomodar). Por eso no usa el cartel de
+      // error, sólo deja el lienzo en un estado legible.
+      $("lienzo").textContent = "Todavía no hay imagen para mostrar.";
+      return;
+    }
+    mostrarError("No se pudo mostrar la imagen", error.message);
   }
 }
 
@@ -337,15 +353,22 @@ $("btn-guardar").onclick = async () => {
   // Mismo problema que en mostrarImagen(): un <a download> tampoco lleva
   // cabeceras, así que el archivo se trae con `api()` y se descarga desde
   // un blob local en vez de apuntar el href directo a la ruta de la API.
-  const blob = await (await api(url)).blob();
-  const urlBlob = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = urlBlob;
-  a.download = sugerido;
-  a.click();
-  // Revocar en el siguiente turno: hacerlo antes de que el navegador haya
-  // arrancado la descarga la corta en algunos navegadores.
-  setTimeout(() => URL.revokeObjectURL(urlBlob), 0);
+  let urlBlob;
+  try {
+    const blob = await (await api(url)).blob();
+    urlBlob = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = urlBlob;
+    a.download = sugerido;
+    a.click();
+  } catch (error) {
+    mostrarError("No se pudo guardar", error.message);
+  } finally {
+    // Revocar en el siguiente turno: hacerlo antes de que el navegador haya
+    // arrancado la descarga la corta en algunos navegadores. Si algo falló
+    // después de crear el blob, esto también lo libera.
+    if (urlBlob) setTimeout(() => URL.revokeObjectURL(urlBlob), 0);
+  }
 };
 
 // --- pantalla de materiales ---------------------------------------------

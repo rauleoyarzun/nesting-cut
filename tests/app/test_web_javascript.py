@@ -116,11 +116,59 @@ def test_expone_mostrar_materiales_para_que_la_tarea_siguiente_se_enganche(js):
 def test_no_asigna_src_o_href_con_una_ruta_de_api_directa(js):
     """`<img>` y `<a download>` son pedidos nativos del navegador: no pueden
     llevar el header `X-Token`, y el middleware de la API rechaza con 401
-    todo lo que no lo traiga. Si algo vuelve a escribir `img.src = "/api/..."`
-    o `a.href = "/api/..."` directamente, la previsualización y la descarga
-    se rompen en silencio otra vez -- por eso el archivo tiene que traerse
-    con `api()` y armar un blob (`createObjectURL`) en su lugar."""
+    todo lo que no lo traiga. El archivo tiene que traer la imagen o el DXF
+    con `api()` y asignar `.src`/`.href` a un blob local (`createObjectURL`).
+
+    Un regex que sólo busca la ruta pegada al `=` (`img.src = "/api/..."`)
+    no agarra la otra forma del mismo bug: una variable armada antes con la
+    ruta y usada después (`const url = \`/api/...\`; a.href = url;`, que fue
+    el bug real del botón "Guardar DXF"). Por eso esta prueba verifica lo
+    positivo en vez de lo negativo: toda asignación a `.src`/`.href` en el
+    archivo tiene que resolver, a lo sumo una variable de por medio, a un
+    `createObjectURL`.
+
+    Alcance: sigue un solo nivel de indirección (la variable asignada
+    directamente a `.src`/`.href`, y si esa variable viene de otra
+    asignación simple, esa asignación) y ubica la declaración por posición
+    en el texto del archivo, no por alcance léxico real. No sigue cadenas
+    más largas ni funciones que devuelvan la URL. Alcanza para este
+    archivo, donde `mostrarImagen()` y el guardado del DXF asignan la URL a
+    lo sumo con una variable de por medio."""
+    # Forma 1: la ruta pegada al `=`.
     assert not re.search(r'\.(?:src|href)\s*=\s*(?:`|["\'])?/api/', js)
+
+    # Forma 2: una variable de por medio. Para cada `algo.src = X;` /
+    # `algo.href = X;` con X un identificador, alguna asignación a X antes
+    # de ese punto -- directamente, o con un solo salto más -- tiene que
+    # venir de `createObjectURL`.
+    def valor_previo(variable, antes_de):
+        """La asignación a `variable` más cercana (hacia atrás) antes de la
+        posición `antes_de`, o None si no hay ninguna."""
+        asignaciones = [
+            m
+            for m in re.finditer(
+                rf'\b{re.escape(variable)}\b\s*=\s*([^=][^;]*);', js
+            )
+            if m.start() < antes_de
+        ]
+        return asignaciones[-1] if asignaciones else None
+
+    usos = list(re.finditer(r'\.(?:src|href)\s*=\s*([A-Za-z_$][\w$]*)\s*;', js))
+    assert usos, "no se encontró ninguna asignación a .src/.href para revisar"
+
+    for uso in usos:
+        variable = uso.group(1)
+        paso1 = valor_previo(variable, uso.start())
+        assert paso1, f"no se encontró de dónde sale `{variable}` (usada en {uso.group(0)!r})"
+        valor = paso1.group(1).strip()
+        if "createObjectURL" not in valor:
+            identificador = re.fullmatch(r'[A-Za-z_$][\w$]*', valor)
+            paso2 = identificador and valor_previo(valor, paso1.start())
+            valor = paso2.group(1).strip() if paso2 else valor
+        assert "createObjectURL" in valor, (
+            f"`{variable}` se asigna a .src/.href pero no viene de "
+            f"createObjectURL (llega a `{valor}`)"
+        )
 
 
 def test_usa_createobjecturl_y_lo_libera_con_revokeobjecturl(js):
