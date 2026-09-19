@@ -63,12 +63,11 @@ async function dibujarTabla() {
     celdaAlto.className = "der";
     celdaAlto.textContent = m.alto;
 
-    // La veta no es texto libre: la API sólo acepta "libre" o "respetar"
-    // (Literal de Pydantic), así que esta celda sí puede seguir siendo HTML
-    // armado por interpolación. Se copia a una variable propia antes de
-    // interpolar para no depender de `m` directamente acá: lo que entra en
-    // un `innerHTML` de esta pantalla tiene que poder auditarse sin mirar
-    // de dónde sale cada campo del material.
+    // La veta sí va interpolada, y no es texto del usuario: viene de
+    // `_nombre_de_veta()` en api.py, un if/else de dos ramas fijas, sobre
+    // un grado que `load_materials()` ya acotó al leer el YAML. Ojo: no es
+    // el Literal de Pydantic lo que protege acá -- ése sólo valida lo que
+    // ENTRA por POST y PUT, no lo que sale al leer el catálogo.
     const veta = m.veta;
     const celdaVeta = document.createElement("td");
     celdaVeta.innerHTML = `<span class="insignia ${veta}">${ETIQUETA_VETA[veta]}</span>`;
