@@ -97,3 +97,24 @@ def test_la_tolerancia_de_cierre_por_omision_sale_de_una_sola_fuente():
     from nesting.pipeline import DEFAULT_CHAIN_TOL
 
     assert NestParams(material="mdf18").tol_cierre == DEFAULT_CHAIN_TOL
+
+
+def test_importar_los_parametros_no_arrastra_el_motor():
+    """`params.py` existe para que se puedan validar parámetros sin cargar
+    el motor -- lo dice su propio docstring. Importar geometría desde acá
+    hacía que importar los parámetros tardara 35 veces más, y nada lo
+    avisaba: el módulo seguía funcionando, sólo que pesado.
+    """
+    import subprocess
+    import sys
+
+    codigo = (
+        "import sys; import nesting.params; "
+        "pesados = [m for m in ('shapely', 'ezdxf', 'rhino3dm', 'scipy') if m in sys.modules]; "
+        "print(','.join(pesados))"
+    )
+    salida = subprocess.run(
+        [sys.executable, "-c", codigo], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    assert salida == "", f"nesting.params arrastró: {salida}"

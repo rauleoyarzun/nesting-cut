@@ -14,7 +14,7 @@ contarla.
 from dataclasses import dataclass
 
 from nesting.engine.oracle import NestConfig
-from nesting.pipeline import DEFAULT_CHAIN_TOL
+from nesting.tolerances import DEFAULT_CHAIN_TOL
 
 DEFAULT_ANGLES: tuple[float, ...] = (0.0, 90.0, 180.0, 270.0)
 
