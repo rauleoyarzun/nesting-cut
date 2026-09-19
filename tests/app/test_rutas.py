@@ -144,7 +144,8 @@ def test_todo_archivo_de_la_interfaz_entra_en_el_paquete(tmp_path):
     for archivo in archivos:
         coincide = False
         for patron in patrones:
-            # glob necesita un path absoluto para buscar, relativizado a tmp_path
+            # El patrón se ancla en tmp_path, igual que setuptools lo ancla en la
+            # raíz del paquete: absoluto de los dos lados, así el cwd no influye.
             ruta_patron = str(tmp_path / patron)
             archivos_encontrados = glob.glob(ruta_patron, recursive=True)
             if str(tmp_path / archivo) in archivos_encontrados:
