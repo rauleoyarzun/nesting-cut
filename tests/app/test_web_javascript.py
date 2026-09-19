@@ -113,6 +113,24 @@ def test_expone_mostrar_materiales_para_que_la_tarea_siguiente_se_enganche(js):
     assert "mostrarMateriales" in contexto
 
 
+def test_no_asigna_src_o_href_con_una_ruta_de_api_directa(js):
+    """`<img>` y `<a download>` son pedidos nativos del navegador: no pueden
+    llevar el header `X-Token`, y el middleware de la API rechaza con 401
+    todo lo que no lo traiga. Si algo vuelve a escribir `img.src = "/api/..."`
+    o `a.href = "/api/..."` directamente, la previsualización y la descarga
+    se rompen en silencio otra vez -- por eso el archivo tiene que traerse
+    con `api()` y armar un blob (`createObjectURL`) en su lugar."""
+    assert not re.search(r'\.(?:src|href)\s*=\s*(?:`|["\'])?/api/', js)
+
+
+def test_usa_createobjecturl_y_lo_libera_con_revokeobjecturl(js):
+    """Cada blob que se crea para una imagen o una descarga tiene que
+    liberarse: si no, cambiar de solapa muchas veces deja blobs retenidos
+    en memoria mientras la ventana esté abierta."""
+    assert "createObjectURL" in js
+    assert "revokeObjectURL" in js
+
+
 def test_todo_id_que_busca_el_js_existe_en_el_html(js, html):
     """Un id que `$("...")` busca y no está en `index.html` no falla en
     ningún lado: el botón correspondiente simplemente se queda mudo, y

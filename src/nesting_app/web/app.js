@@ -153,13 +153,32 @@ document.querySelectorAll("[data-unidad]").forEach((boton) => {
 
 // --- solapas ----------------------------------------------------------------
 
-function mostrarImagen(nombre) {
+// Un <img> es un pedido nativo del navegador: no puede llevar el header
+// `X-Token`, y el middleware de la API rechaza con 401 todo lo que no lo
+// traiga. Por eso el archivo se trae con `api()` (que sí manda el token) y
+// se arma un blob local -- ver la nota crítica al pie del archivo.
+let urlImagenActual = null;
+
+async function mostrarImagen(nombre) {
   if (!estado.trabajoId) return;
+  if (urlImagenActual) {
+    URL.revokeObjectURL(urlImagenActual);
+    urlImagenActual = null;
+  }
   $("lienzo").innerHTML = "";
-  const img = new Image();
-  img.src = `/api/trabajos/${estado.trabajoId}/${nombre}?t=${Date.now()}`;
-  img.alt = nombre === "preview.png" ? "Cómo quedó el acomodo" : "Qué se descartó";
-  $("lienzo").append(img);
+  try {
+    const blob = await (await api(`/api/trabajos/${estado.trabajoId}/${nombre}`)).blob();
+    urlImagenActual = URL.createObjectURL(blob);
+    const img = new Image();
+    img.alt = nombre === "preview.png" ? "Cómo quedó el acomodo" : "Qué se descartó";
+    img.src = urlImagenActual;
+    $("lienzo").append(img);
+  } catch (error) {
+    // 409: el archivo todavía no existe (por ejemplo la previsualización
+    // antes de acomodar). No es un bug, así que no usa el cartel de error:
+    // sólo deja el lienzo en un estado legible.
+    $("lienzo").textContent = "Todavía no hay imagen para mostrar.";
+  }
 }
 
 const mostrarRevision = () => {
@@ -225,7 +244,9 @@ $("btn-acomodar").onclick = async () => {
 };
 
 $("btn-cancelar").onclick = () =>
-  api(`/api/trabajos/${estado.trabajoId}/cancelar`, { method: "POST" });
+  api(`/api/trabajos/${estado.trabajoId}/cancelar`, { method: "POST" }).catch((error) =>
+    mostrarError("No se pudo cancelar", error.message)
+  );
 
 async function sondear() {
   let t;
@@ -283,8 +304,10 @@ function textoDeAvance(a) {
 function terminar(t) {
   estado.terminado = true;
   $("btn-guardar").disabled = false;
-  // El DXF vive en una carpeta temporal hasta que el usuario lo guarda.
-  window.pywebview?.api?.marcar_sin_guardar(true);
+  if (EN_ESCRITORIO) {
+    // El DXF vive en una carpeta temporal hasta que el usuario lo guarda.
+    window.pywebview?.api?.marcar_sin_guardar(true);
+  }
   const r = t.resultado;
   const placas = r.placas === 1 ? "1 placa" : `${r.placas} placas`;
   $("resultado").innerHTML =
@@ -311,10 +334,18 @@ $("btn-guardar").onclick = async () => {
     $("resultado").insertAdjacentHTML("beforeend", ` · guardado`);
     return;
   }
+  // Mismo problema que en mostrarImagen(): un <a download> tampoco lleva
+  // cabeceras, así que el archivo se trae con `api()` y se descarga desde
+  // un blob local en vez de apuntar el href directo a la ruta de la API.
+  const blob = await (await api(url)).blob();
+  const urlBlob = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
+  a.href = urlBlob;
   a.download = sugerido;
   a.click();
+  // Revocar en el siguiente turno: hacerlo antes de que el navegador haya
+  // arrancado la descarga la corta en algunos navegadores.
+  setTimeout(() => URL.revokeObjectURL(urlBlob), 0);
 };
 
 // --- pantalla de materiales ---------------------------------------------
