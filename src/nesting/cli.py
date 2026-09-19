@@ -14,6 +14,12 @@ from nesting.engine.packer import (
     pack,
     replicate,
 )
+from nesting.params import (
+    NestParams,
+    ParamsInvalidosError,
+    mensaje_cli,
+    validar,
+)
 from nesting.engine.raster.masks import MaskCache
 from nesting.engine.raster.oracle import RasterOracle
 from nesting.geometry.nesting_tree import OverlappingContourError
@@ -42,9 +48,22 @@ EXIT_VERIFICATION_FAILED = 2
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    invalid = _validate_numeric_args(args)
-    if invalid is not None:
-        print(f"error: {invalid}", file=sys.stderr)
+    try:
+        validar(
+            NestParams(
+                material=args.material,
+                sep=args.sep,
+                borde=args.borde,
+                copias=args.copias,
+                espejo=not args.sin_espejo,
+                unidades=args.unidades,
+                tol_cierre=args.tol_cierre,
+                resolucion=args.resolucion,
+                esfuerzo=args.esfuerzo,
+            )
+        )
+    except ParamsInvalidosError as error:
+        print(f"error: {mensaje_cli(error.rota)}", file=sys.stderr)
         return EXIT_INPUT_ERROR
 
     if args.salida is None and args.diagnostico is None:
@@ -299,25 +318,6 @@ def _print_summary(
         f"{result.total_utilization * 100:.1f}% total - {result.seconds:.1f}s"
     )
     print(f"Escrito en {out_path}")
-
-
-def _validate_numeric_args(args: argparse.Namespace) -> str | None:
-    """Reject numeric flag values that would corrupt the layout silently.
-
-    Returns a Spanish, user-facing message naming the flag, the value that
-    was received and what was expected -- or `None` when everything is fine.
-    """
-    if args.copias < 1:
-        return f"--copias tiene que ser >= 1, se recibió {args.copias}"
-    if args.sep < 0:
-        return f"--sep tiene que ser >= 0, se recibió {args.sep}"
-    if args.borde < 0:
-        return f"--borde tiene que ser >= 0, se recibió {args.borde}"
-    if args.tol_cierre <= 0:
-        return f"--tol-cierre tiene que ser > 0, se recibió {args.tol_cierre}"
-    if args.resolucion <= 0:
-        return f"--resolucion tiene que ser > 0, se recibió {args.resolucion}"
-    return None
 
 
 def _colors_by_part(drawing, parts: Sequence[Part]) -> dict[int, tuple[int, int, int]]:
