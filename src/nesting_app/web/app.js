@@ -66,8 +66,13 @@ function mostrarError(titulo, texto, detalleTecnico) {
 }
 
 $("btn-cerrar-error").onclick = () => $("cartel-error").classList.add("oculto");
-$("btn-copiar-error").onclick = () =>
-  navigator.clipboard?.writeText($("detalle-error").textContent);
+$("btn-copiar-error").onclick = () => {
+  // Sin permiso de portapapeles esto rechaza; que falle en silencio deja
+  // al usuario creyendo que copió.
+  navigator.clipboard
+    ?.writeText($("detalle-error").textContent)
+    ?.catch(() => mostrarError("No se pudo copiar", "Seleccioná el texto y copialo a mano."));
+};
 
 function limpiarErroresDeCampo() {
   document.querySelectorAll("[data-error-de]").forEach((p) => {
@@ -98,9 +103,15 @@ $("btn-archivo").onclick = async () => {
       entrada.type = "file";
       entrada.accept = ".dxf,.ai,.3dm";
       entrada.onchange = async () => {
-        const datos = new FormData();
-        datos.append("archivo", entrada.files[0]);
-        await registrar(await apiJson("/api/archivos", { method: "POST", body: datos }));
+        // Este handler corre en un evento posterior, así que queda FUERA del
+        // try/catch que lo rodea: necesita el suyo.
+        try {
+          const datos = new FormData();
+          datos.append("archivo", entrada.files[0]);
+          await registrar(await apiJson("/api/archivos", { method: "POST", body: datos }));
+        } catch (error) {
+          mostrarError("No se pudo abrir el archivo", error.message);
+        }
       };
       entrada.click();
     }
@@ -342,12 +353,18 @@ $("btn-guardar").onclick = async () => {
   const sugerido = (estado.nombreArchivo || "salida").replace(/\.[^.]+$/, "") + "_acomodado.dxf";
   if (EN_ESCRITORIO) {
     // Diálogo nativo: el usuario elige la carpeta de su proyecto, que es
-    // donde este archivo tiene que ir.
-    const destino = await window.pywebview.api.elegir_destino(sugerido);
-    if (!destino) return;
-    const datos = new Uint8Array(await (await api(url)).arrayBuffer());
-    await window.pywebview.api.guardar(destino, Array.from(datos));
-    $("resultado").insertAdjacentHTML("beforeend", ` · guardado`);
+    // donde este archivo tiene que ir. Va con su propio try/catch: es el
+    // modo principal del programa, y sin él un fallo al guardar deja la
+    // pantalla igual que si no hubieras apretado nada.
+    try {
+      const destino = await window.pywebview.api.elegir_destino(sugerido);
+      if (!destino) return;
+      const datos = new Uint8Array(await (await api(url)).arrayBuffer());
+      await window.pywebview.api.guardar(destino, Array.from(datos));
+      $("resultado").insertAdjacentHTML("beforeend", ` · guardado`);
+    } catch (error) {
+      mostrarError("No se pudo guardar", error.message);
+    }
     return;
   }
   // Mismo problema que en mostrarImagen(): un <a download> tampoco lleva
