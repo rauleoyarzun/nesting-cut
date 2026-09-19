@@ -141,6 +141,47 @@ def test_la_interfaz_puede_marcar_que_hay_algo_sin_guardar():
     assert puente.hay_sin_guardar is False
 
 
+def test_el_puente_rechaza_guardar_a_traves_de_un_symlink(tmp_path):
+    """Si en el destino elegido ya hay un enlace simbólico, `resolve()` lo
+    sigue en silencio y autoriza -- y después escribe -- el archivo al que
+    apunta, no el que el usuario vio en el diálogo. Tiene que rechazarse, y
+    la víctima no puede haber cambiado."""
+    import os
+
+    victima = tmp_path / "victima.txt"
+    victima.write_text("dato sensible original")
+    elegido = tmp_path / "elegido.dxf"
+    os.symlink(victima, elegido)
+
+    puente = desktop.Puente()
+    puente._autorizar(str(elegido))
+
+    with pytest.raises(PermissionError):
+        puente.guardar(str(elegido), [65, 66])
+
+    assert victima.read_text() == "dato sensible original"
+
+
+def test_el_puente_rechaza_symlink_creado_despues_de_autorizar(tmp_path):
+    """El enlace puede aparecer en el hueco entre elegir el destino y
+    guardar. El chequeo tiene que hacerse en `guardar`, no sólo confiar en
+    lo que había en el momento de `_autorizar`."""
+    import os
+
+    victima = tmp_path / "victima.txt"
+    victima.write_text("dato sensible original")
+    destino = tmp_path / "elegido.dxf"
+
+    puente = desktop.Puente()
+    puente._autorizar(str(destino))
+    os.symlink(victima, destino)
+
+    with pytest.raises(PermissionError):
+        puente.guardar(str(destino), [65, 66])
+
+    assert victima.read_text() == "dato sensible original"
+
+
 def test_guardar_deja_de_marcar_pendiente(tmp_path):
     """Guardar es justamente lo que resuelve el pendiente. Que el JavaScript
     tenga que acordarse de avisarlo aparte sería una forma de olvidarse."""

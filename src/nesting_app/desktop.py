@@ -107,8 +107,21 @@ class Puente:
     def marcar_sin_guardar(self, valor: bool) -> None:
         self.hay_sin_guardar = bool(valor)
 
+    def _clave(self, destino: str) -> str:
+        """Identifica un destino por dónde vive, sin seguir su último tramo.
+
+        `Path.resolve()` a secas sigue un enlace simbólico si el destino
+        mismo es uno: dos rutas que el usuario ve como archivos distintos
+        terminarían señalando la misma clave. Acá resolvemos sólo el
+        directorio contenedor (eso normaliza cosas como `..` de forma
+        legítima) y dejamos el nombre final tal cual, así la clave describe
+        el archivo que el usuario vio -- no a dónde apunta si es un enlace.
+        """
+        ruta = Path(destino)
+        return str(ruta.parent.resolve() / ruta.name)
+
     def _autorizar(self, destino: str) -> None:
-        self._autorizadas.add(str(Path(destino).resolve()))
+        self._autorizadas.add(self._clave(destino))
 
     def elegir_archivo(self) -> list[str]:
         import webview
@@ -133,11 +146,19 @@ class Puente:
         return destino
 
     def guardar(self, destino: str, datos: list[int]) -> None:
-        if str(Path(destino).resolve()) not in self._autorizadas:
+        ruta = Path(destino)
+        # Chequeo acá y no sólo en _autorizar: el enlace puede aparecer
+        # recién ahora, en el momento entre elegir el destino y guardar.
+        if ruta.is_symlink():
+            raise PermissionError(
+                "el destino elegido es un enlace simbólico a otro archivo; "
+                "no se escribe a través de un enlace"
+            )
+        if self._clave(destino) not in self._autorizadas:
             raise PermissionError(
                 "ese destino no salió de un diálogo de guardado"
             )
-        Path(destino).write_bytes(bytes(datos))
+        ruta.write_bytes(bytes(datos))
         # Guardar es lo que resuelve el pendiente. Dejar que el JavaScript se
         # acuerde de avisarlo aparte sería una forma de olvidarse.
         self.hay_sin_guardar = False
