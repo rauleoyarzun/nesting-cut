@@ -6,7 +6,6 @@ usuario. La primera vez se siembra con el original: arrancar con una lista
 vacía obligaría a tipear cuatro materiales antes de poder hacer nada.
 """
 
-from dataclasses import replace
 from pathlib import Path
 
 import yaml
@@ -95,7 +94,11 @@ def editar(nombre: str, material: Material) -> None:
     """Cambia un material, con o sin renombrarlo."""
     materiales = leer()
     if nombre not in materiales:
-        raise MaterialDesconocidoError(f"no existe ningún material llamado {nombre!r}")
+        raise MaterialDesconocidoError(
+            f"no existe ningún material llamado {nombre!r}. "
+            "Se puede haber borrado o renombrado desde otra ventana; "
+            "revisá la lista actual."
+        )
     if material.name != nombre and material.name in materiales:
         raise MaterialDuplicadoError(
             f"ya existe un material llamado {material.name!r}; "
@@ -109,7 +112,11 @@ def editar(nombre: str, material: Material) -> None:
 def borrar(nombre: str) -> None:
     materiales = leer()
     if nombre not in materiales:
-        raise MaterialDesconocidoError(f"no existe ningún material llamado {nombre!r}")
+        raise MaterialDesconocidoError(
+            f"no existe ningún material llamado {nombre!r}. "
+            "Se puede haber borrado o renombrado desde otra ventana; "
+            "revisá la lista actual."
+        )
     del materiales[nombre]
     guardar(materiales)
 

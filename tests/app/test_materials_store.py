@@ -65,6 +65,18 @@ def test_editar_puede_renombrar():
     assert "mdf18" not in materiales
 
 
+def test_renombrar_encima_de_otro_material_se_rechaza():
+    """Sin esto, renombrar 'mdf15' a 'mdf18' borraría las medidas de mdf18
+    sin decir una palabra, y el usuario se entera cuando corta mal una
+    placa."""
+    with pytest.raises(store.MaterialDuplicadoError, match="mdf18"):
+        store.editar("mdf15", Material("mdf18", 100.0, 100.0, store.VETA_LIBRE))
+
+    materiales = store.leer()
+    assert materiales["mdf18"].sheet_w == 1830.0, "mdf18 quedó pisado"
+    assert "mdf15" in materiales, "mdf15 desapareció"
+
+
 def test_editar_uno_que_no_existe_se_queja():
     with pytest.raises(store.MaterialDesconocidoError, match="fantasma"):
         store.editar("fantasma", melamina())
