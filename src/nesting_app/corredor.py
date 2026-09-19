@@ -39,6 +39,34 @@ class UnidadesNoDeclaradasError(ValueError):
     """
 
 
+def _traducir_para_interfaz(error: Exception) -> None:
+    """Reescribe, en el lugar, un mensaje del motor que nombra un flag de
+    la CLI, para que hable del control de la interfaz en vez de eso.
+
+    `nesting/pipeline.py` dice "afloje la tolerancia con --tol-cierre":
+    correcto para quien lo lee en una terminal, porque `--tol-cierre` es
+    justamente el flag que tiene que escribir. Pero la interfaz gráfica no
+    tiene una terminal: el control se llama "Tolerancia de cierre", y
+    mostrarle a alguien un flag que no puede tipear en ningún lado no
+    ayuda.
+
+    La traducción vive acá, del lado de la aplicación, y no en el motor:
+    `nesting/pipeline.py` sigue nombrando su propio flag para la CLI (que
+    lo necesita tal cual, ver `tests/test_pipeline.py` y
+    `tests/test_cli.py`), y esta función sólo reescribe `args` sin tocar el
+    tipo de la excepción -- así que `jobs.ERRORES_DEL_USUARIO` sigue
+    clasificándola igual.
+    """
+    if not error.args:
+        return
+    mensaje = str(error.args[0])
+    si_dice_cli = "afloje la tolerancia con --tol-cierre"
+    if si_dice_cli in mensaje:
+        error.args = (
+            mensaje.replace(si_dice_cli, 'afloje la "Tolerancia de cierre"'),
+        ) + error.args[1:]
+
+
 def _con_avisos(error: Exception, avisos: list[str]) -> Exception:
     """Cuelga los avisos ya generados de una excepción antes de lanzarla.
 
@@ -108,7 +136,11 @@ def _a_dict(descarte: Discard) -> dict:
 def analizar(fuente: Fuente, unidades: str | None, tol_cierre: float) -> Analisis:
     """Lee el archivo y cuenta qué hay, sin acomodar nada. Tarda ~1 segundo."""
     drawing = _leer(fuente, unidades)
-    piezas, avisos, descartes = prepare_parts(drawing, chain_tol=tol_cierre)
+    try:
+        piezas, avisos, descartes = prepare_parts(drawing, chain_tol=tol_cierre)
+    except Exception as error:
+        _traducir_para_interfaz(error)
+        raise
     return Analisis(
         piezas=len(piezas),
         avisos=list(avisos),
@@ -125,10 +157,31 @@ def acomodar(
 ) -> Resultado:
     """El recorrido completo. Deja tres archivos en `carpeta`."""
     materiales = materials_store.leer()
-    material = materiales[params.material]
+    try:
+        material = materiales[params.material]
+    except KeyError as error:
+        # La API prechequea que el material exista antes de encolar el
+        # trabajo, pero ese chequeo y esta lectura -- que corre en el hilo
+        # trabajador, potencialmente mucho después -- no son atómicos: el
+        # material puede borrarse o renombrarse desde la pantalla de
+        # materiales mientras el trabajo espera en la cola. Sin este except,
+        # ese `KeyError` crudo caía fuera de `jobs.ERRORES_DEL_USUARIO` (que
+        # excluye `KeyError` a propósito, por ambiguo) y el usuario veía
+        # "se rompió el programa" con el repr de una clave de diccionario,
+        # para un problema que no tiene nada que ver con un bug.
+        raise materials_store.MaterialDesconocidoError(
+            f"el material {params.material!r} ya no está en el catálogo: "
+            "puede haberse borrado o renombrado mientras este trabajo "
+            "esperaba en la cola. Elegí un material que exista en la lista "
+            "y volvé a acomodar."
+        ) from error
 
     drawing = _leer(fuente, params.unidades)
-    piezas, avisos, descartes = prepare_parts(drawing, chain_tol=params.tol_cierre)
+    try:
+        piezas, avisos, descartes = prepare_parts(drawing, chain_tol=params.tol_cierre)
+    except Exception as error:
+        _traducir_para_interfaz(error)
+        raise
     piezas, contornos_placa = discard_plate_outline(
         piezas, material.sheet_w, material.sheet_h
     )

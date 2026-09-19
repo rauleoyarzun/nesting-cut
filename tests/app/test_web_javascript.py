@@ -113,6 +113,65 @@ def test_expone_mostrar_materiales_para_que_la_tarea_siguiente_se_enganche(js):
     assert "mostrarMateriales" in contexto
 
 
+def test_registrar_limpia_el_trabajo_anterior(js):
+    """El bug real: acomodás A, elegís B, y si `registrar()` no limpia
+    `estado.trabajoId` (y `terminado`), la solapa Revisión sigue pidiendo el
+    diagnóstico de A, el resultado sigue mostrando las placas de A, y el
+    botón Guardar -- que se habilita mirando `terminado` -- sigue apuntando
+    a `/api/trabajos/<id-de-A>/salida.dxf`. Ese archivo va a una fresadora.
+
+    Verificación manual de que este test puede fallar de verdad: comentando
+    la línea `estado.trabajoId = null;` dentro de `registrar()`, este test
+    falla (y el `assert` de abajo es justo el que lo agarra)."""
+    inicio = js.index("async function registrar(")
+    fin = js.index("async function analizar(")
+    cuerpo = js[inicio:fin]
+    assert "estado.trabajoId = null" in cuerpo, (
+        "registrar() ya no limpia estado.trabajoId: el trabajo del archivo "
+        "anterior queda vivo para el archivo nuevo"
+    )
+    assert "estado.terminado = false" in cuerpo, (
+        "registrar() ya no limpia estado.terminado: el botón Guardar puede "
+        "quedar habilitado apuntando al trabajo anterior"
+    )
+
+
+def test_registrar_deja_el_boton_guardar_deshabilitado(js):
+    """Aunque `trabajoId` se limpie, si el botón Guardar no se deshabilita
+    de forma explícita puede quedar habilitado por un estado anterior (por
+    ejemplo si `corriendo()` no se llamó a tiempo). Es la última línea de
+    defensa del bug crítico: aunque todo lo demás falle, Guardar no tiene
+    que poder apretarse para un archivo que la pantalla ya cambió."""
+    inicio = js.index("async function registrar(")
+    fin = js.index("async function analizar(")
+    cuerpo = js[inicio:fin]
+    assert re.search(r'"btn-guardar"\)\.disabled\s*=\s*true', cuerpo)
+
+
+def test_los_avisos_del_analisis_se_muestran_en_la_interfaz(js):
+    """Antes, `analisis.avisos` no se leía en absoluto: el aviso del
+    rectángulo del tamaño de la placa no tiene ningún otro lugar donde
+    aparecer que este camino."""
+    assert re.search(r"mostrarAvisos\(\s*analisis\.avisos\s*\)", js)
+
+
+def test_los_avisos_del_trabajo_se_muestran_al_terminar_y_al_fallar(js):
+    """Antes, `t.avisos` en el camino de éxito sólo llegaba a un
+    `console.info` (que la ventana de pywebview no puede abrir), y en el
+    camino de error no se leía en absoluto -- pese a que son, según el
+    propio comentario del código, "la explicación de por qué no quedó
+    nada"."""
+    ocurrencias = re.findall(r"mostrarAvisos\(\s*t\.avisos\s*\)", js)
+    assert len(ocurrencias) >= 2, (
+        f"esperaba que t.avisos se mostrara al terminar bien y al fallar, "
+        f"se encontraron {len(ocurrencias)} veces"
+    )
+
+
+def test_los_avisos_no_terminan_solo_en_console_info(js):
+    assert not re.search(r"console\.info\([^)]*aviso", js, re.IGNORECASE)
+
+
 def test_no_asigna_src_o_href_con_una_ruta_de_api_directa(js):
     """`<img>` y `<a download>` son pedidos nativos del navegador: no pueden
     llevar el header `X-Token`, y el middleware de la API rechaza con 401

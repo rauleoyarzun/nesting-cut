@@ -6,7 +6,7 @@ import ezdxf
 import pytest
 
 from nesting.params import NestParams
-from nesting_app import corredor
+from nesting_app import corredor, materials_store
 from nesting_app.archivos import Deposito
 from nesting_app.jobs import Estado, Registro
 
@@ -272,3 +272,98 @@ def test_write_preview_que_falla_no_impide_terminar_bien(tmp_path, deposito, mon
         f"esperaba un aviso explicando que la previsualización falló, "
         f"avisos={resultado.avisos!r}"
     )
+
+
+def dxf_contorno_abierto(tmp_path):
+    """Tres lados de un cuadrado, como líneas sueltas: el contorno no
+    cierra, con un hueco bien por encima de cualquier `tol_cierre` de
+    prueba."""
+    doc = ezdxf.new("R2010", setup=True)
+    doc.units = 4
+    msp = doc.modelspace()
+    c = [(0, 0), (200, 0), (200, 200), (0, 200)]
+    for i in range(3):
+        msp.add_line(c[i], c[i + 1])
+    ruta = tmp_path / "abierto.dxf"
+    doc.saveas(ruta)
+    return ruta
+
+
+def test_analizar_traduce_el_flag_de_la_cli_al_control_de_la_interfaz(tmp_path, deposito):
+    """`nesting/pipeline.py` manda a `--tol-cierre`, que es lo correcto para
+    quien lo lee desde una terminal (`tests/test_pipeline.py` y
+    `tests/test_cli.py` verifican justamente eso, sin tocar). Pero ese mismo
+    mensaje, mostrado tal cual en la interfaz gráfica, manda a un flag que
+    ahí no existe: el control se llama "Tolerancia de cierre". La
+    traducción tiene que pasar del lado de la aplicación, sin que el motor
+    deje de nombrar su propio flag."""
+    fuente = deposito.registrar_local(dxf_contorno_abierto(tmp_path))
+
+    with pytest.raises(Exception) as capturado:
+        corredor.analizar(fuente, unidades=None, tol_cierre=0.1)
+
+    mensaje = str(capturado.value)
+    assert "--tol-cierre" not in mensaje
+    assert "Tolerancia de cierre" in mensaje
+
+
+def test_acomodar_tambien_traduce_el_flag_de_la_cli(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_contorno_abierto(tmp_path))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    with pytest.raises(Exception) as capturado:
+        corredor.acomodar(fuente, params(), lambda a: True, salida)
+
+    assert "--tol-cierre" not in str(capturado.value)
+
+
+def test_acomodar_con_un_material_que_desaparecio_de_la_cola_da_un_error_del_usuario(
+    tmp_path, deposito
+):
+    """La API prechequea que el material exista al crear el trabajo, pero
+    ese chequeo y esta lectura -- que corre después, en el hilo trabajador --
+    no son atómicos: el material puede borrarse de la pantalla de
+    materiales mientras el trabajo espera en la cola. Antes, `materiales[...]`
+    crudo tiraba un `KeyError`, que `jobs.ERRORES_DEL_USUARIO` excluye a
+    propósito por ambiguo -- así que esto terminaba clasificado como "se
+    rompió el programa", con el repr pelado de una clave de diccionario."""
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    with pytest.raises(materials_store.MaterialDesconocidoError) as capturado:
+        corredor.acomodar(
+            fuente,
+            NestParams(material="fantasma", esfuerzo="rapido"),
+            lambda a: True,
+            salida,
+        )
+
+    assert "fantasma" in str(capturado.value)
+
+
+def test_el_material_desaparecido_llega_al_trabajo_como_error_del_usuario_no_bug(
+    tmp_path, deposito
+):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+    registro = Registro(tmp_path / "trabajos")
+    try:
+        trabajo = registro.crear(
+            fuente, NestParams(material="fantasma", esfuerzo="rapido"), corredor.acomodar
+        )
+        fin = time.monotonic() + 10
+        while trabajo.estado not in (Estado.LISTO, Estado.ERROR, Estado.CANCELADO):
+            if time.monotonic() > fin:
+                raise AssertionError(f"el trabajo quedó en {trabajo.estado}")
+            time.sleep(0.01)
+
+        assert trabajo.estado == Estado.ERROR
+        assert trabajo.es_bug is False, (
+            "un material que desapareció del catálogo no es un bug del "
+            "programa, y no tiene que mostrar traceback ni pedirle al "
+            "usuario que copie el detalle técnico"
+        )
+        assert "fantasma" in trabajo.error
+    finally:
+        registro.cerrar()

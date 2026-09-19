@@ -145,6 +145,37 @@ def test_un_catalogo_corrupto_da_500_con_la_salida_adentro(cliente):
     assert "restaurar" in respuesta.json()["detail"].lower()
 
 
+@pytest.mark.parametrize(
+    "hacer_pedido",
+    [
+        lambda c: c.post(
+            "/api/materiales",
+            json={"nombre": "x", "ancho": 100, "alto": 100, "veta": "libre"},
+        ),
+        lambda c: c.put(
+            "/api/materiales/mdf18",
+            json={"nombre": "mdf18", "ancho": 100, "alto": 100, "veta": "libre"},
+        ),
+        lambda c: c.delete("/api/materiales/mdf18"),
+    ],
+    ids=["agregar", "editar", "borrar"],
+)
+def test_un_catalogo_corrupto_da_500_con_mensaje_util_en_las_otras_rutas(
+    cliente, hacer_pedido
+):
+    """`GET /api/materiales` ya atrapaba el `ValueError` de `leer()` y
+    devolvía el mensaje en español que dice que se puede restaurar. Las
+    otras tres rutas también llaman a `leer()` de entrada (agregar/editar/
+    borrar leen el catálogo antes de escribirlo) pero no atrapaban nada:
+    con el archivo corrupto, daban un 500 crudo de FastAPI sin ese mensaje."""
+    materials_store.ruta_catalogo().write_text("roto: [\n", encoding="utf-8")
+
+    respuesta = hacer_pedido(cliente)
+
+    assert respuesta.status_code == 500
+    assert "restaurar" in respuesta.json()["detail"].lower()
+
+
 def test_ninguna_ruta_de_api_puede_saltarse_el_token(cliente):
     """No hay que confiar en que cada ruta nueva se acuerde de pedir el
     token: este test recorre TODAS las rutas que la app tiene registradas

@@ -82,6 +82,19 @@ def test_editar_uno_que_no_existe_se_queja():
         store.editar("fantasma", melamina())
 
 
+def test_el_mensaje_de_editar_uno_que_no_existe_esta_bien_puntuado():
+    """El mensaje traía dos oraciones pegadas sin espacio y con minúscula
+    después del punto: "...para verla al día.revisá la lista actual.". Este
+    test agarra esa forma concreta de puntuación rota (un punto seguido
+    directo de una minúscula), no cualquier defecto de redacción."""
+    import re
+
+    with pytest.raises(store.MaterialDesconocidoError) as info:
+        store.editar("fantasma", melamina())
+
+    assert not re.search(r"\.[a-záéíóúñ]", str(info.value))
+
+
 def test_borrar():
     store.borrar("mdf15")
 
@@ -92,6 +105,15 @@ def test_borrar():
 def test_borrar_uno_que_no_existe_se_queja():
     with pytest.raises(store.MaterialDesconocidoError, match="fantasma"):
         store.borrar("fantasma")
+
+
+def test_el_mensaje_de_borrar_uno_que_no_existe_esta_bien_puntuado():
+    import re
+
+    with pytest.raises(store.MaterialDesconocidoError) as info:
+        store.borrar("fantasma")
+
+    assert not re.search(r"\.[a-záéíóúñ]", str(info.value))
 
 
 def test_se_puede_borrar_hasta_el_ultimo():

@@ -25,7 +25,7 @@ from nesting_app.archivos import (
     ExtensionNoSoportadaError,
     FuenteDesconocidaError,
 )
-from nesting_app.jobs import Registro, TrabajoDesconocidoError
+from nesting_app.jobs import ERRORES_DEL_USUARIO, Registro, TrabajoDesconocidoError
 
 VETA_POR_NOMBRE = {
     "libre": materials_store.VETA_LIBRE,
@@ -198,6 +198,12 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
             materials_store.agregar(entrada.a_material())
         except materials_store.MaterialDuplicadoError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+        except ValueError as error:
+            # `agregar()` también lee el catálogo antes de escribirlo: un
+            # catálogo corrupto acá tiene que dar el mismo 500 con el
+            # mensaje en español (y el "se puede restaurar") que ya da
+            # `GET /api/materiales`, no un "Internal Server Error" crudo.
+            raise HTTPException(status_code=500, detail=str(error)) from error
         return {"ok": True}
 
     @app.put("/api/materiales/{nombre}")
@@ -208,6 +214,8 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(error)) from error
         except materials_store.MaterialDuplicadoError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=500, detail=str(error)) from error
         return {"ok": True}
 
     @app.delete("/api/materiales/{nombre}")
@@ -216,6 +224,8 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
             materials_store.borrar(nombre)
         except materials_store.MaterialDesconocidoError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=500, detail=str(error)) from error
         return {"ok": True}
 
     @app.post("/api/materiales/restaurar")
@@ -263,7 +273,15 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
                 status_code=409,
                 detail={"faltan_unidades": True, "mensaje": str(error)},
             ) from error
-        except ValueError as error:
+        except ERRORES_DEL_USUARIO as error:
+            # La misma tupla que usa `jobs._correr` para clasificar el
+            # resultado de un trabajo: un contorno que no cierra, piezas que
+            # se pisan, una curva no plana, etc. Antes acá sólo se atrapaba
+            # `ValueError`, así que `OpenContourError`,
+            # `OverlappingContourError` y `NonPlanarCurveError` (que heredan
+            # de `Exception` a secas) se escapaban como 500 -- el mismo
+            # archivo que por `/api/trabajos` termina bien clasificado, con
+            # el mensaje en español, acá tiraba "Internal Server Error".
             raise HTTPException(status_code=400, detail=str(error)) from error
         return {
             "piezas": analisis.piezas,

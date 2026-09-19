@@ -99,7 +99,6 @@ def editar(nombre: str, material: Material) -> None:
             "Puede haberse editado el archivo por fuera del programa, o la lista "
             "que estás viendo estar desactualizada; volvé a la pantalla de "
             "materiales para verla al día."
-            "revisá la lista actual."
         )
     if material.name != nombre and material.name in materiales:
         raise MaterialDuplicadoError(
@@ -119,7 +118,6 @@ def borrar(nombre: str) -> None:
             "Puede haberse editado el archivo por fuera del programa, o la lista "
             "que estás viendo estar desactualizada; volvé a la pantalla de "
             "materiales para verla al día."
-            "revisá la lista actual."
         )
     del materiales[nombre]
     guardar(materiales)

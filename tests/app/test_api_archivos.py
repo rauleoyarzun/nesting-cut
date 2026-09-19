@@ -115,6 +115,51 @@ def test_analizar_con_las_unidades_dadas_funciona(cliente, tmp_path):
     assert analisis["piezas"] == 1
 
 
+def dxf_contorno_abierto(tmp_path):
+    """Tres lados de un cuadrado como líneas sueltas: no cierra."""
+    doc = ezdxf.new("R2010", setup=True)
+    doc.units = 4
+    msp = doc.modelspace()
+    c = [(0, 0), (200, 0), (200, 200), (0, 200)]
+    for i in range(3):
+        msp.add_line(c[i], c[i + 1])
+    ruta = tmp_path / "abierto.dxf"
+    doc.saveas(ruta)
+    return ruta
+
+
+def test_analizar_un_contorno_abierto_da_400_no_500(cliente, tmp_path):
+    """`OpenContourError` (como `OverlappingContourError` y
+    `NonPlanarCurveError`) hereda de `Exception` a secas, no de `ValueError`.
+    Antes, `/api/analizar` sólo atrapaba `ValueError`, así que esto se
+    escapaba como un 500 con "Internal Server Error" en texto plano -- el
+    mismo archivo que por `/api/trabajos` termina bien clasificado, con el
+    mensaje en español."""
+    fuente = cliente.post(
+        "/api/archivos/local", json={"ruta": str(dxf_contorno_abierto(tmp_path))}
+    ).json()
+
+    respuesta = cliente.post("/api/analizar", json={"fuente_id": fuente["id"]})
+
+    assert respuesta.status_code == 400
+    assert "no cierran" in respuesta.json()["detail"]
+
+
+def test_el_mensaje_del_contorno_abierto_nombra_el_control_no_el_flag_de_la_cli(
+    cliente, tmp_path
+):
+    fuente = cliente.post(
+        "/api/archivos/local", json={"ruta": str(dxf_contorno_abierto(tmp_path))}
+    ).json()
+
+    detalle = cliente.post(
+        "/api/analizar", json={"fuente_id": fuente["id"]}
+    ).json()["detail"]
+
+    assert "--tol-cierre" not in detalle
+    assert "Tolerancia de cierre" in detalle
+
+
 def test_analizar_un_id_inventado_da_404(cliente):
     respuesta = cliente.post("/api/analizar", json={"fuente_id": "no-existe"})
 

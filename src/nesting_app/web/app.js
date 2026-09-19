@@ -74,6 +74,19 @@ $("btn-copiar-error").onclick = () => {
     ?.catch(() => mostrarError("No se pudo copiar", "Seleccioná el texto y copialo a mano."));
 };
 
+function mostrarAvisos(lista) {
+  // Los avisos llegan de tres caminos -- el análisis, un trabajo que
+  // terminó bien, uno que falló -- y ninguno tiene otro lugar donde
+  // aparecer: ni el del rectángulo del tamaño de la placa, ni los que
+  // explican por qué no quedó ninguna pieza. `textContent` (no
+  // `innerHTML`) porque un aviso puede traer el nombre del archivo, que no
+  // es texto de confianza.
+  const el = $("avisos");
+  const hay = Boolean(lista && lista.length);
+  el.textContent = hay ? lista.map((aviso) => `· ${aviso}`).join("\n") : "";
+  el.classList.toggle("oculto", !hay);
+}
+
 function limpiarErroresDeCampo() {
   document.querySelectorAll("[data-error-de]").forEach((p) => {
     p.classList.add("oculto");
@@ -121,10 +134,58 @@ $("btn-archivo").onclick = async () => {
 };
 
 async function registrar(fuente) {
+  // Elegir un archivo nuevo tiene que dejar la pantalla como si el trabajo
+  // anterior nunca hubiera existido. Antes esta función sólo pisaba
+  // fuenteId/nombreArchivo/unidades y dejaba trabajoId, terminado, el
+  // resultado y el botón Guardar apuntando al archivo viejo -- el bug real:
+  // acomodás A, elegís B, la solapa Revisión sigue pidiendo el diagnóstico
+  // de A, el resultado sigue mostrando las placas de A, y Guardar sigue
+  // habilitado y baja el DXF de A ofreciéndolo como "B_acomodado.dxf".
+  if (estado.terminado) {
+    // Hay un acomodo que todavía no se guardó a ningún lado (el mismo caso
+    // que `marcar_sin_guardar` le avisa al puente de escritorio para el
+    // cierre de la ventana): perderlo en silencio por elegir otro archivo
+    // es tan grave como perderlo al cerrar, así que se pregunta antes.
+    const seguir = confirm(
+      "El acomodo anterior todavía no se guardó y se va a perder si elegís " +
+        "otro archivo. ¿Continuar de todos modos?"
+    );
+    if (!seguir) return;
+  } else if (estado.trabajoId) {
+    // Un trabajo corriendo (o recién arrancado) del archivo anterior no
+    // tiene sentido si ya se eligió uno nuevo: cancelarlo libera el hilo/
+    // proceso en vez de dejarlo trabajando para nadie.
+    api(`/api/trabajos/${estado.trabajoId}/cancelar`, { method: "POST" }).catch(() => {});
+  }
+  if (estado.sondeo) clearInterval(estado.sondeo);
+
   estado.fuenteId = fuente.id;
   estado.nombreArchivo = fuente.nombre;
   estado.unidades = null;
+  estado.trabajoId = null;
+  estado.sondeo = null;
+  estado.terminado = false;
+  estado.descartes = 0;
+  if (EN_ESCRITORIO) window.pywebview?.api?.marcar_sin_guardar(false);
+
   $("nombre-archivo").textContent = fuente.nombre;
+  $("resumen-archivo").classList.add("oculto");
+  $("link-descartes").classList.add("oculto");
+  mostrarAvisos([]);
+  if (urlImagenActual) {
+    URL.revokeObjectURL(urlImagenActual);
+    urlImagenActual = null;
+  }
+  $("lienzo").innerHTML = "";
+  $("btn-acomodar").classList.remove("oculto");
+  $("btn-cancelar").classList.add("oculto");
+  $("pista-avance").classList.add("oculto");
+  $("texto-avance").classList.add("oculto");
+  $("resultado").classList.add("oculto");
+  $("resultado").textContent = "";
+  $("placa-actual").textContent = "";
+  $("btn-guardar").disabled = true;
+
   await analizar();
 }
 
@@ -143,6 +204,7 @@ async function analizar() {
     const link = $("link-descartes");
     link.textContent = `· ${analisis.descartes.length} descartes`;
     link.classList.toggle("oculto", analisis.descartes.length === 0);
+    mostrarAvisos(analisis.avisos);
     mostrarRevision();
   } catch (error) {
     if (error.estado === 409 && error.detalle?.faltan_unidades) {
@@ -254,6 +316,7 @@ $("btn-acomodar").onclick = async () => {
   }
   limpiarErroresDeCampo();
   estado.terminado = false;
+  mostrarAvisos([]);
   try {
     const creado = await postJson("/api/trabajos", {
       fuente_id: estado.fuenteId,
@@ -310,6 +373,10 @@ async function sondear() {
   }
   if (t.estado === "error") {
     mostrarRevision();
+    // Los avisos que el corredor llegó a calcular antes de fallar -- según
+    // su propio comentario, "la explicación de por qué no quedó nada" -- no
+    // tienen ningún otro lugar donde aparecer.
+    mostrarAvisos(t.avisos);
     if (t.es_bug) {
       return mostrarError(
         "Se rompió el programa",
@@ -343,7 +410,7 @@ function terminar(t) {
   $("resultado").classList.remove("oculto");
   $("placa-actual").textContent = `${r.placas} placa${r.placas === 1 ? "" : "s"}`;
   $("tab-preview").click();
-  if (t.avisos.length) console.info("avisos:", t.avisos);
+  mostrarAvisos(t.avisos);
 }
 
 // --- guardar ----------------------------------------------------------------

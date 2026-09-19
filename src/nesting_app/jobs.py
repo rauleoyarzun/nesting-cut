@@ -27,6 +27,7 @@ from nesting.io.rhino_reader import NonPlanarCurveError
 from nesting.params import NestParams, ParamsInvalidosError
 from nesting.pipeline import OpenContourError
 from nesting_app.archivos import Fuente
+from nesting_app.materials_store import MaterialDesconocidoError
 
 
 class Estado(StrEnum):
@@ -95,6 +96,7 @@ ERRORES_DEL_USUARIO = (
     PartTooLargeError,
     UnknownEffortError,
     NonPlanarCurveError,
+    MaterialDesconocidoError,
     OSError,
     ValueError,
 )
@@ -116,10 +118,19 @@ equivoca fácil para el lado peligroso: culpar al usuario de un bug nuestro.
   varios puntos para "tu archivo tiene un problema" sin una subclase
   dedicada.
 
-Deliberadamente NO está `KeyError`: es ambiguo. Un `KeyError` de un
+Deliberadamente NO está `KeyError` a secas: es ambiguo. Un `KeyError` de un
 diccionario interno del programa es un bug de verdad, y con la regla vieja
 cualquiera de esos cae disfrazado de "revisá tu dibujo" -- exactamente lo
 que `Trabajo.es_bug` existe para evitar.
+
+`MaterialDesconocidoError` (`nesting_app.materials_store`) es la única
+excepción de esta lista que sí hereda de `KeyError`, y está a propósito:
+no es un diccionario interno reventando por un bug, es el material que el
+usuario eligió desapareciendo del catálogo -- por ejemplo porque alguien lo
+borró desde la pantalla de materiales mientras el trabajo esperaba en la
+cola. Es exactamente la clase de caso "tu archivo o tus parámetros tienen
+un problema" que esta lista existe para cubrir, y por eso se agrega por su
+nombre en vez de relajar la exclusión general de `KeyError`.
 
 `ChainingInvariantError` hereda de `RuntimeError`, no de nada de esta
 lista, así que cae del lado del bug sin necesidad de excluirlo a mano. Y
