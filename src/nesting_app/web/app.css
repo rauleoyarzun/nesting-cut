@@ -1,0 +1,194 @@
+/* Dirección D · Moderno. Los tokens viven acá y en ningún otro lado:
+   cambiar el acento tiene que ser cambiar una línea, no cazar hexas. */
+:root {
+  --fondo: #F4F6F8;
+  --panel: #FFFFFF;
+  --lienzo: #EDF0F4;
+  --texto: #111827;
+  --texto-2: #606B7B;
+  --borde: #E2E6EC;
+  --acento: #047857;
+  --sobre-acento: #FFFFFF;
+  --rojo: #B42318;
+  --radio: 10px;
+  --radio-boton: 8px;
+  --alto-control: 44px;
+  --sombra: 0 1px 2px rgba(17,24,39,.06), 0 4px 12px rgba(17,24,39,.05);
+  --fuente: "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  font-family: var(--fuente);
+  color: var(--texto);
+  background: var(--fondo);
+  font-size: 14px;
+}
+
+.oculto { display: none !important; }
+.espaciador { flex-grow: 1; }
+
+/* La interfaz es una grilla de medidas que se comparan entre sí. En cifras
+   proporcionales 1830 y 1220 no alinean y la columna se lee torcida. */
+.medida, .tabla td, .placa-actual { font-variant-numeric: tabular-nums; }
+
+/* --- barras --- */
+.barra-superior, .barra-accion {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 16px; background: var(--panel);
+}
+.barra-superior { height: 56px; border-bottom: 1px solid var(--borde); }
+.barra-accion { min-height: 76px; border-top: 1px solid var(--borde); }
+.marca { font-weight: 700; font-size: 15px; }
+
+/* --- pantalla principal --- */
+#pantalla-principal { display: flex; min-height: 0; }
+
+.panel-opciones {
+  width: 336px; flex-shrink: 0; padding: 20px 18px;
+  display: flex; flex-direction: column; gap: 16px;
+  background: var(--panel); border-right: 1px solid var(--borde);
+  overflow-y: auto;
+}
+
+.panel-dibujo { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; }
+.solapas {
+  display: flex; align-items: flex-end; gap: 22px;
+  padding: 16px 20px 0; border-bottom: 1px solid var(--borde);
+}
+.solapa {
+  padding: 0 2px 10px; border: 0; border-bottom: 2px solid transparent;
+  background: none; font: inherit; font-weight: 500; color: var(--texto-2);
+  cursor: pointer;
+}
+.solapa.activa { color: var(--texto); font-weight: 600; border-bottom-color: var(--acento); }
+.placa-actual { padding-bottom: 10px; font-size: 12px; color: var(--texto-2); }
+.lienzo {
+  flex-grow: 1; min-height: 0; display: flex; align-items: center;
+  justify-content: center; padding: 16px; background: var(--lienzo);
+}
+.lienzo img, .lienzo svg { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+/* --- controles --- */
+.campo { display: flex; flex-direction: column; gap: 6px; border: 0; margin: 0; padding: 0; }
+.etiqueta { font-size: 13px; font-weight: 600; color: var(--texto-2); padding: 0; }
+
+.control, select.control, .caja-archivo {
+  display: flex; align-items: center; height: var(--alto-control);
+  padding: 0 12px; background: var(--panel);
+  border: 1px solid var(--borde); border-radius: var(--radio);
+}
+.control input, select.control {
+  flex-grow: 1; min-width: 0; border: 0; outline: none; background: none;
+  font: inherit; color: var(--texto);
+}
+select.control { padding: 0 12px; appearance: none; cursor: pointer; }
+.control:focus-within { border-color: var(--acento); box-shadow: 0 0 0 3px rgba(4,120,87,.12); }
+.unidad { padding-left: 8px; font-size: 12px; color: var(--texto-2); }
+.campo-con-error .control { border-color: var(--rojo); }
+.error-campo { margin: 0; font-size: 12px; color: var(--rojo); }
+
+.caja-archivo { gap: 8px; }
+.nombre-archivo { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icono { width: 16px; height: 16px; fill: none; stroke: var(--texto-2); stroke-width: 1.5; }
+.resumen { margin: 0; font-size: 12px; color: var(--texto-2); }
+
+.enlace {
+  border: 0; background: none; padding: 0; font: inherit; font-size: 12px;
+  font-weight: 600; color: var(--acento); cursor: pointer; text-decoration: underline;
+}
+
+.boton {
+  height: var(--alto-control); padding: 0 18px; border-radius: var(--radio-boton);
+  font: inherit; font-weight: 600; cursor: pointer; border: 1px solid transparent;
+}
+.boton.primario { background: var(--acento); color: var(--sobre-acento); border-color: var(--acento); }
+.boton.secundario { background: var(--panel); color: var(--texto); border-color: var(--borde); }
+.boton:disabled { opacity: .5; cursor: not-allowed; }
+.boton.crece { flex-grow: 1; }
+
+.avanzadas { border-top: 1px solid var(--borde); padding-top: 12px; }
+.avanzadas summary {
+  cursor: pointer; font-size: 13px; font-weight: 600; color: var(--texto-2);
+  list-style: none;
+}
+.avanzadas summary::-webkit-details-marker { display: none; }
+.avanzadas summary::before { content: "› "; }
+.avanzadas[open] summary::before { content: "⌄ "; }
+.avanzadas > .campo { margin-top: 14px; }
+.casilla { display: flex; gap: 8px; align-items: center; margin-top: 14px; font-size: 13px; }
+
+/* --- avance y resultado --- */
+.estado { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pista-avance { height: 6px; background: var(--borde); border-radius: 3px; overflow: hidden; }
+.barra-avance { height: 100%; width: 0; background: var(--acento); transition: width .2s ease; }
+.texto-avance, .resultado { margin: 0; font-size: 13px; }
+.texto-avance { color: var(--texto-2); }
+.resultado strong { font-variant-numeric: tabular-nums; }
+
+/* --- materiales --- */
+.pantalla-materiales {
+  position: fixed; inset: 56px 0 0 0; background: var(--fondo);
+  display: flex; flex-direction: column; padding: 20px 24px; overflow-y: auto;
+}
+.cabecera-materiales { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.cabecera-materiales h1 { margin: 0; font-size: 20px; }
+.cuerpo-materiales { display: flex; gap: 22px; align-items: flex-start; }
+.lado-tabla { flex-grow: 1; min-width: 0; }
+.tabla { width: 100%; border-collapse: collapse; }
+.tabla th {
+  text-align: left; padding: 0 10px 10px; font-size: 13px;
+  font-weight: 600; color: var(--texto-2);
+}
+.tabla th.der, .tabla td.der { text-align: right; }
+.tabla td { padding: 12px 10px; border-top: 1px solid var(--borde); }
+.insignia {
+  display: inline-block; padding: 2px 9px; font-size: 11px;
+  border: 1px solid var(--borde); border-radius: var(--radio-boton); color: var(--texto-2);
+}
+.insignia.respetar { border-color: var(--acento); color: var(--acento); font-weight: 600; }
+.icono-boton {
+  width: 32px; height: 32px; border: 0; background: none; cursor: pointer;
+  color: var(--texto-2); border-radius: var(--radio-boton);
+}
+.icono-boton:hover { background: var(--lienzo); }
+
+.form-material {
+  width: 320px; flex-shrink: 0; padding: 18px; background: var(--panel);
+  border: 1px solid var(--borde); border-radius: var(--radio);
+  box-shadow: var(--sombra); display: flex; flex-direction: column; gap: 14px;
+}
+.form-material h2 { margin: 0; font-size: 15px; }
+.fila { display: flex; gap: 10px; }
+.fila > .campo { flex-grow: 1; }
+.opcion {
+  display: flex; gap: 10px; padding: 10px 12px; cursor: pointer;
+  border: 1px solid var(--borde); border-radius: var(--radio);
+}
+.opcion:has(input:checked) { border-color: var(--acento); }
+.opcion span { display: flex; flex-direction: column; gap: 2px; }
+.opcion small { color: var(--texto-2); font-size: 11px; }
+
+/* --- carteles --- */
+.cartel {
+  position: fixed; inset: 0; background: rgba(17,24,39,.45);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.cartel-caja {
+  width: min(520px, 100%); padding: 22px; background: var(--panel);
+  border-radius: var(--radio); box-shadow: var(--sombra);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.cartel-caja h2 { margin: 0; font-size: 17px; }
+.cartel-caja p { margin: 0; color: var(--texto-2); }
+.cartel.error .cartel-caja h2 { color: var(--rojo); }
+.detalle {
+  margin: 0; max-height: 180px; overflow: auto; padding: 12px;
+  background: var(--lienzo); border-radius: var(--radio);
+  font-size: 11px; white-space: pre-wrap;
+}

@@ -1,5 +1,214 @@
 <!doctype html>
 <html lang="es">
-<head><meta charset="utf-8"><title>Nesting</title></head>
-<body></body>
+<head>
+<meta charset="utf-8">
+<title>Nesting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="barra-superior">
+  <span class="marca">Nesting</span>
+  <span class="espaciador"></span>
+  <button type="button" id="btn-materiales" class="boton secundario">Materiales</button>
+</header>
+
+<main id="pantalla-principal">
+  <section class="panel-opciones">
+    <div class="campo">
+      <span class="etiqueta">Archivo</span>
+      <div class="caja-archivo">
+        <svg viewBox="0 0 16 16" class="icono" aria-hidden="true"><path d="M9 1.5H4.5A1.5 1.5 0 0 0 3 3v10a1.5 1.5 0 0 0 1.5 1.5h7A1.5 1.5 0 0 0 13 13V5.5z"></path><path d="M9 1.5V5.5H13"></path></svg>
+        <span id="nombre-archivo" class="nombre-archivo">Ningún archivo elegido</span>
+        <button type="button" id="btn-archivo" class="enlace">Elegir</button>
+      </div>
+      <p id="resumen-archivo" class="resumen oculto">
+        <span id="cuenta-piezas" class="medida">0</span> piezas
+        <button type="button" id="link-descartes" class="enlace oculto"></button>
+      </p>
+    </div>
+
+    <div class="campo">
+      <label class="etiqueta" for="material">Material</label>
+      <select id="material" class="control"></select>
+    </div>
+
+    <div class="campo">
+      <label class="etiqueta" for="sep">Separación</label>
+      <div class="control con-unidad">
+        <input id="sep" type="number" min="0" step="0.5" value="5" class="medida">
+        <span class="unidad">mm</span>
+      </div>
+      <p class="error-campo oculto" data-error-de="sep"></p>
+    </div>
+
+    <div class="campo">
+      <label class="etiqueta" for="borde">Borde</label>
+      <div class="control con-unidad">
+        <input id="borde" type="number" min="0" step="1" value="10" class="medida">
+        <span class="unidad">mm</span>
+      </div>
+      <p class="error-campo oculto" data-error-de="borde"></p>
+    </div>
+
+    <div class="campo">
+      <label class="etiqueta" for="copias">Copias</label>
+      <div class="control">
+        <input id="copias" type="number" min="1" step="1" value="1" class="medida">
+      </div>
+      <p class="error-campo oculto" data-error-de="copias"></p>
+    </div>
+
+    <div class="campo">
+      <label class="etiqueta" for="esfuerzo">Esfuerzo</label>
+      <select id="esfuerzo" class="control">
+        <option value="rapido">Rápido — una pasada</option>
+        <option value="normal" selected>Normal — tres pasadas</option>
+        <option value="lento">Lento — doce pasadas</option>
+      </select>
+    </div>
+
+    <span class="espaciador"></span>
+
+    <details id="avanzadas" class="avanzadas">
+      <summary>Opciones avanzadas</summary>
+      <div class="campo">
+        <label class="etiqueta" for="angulos">Ángulos</label>
+        <div class="control"><input id="angulos" type="text" value="0,90,180,270"></div>
+      </div>
+      <div class="campo">
+        <label class="etiqueta" for="tol-cierre">Tolerancia de cierre</label>
+        <div class="control con-unidad">
+          <input id="tol-cierre" type="number" min="0.001" step="0.01" value="0.1" class="medida">
+          <span class="unidad">mm</span>
+        </div>
+        <p class="error-campo oculto" data-error-de="tol_cierre"></p>
+      </div>
+      <div class="campo">
+        <label class="etiqueta" for="resolucion">Resolución</label>
+        <div class="control con-unidad">
+          <input id="resolucion" type="number" min="0.1" step="0.5" value="2" class="medida">
+          <span class="unidad">mm/px</span>
+        </div>
+        <p class="error-campo oculto" data-error-de="resolucion"></p>
+      </div>
+      <label class="casilla"><input id="espejo" type="checkbox" checked> Permitir piezas espejadas</label>
+    </details>
+  </section>
+
+  <section class="panel-dibujo">
+    <div class="solapas">
+      <button type="button" id="tab-preview" class="solapa activa">Previsualización</button>
+      <button type="button" id="tab-revision" class="solapa">Revisión</button>
+      <span class="espaciador"></span>
+      <span id="placa-actual" class="medida placa-actual"></span>
+    </div>
+    <div id="lienzo" class="lienzo"></div>
+  </section>
+</main>
+
+<footer class="barra-accion">
+  <button type="button" id="btn-acomodar" class="boton primario">Acomodar</button>
+  <button type="button" id="btn-cancelar" class="boton secundario oculto">Cancelar</button>
+  <div class="estado">
+    <div class="pista-avance oculto" id="pista-avance">
+      <div id="barra-avance" class="barra-avance"></div>
+    </div>
+    <p id="texto-avance" class="texto-avance oculto"></p>
+    <p id="resultado" class="resultado oculto"></p>
+  </div>
+  <button type="button" id="btn-guardar" class="boton secundario" disabled>Guardar DXF…</button>
+</footer>
+
+<section id="pantalla-materiales" class="pantalla-materiales oculto">
+  <div class="cabecera-materiales">
+    <button type="button" id="btn-volver" class="enlace">Volver</button>
+    <h1>Materiales</h1>
+  </div>
+  <div class="cuerpo-materiales">
+    <div class="lado-tabla">
+      <table class="tabla">
+        <thead>
+          <tr><th>Nombre</th><th class="der">Ancho</th><th class="der">Alto</th><th>Veta</th><th></th></tr>
+        </thead>
+        <tbody id="tabla-materiales"></tbody>
+      </table>
+      <p class="resumen">
+        Se guardan en tu carpeta de usuario, no adentro del programa.
+        <button type="button" id="btn-restaurar" class="enlace">Restaurar el catálogo original</button>
+      </p>
+    </div>
+    <form id="form-material" class="form-material">
+      <h2 id="titulo-form">Nuevo material</h2>
+      <div class="campo">
+        <label class="etiqueta" for="m-nombre">Nombre</label>
+        <div class="control"><input id="m-nombre" type="text" required></div>
+      </div>
+      <div class="fila">
+        <div class="campo">
+          <label class="etiqueta" for="m-ancho">Ancho</label>
+          <div class="control con-unidad">
+            <input id="m-ancho" type="number" min="1" step="1" required class="medida">
+            <span class="unidad">mm</span>
+          </div>
+        </div>
+        <div class="campo">
+          <label class="etiqueta" for="m-alto">Alto</label>
+          <div class="control con-unidad">
+            <input id="m-alto" type="number" min="1" step="1" required class="medida">
+            <span class="unidad">mm</span>
+          </div>
+        </div>
+      </div>
+      <fieldset class="campo">
+        <legend class="etiqueta">Veta</legend>
+        <label class="opcion">
+          <input type="radio" name="veta" id="m-veta-libre" value="libre" checked>
+          <span><strong>La veta no importa</strong><small>La pieza gira libre. Típico del MDF.</small></span>
+        </label>
+        <label class="opcion">
+          <input type="radio" name="veta" id="m-veta-respetar" value="respetar">
+          <span><strong>Respetar la veta</strong><small>Sólo 0 y 180 grados. Multilaminado, fenólico.</small></span>
+        </label>
+      </fieldset>
+      <p id="error-material" class="error-campo oculto"></p>
+      <div class="fila">
+        <button type="submit" id="btn-guardar-material" class="boton primario crece">Guardar</button>
+        <button type="button" id="btn-cancelar-material" class="boton secundario">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<div id="cartel-unidades" class="cartel oculto">
+  <div class="cartel-caja">
+    <h2>¿En qué unidades está este archivo?</h2>
+    <p>El archivo no lo declara, y adivinar arruinaría la placa entera.</p>
+    <div class="fila">
+      <button type="button" class="boton secundario" data-unidad="mm">mm</button>
+      <button type="button" class="boton secundario" data-unidad="cm">cm</button>
+      <button type="button" class="boton secundario" data-unidad="m">m</button>
+      <button type="button" class="boton secundario" data-unidad="in">in</button>
+      <button type="button" class="boton secundario" data-unidad="ft">ft</button>
+    </div>
+  </div>
+</div>
+
+<div id="cartel-error" class="cartel oculto">
+  <div class="cartel-caja">
+    <h2 id="titulo-error">No se pudo</h2>
+    <p id="texto-error"></p>
+    <pre id="detalle-error" class="detalle oculto"></pre>
+    <div class="fila">
+      <span class="espaciador"></span>
+      <button type="button" id="btn-copiar-error" class="boton secundario oculto">Copiar detalle</button>
+      <button type="button" id="btn-cerrar-error" class="boton primario">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
 </html>
