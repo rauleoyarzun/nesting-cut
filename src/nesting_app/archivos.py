@@ -44,12 +44,22 @@ class Fuente:
 
 
 def _verificar_extension(nombre: str) -> None:
-    if Path(nombre).suffix.lower() not in EXTENSIONES:
-        raise ExtensionNoSoportadaError(
-            f"{nombre} no es un formato que este programa pueda leer. "
-            f"Se aceptan {', '.join(EXTENSIONES)}. "
-            "Un .cdr hay que exportarlo a DXF desde CorelDRAW primero."
+    # Rechazar nombres con bytes nulos temprano: causarían ValueError al escribir
+    if "\x00" in nombre:
+        raise ValueError(
+            f"el nombre del archivo contiene un carácter nulo "
+            f"y no puede procesarse: {nombre!r}"
         )
+
+    if Path(nombre).suffix.lower() not in EXTENSIONES:
+        mensaje = (
+            f"{nombre} no es un formato que este programa pueda leer. "
+            f"Se aceptan {', '.join(EXTENSIONES)}."
+        )
+        # Solo mencionar CorelDRAW si el rechazo es específicamente por .cdr
+        if Path(nombre).suffix.lower() == ".cdr":
+            mensaje += " Un .cdr hay que exportarlo a DXF desde CorelDRAW primero."
+        raise ExtensionNoSoportadaError(mensaje)
 
 
 class Deposito:

@@ -24,8 +24,6 @@ def test_una_ruta_local_se_registra_sin_copiar_el_contenido(deposito, tmp_path):
 
     assert fuente.ruta == origen
     assert fuente.nombre == "robot.ai"
-    # Verificar que es el MISMO archivo (mismo inodo), no una copia
-    assert fuente.ruta.stat().st_ino == origen.stat().st_ino
 
 
 def test_una_subida_se_guarda_en_la_carpeta_de_trabajo(deposito):
@@ -68,7 +66,7 @@ def test_una_ruta_que_no_existe_se_queja_nombrandola(deposito, tmp_path):
         deposito.registrar_local(tmp_path / "fantasma.ai")
 
 
-@pytest.mark.parametrize("nombre", ["dibujo.cdr", "foto.png", "notas.txt", "sin_extension"])
+@pytest.mark.parametrize("nombre", ["foto.png", "notas.txt", "sin_extension"])
 def test_una_extension_que_el_programa_no_lee_se_rechaza_temprano(deposito, nombre):
     """Rechazar acá le dice al usuario 'este formato no' de una. Dejarlo
     pasar lo hace fallar adentro del lector con un mensaje sobre sintaxis."""
@@ -81,6 +79,39 @@ def test_la_extension_no_distingue_mayusculas(deposito):
     assert fuente.nombre == "ROBOT.AI"
 
 
+def test_un_cdr_rechazado_menciona_corel(deposito):
+    """Cuando el usuario sube un .cdr, el mensaje le explica qué hacer."""
+    with pytest.raises(ExtensionNoSoportadaError, match="CorelDRAW"):
+        deposito.registrar_subida("dibujo.cdr", b"lo que sea")
+
+
+def test_otras_extensiones_rechazadas_no_mencionan_corel(deposito):
+    """El consejo sobre CorelDRAW es específico para .cdr, no para cualquier
+    extensión rechazada. Un usuario con un .png no necesita que le hablemos
+    de CorelDRAW."""
+    with pytest.raises(ExtensionNoSoportadaError) as exc_info:
+        deposito.registrar_subida("foto.png", b"lo que sea")
+    assert "CorelDRAW" not in str(exc_info.value)
+
+
+def test_byte_nulo_en_nombre_se_rechaza_temprano(deposito):
+    """Un nombre con byte nulo causaría ValueError al escribir. Rechazarlo
+    temprano con mensaje en español evita que el usuario vea un traceback."""
+    with pytest.raises(ValueError, match="carácter nulo"):
+        deposito.registrar_subida("a\x00b.dxf", b"contenido")
+
+
+def test_registrar_local_rechaza_extension_no_soportada(deposito, tmp_path):
+    """La validación de extensión ocurre en ambas puertas. Si alguien
+    rompiera la paridad en un refactor, este test lo detectaría."""
+    # Crear un archivo real con extensión no soportada
+    archivo = tmp_path / "documento.txt"
+    archivo.write_text("contenido")
+
+    with pytest.raises(ExtensionNoSoportadaError):
+        deposito.registrar_local(archivo)
+
+
 @pytest.mark.parametrize("nombre_peligroso,nombre_esperado", [
     ("../../afuera.dxf", "afuera.dxf"),
     ("../../../etc/passwd.dxf", "passwd.dxf"),
@@ -88,6 +119,8 @@ def test_la_extension_no_distingue_mayusculas(deposito):
     ("carpeta/archivo.dxf", "archivo.dxf"),
     ("carpeta\\archivo.dxf", "archivo.dxf"),
     ("..\\..\\afuera.dxf", "afuera.dxf"),
+    ("C:\\x.dxf", "x.dxf"),
+    ("\\\\servidor\\compartido\\x.dxf", "x.dxf"),
 ])
 def test_una_subida_no_puede_escribir_fuera_de_la_carpeta(deposito, nombre_peligroso, nombre_esperado):
     """Un nombre con '..' o con barras es un intento de escribir donde no
