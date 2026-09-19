@@ -66,7 +66,9 @@ def test_una_ruta_que_no_existe_se_queja_nombrandola(deposito, tmp_path):
         deposito.registrar_local(tmp_path / "fantasma.ai")
 
 
-@pytest.mark.parametrize("nombre", ["foto.png", "notas.txt", "sin_extension"])
+@pytest.mark.parametrize(
+    "nombre", ["dibujo.cdr", "foto.png", "notas.txt", "sin_extension"]
+)
 def test_una_extension_que_el_programa_no_lee_se_rechaza_temprano(deposito, nombre):
     """Rechazar acá le dice al usuario 'este formato no' de una. Dejarlo
     pasar lo hace fallar adentro del lector con un mensaje sobre sintaxis."""
@@ -143,3 +145,17 @@ def test_limpiar_dos_veces_no_revienta(deposito):
     encuentre la carpeta vacía es lo normal, no un error."""
     deposito.limpiar()
     deposito.limpiar()
+
+
+def test_un_byte_nulo_tampoco_pasa_por_la_puerta_de_escritorio(deposito, tmp_path):
+    """Hoy no revienta, pero por casualidad: `Path.is_file()` se traga el
+    ValueError del byte nulo y devuelve False, así que el pedido muere como
+    "no existe" antes de llegar a la validación. Si alguien reordena esas
+    dos líneas, la excepción cruda vuelve. Este test lo fija.
+    """
+    with pytest.raises((ValueError, FileNotFoundError)) as capturado:
+        deposito.registrar_local(str(tmp_path / "a\x00b.dxf"))
+
+    assert "null byte" not in str(capturado.value), (
+        "se escapó la excepción cruda de Python, en inglés"
+    )

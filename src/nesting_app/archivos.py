@@ -47,8 +47,9 @@ def _verificar_extension(nombre: str) -> None:
     # Rechazar nombres con bytes nulos temprano: causarían ValueError al escribir
     if "\x00" in nombre:
         raise ValueError(
-            f"el nombre del archivo contiene un carácter nulo "
-            f"y no puede procesarse: {nombre!r}"
+            f"el nombre del archivo contiene un carácter nulo y no se "
+            f"puede usar: {nombre!r}. Renombrá el archivo sin ese "
+            "carácter y volvé a intentar."
         )
 
     if Path(nombre).suffix.lower() not in EXTENSIONES:
