@@ -188,3 +188,45 @@ def test_todo_id_que_busca_el_js_existe_en_el_html(js, html):
     ids_que_busca_el_js = set(re.findall(r'\$\("([^"]+)"\)', js))
     faltantes = ids_que_busca_el_js - ids_del_html
     assert not faltantes, f"ids que $() busca y no están en index.html: {faltantes}"
+
+
+@pytest.fixture(scope="module")
+def js_materiales():
+    return (rutas.recurso("web") / "materiales.js").read_text(encoding="utf-8")
+
+
+def test_materiales_usa_los_cuatro_verbos(js_materiales):
+    """El alta y el restaurar van por `postJson`, el helper de app.js que ya
+    envuelve todo POST con JSON del resto de la interfaz -- por eso acá no se
+    busca el string "POST" literal, que nunca aparece si se usa ese helper
+    en vez de repetir a mano lo que ya hace."""
+    assert "postJson" in js_materiales
+    for verbo in ("PUT", "DELETE"):
+        assert verbo in js_materiales
+    assert "/api/materiales/restaurar" in js_materiales
+
+
+def test_materiales_pide_confirmacion_antes_de_borrar(js_materiales):
+    """Borrar un material que se usa en trabajos anteriores no se deshace."""
+    assert "confirm" in js_materiales
+
+
+def test_materiales_muestra_la_veta_en_palabras(js_materiales):
+    """La interfaz nunca muestra grados: nadie sabe qué significa 5."""
+    assert "libre" in js_materiales and "respetar" in js_materiales
+
+
+def test_materiales_refresca_el_desplegable_de_la_pantalla_principal(js_materiales):
+    """Agregar un material y no verlo en la lista de al lado haría pensar
+    que no se guardó."""
+    assert "refrescarMateriales" in js_materiales
+
+
+def test_todo_id_que_busca_materiales_js_existe_en_el_html(js_materiales, html):
+    """El mismo contrato que `test_todo_id_que_busca_el_js_existe_en_el_html`
+    verifica para `app.js`, pero para `materiales.js`: un id mal tipeado acá
+    deja un botón mudo de la misma forma."""
+    ids_del_html = set(re.findall(r'id="([^"]+)"', html))
+    ids_que_busca_el_js = set(re.findall(r'\$\("([^"]+)"\)', js_materiales))
+    faltantes = ids_que_busca_el_js - ids_del_html
+    assert not faltantes, f"ids que $() busca y no están en index.html: {faltantes}"
