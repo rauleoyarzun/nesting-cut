@@ -30,6 +30,33 @@ class PackResult:
     seconds: float = 0.0
 
 
+@dataclass(frozen=True)
+class Avance:
+    """Dónde va el motor, para quien esté mirando.
+
+    Lleva el intento además de las piezas porque `pack` corre varias pasadas
+    completas y CADA UNA REINICIA el conteo de ubicadas. Una barra armada
+    sólo con `ubicadas / totales` retrocedería al empezar el intento
+    siguiente, y una barra que retrocede es peor que no tener barra.
+    """
+
+    intento: int
+    intentos: int
+    ubicadas: int
+    totales: int
+    placa: int
+    compactando: bool = False
+
+
+class Cancelado(Exception):
+    """El motor abandonó porque quien lo miraba se lo pidió.
+
+    Es una excepción y no un `PackResult` a medias a propósito: un resultado
+    incompleto se puede escribir a un DXF sin que nada avise, y ese DXF va a
+    una fresadora.
+    """
+
+
 def replicate(parts: Sequence[Part], copies: int) -> list[Part]:
     """Repeat every part `copies` times, renumbering ids.
 
@@ -67,8 +94,15 @@ def _pack_once(
     material: Material,
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
+    aviso: Callable[[int, int], None] | None = None,
 ) -> PackResult:
-    """One greedy pass, placing `order` in exactly the order given."""
+    """One greedy pass, placing `order` in exactly the order given.
+
+    `aviso` recibe (piezas ubicadas hasta ahora en esta pasada, placa en
+    curso empezando en 1) despues de cada pieza ubicada. Puede levantar para
+    abandonar: esta funcion no atrapa nada, asi que la excepcion sale limpia
+    sin dejar estado a medias en el oraculo.
+    """
     started = time.perf_counter()
     result = PackResult()
 
@@ -82,6 +116,7 @@ def _pack_once(
     placed_area_per_sheet: list[float] = []
 
     sheet = 0
+    total_ubicadas = 0
     while remaining:
         oracle = oracle_factory()
         oracle.reset(material.sheet_w, material.sheet_h, config)
@@ -100,6 +135,8 @@ def _pack_once(
             result.placements.append(Placement(part.id, sheet, Transform(angle, mirror, x, y)))
             placed_area += part.area
             placed_count += 1
+            if aviso is not None:
+                aviso(total_ubicadas + placed_count, sheet + 1)
 
         # Guard on whether anything was placed on this sheet, not on how much
         # *area* it added: a placed part whose net area happens to be zero (a
@@ -113,6 +150,7 @@ def _pack_once(
             _raise_too_large(still_pending[0], material, config, choices)
 
         placed_area_per_sheet.append(placed_area)
+        total_ubicadas += placed_count
         remaining = still_pending
         sheet += 1
 
@@ -250,8 +288,15 @@ def pack(
     material: Material,
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
+    progreso: Callable[[Avance], bool] | None = None,
 ) -> PackResult:
-    """Place every part, trying several insertion orders and keeping the best."""
+    """Place every part, trying several insertion orders and keeping the best.
+
+    `progreso`, si se pasa, se llama con un `Avance` despues de cada pieza
+    ubicada y una vez mas al entrar en la compactacion final. Devolver
+    `False` pide abandonar, y `pack` levanta `Cancelado`. No pasarlo deja el
+    comportamiento exactamente como estaba: es lo que hace la CLI.
+    """
     if config.effort not in EFFORT_RESTARTS:
         raise UnknownEffortError(
             f"nivel de esfuerzo {config.effort!r} desconocido; "
@@ -265,8 +310,21 @@ def pack(
     rng = random.Random(config.seed)
     by_area = sorted(parts, key=lambda p: p.area, reverse=True)
 
+    intentos = EFFORT_RESTARTS[config.effort]
+    totales = len(parts)
+
+    def avisos_de(intento: int) -> Callable[[int, int], None] | None:
+        if progreso is None:
+            return None
+
+        def avisar(ubicadas: int, placa: int) -> None:
+            if not progreso(Avance(intento, intentos, ubicadas, totales, placa)):
+                raise Cancelado("el trabajo se canceló")
+
+        return avisar
+
     best_order = list(by_area)
-    best = _pack_once(best_order, material, config, oracle_factory)
+    best = _pack_once(best_order, material, config, oracle_factory, avisos_de(1))
     best_cost = layout_cost(best, parts)
 
     # Garantia: "lento" nunca puede ser peor que "normal", igual que "normal"
@@ -306,10 +364,17 @@ def pack(
         else:
             perturb_base = by_area
         candidate_order = _perturb(perturb_base, rng)
-        candidate = _pack_once(candidate_order, material, config, oracle_factory)
+        candidate = _pack_once(
+            candidate_order, material, config, oracle_factory, avisos_de(i + 2)
+        )
         candidate_cost = layout_cost(candidate, parts)
         if candidate_cost < best_cost:
             best, best_cost, best_order = candidate, candidate_cost, candidate_order
+
+    if progreso is not None and not progreso(
+        Avance(intentos, intentos, totales, totales, 0, compactando=True)
+    ):
+        raise Cancelado("el trabajo se canceló")
 
     best = _compact_last_sheet(best, parts, material, config, oracle_factory)
     best.seconds = time.perf_counter() - started
