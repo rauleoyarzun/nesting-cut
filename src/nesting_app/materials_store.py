@@ -96,7 +96,9 @@ def editar(nombre: str, material: Material) -> None:
     if nombre not in materiales:
         raise MaterialDesconocidoError(
             f"no existe ningún material llamado {nombre!r}. "
-            "Se puede haber borrado o renombrado desde otra ventana; "
+            "Puede haberse editado el archivo por fuera del programa, o la lista "
+            "que estás viendo estar desactualizada; volvé a la pantalla de "
+            "materiales para verla al día."
             "revisá la lista actual."
         )
     if material.name != nombre and material.name in materiales:
@@ -114,7 +116,9 @@ def borrar(nombre: str) -> None:
     if nombre not in materiales:
         raise MaterialDesconocidoError(
             f"no existe ningún material llamado {nombre!r}. "
-            "Se puede haber borrado o renombrado desde otra ventana; "
+            "Puede haberse editado el archivo por fuera del programa, o la lista "
+            "que estás viendo estar desactualizada; volvé a la pantalla de "
+            "materiales para verla al día."
             "revisá la lista actual."
         )
     del materiales[nombre]
