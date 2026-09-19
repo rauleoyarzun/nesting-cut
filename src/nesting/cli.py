@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         parts = replicate(parts, args.copias)
     except ValueError as error:
-        # `_validate_numeric_args` already rejects `--copias < 1` earlier, but
+        # `validar` already rejects `--copias < 1` earlier, but
         # this stays as defense in depth: `replicate` is a public function of
         # the engine and should not be trusted blindly just because this is
         # currently its only caller.

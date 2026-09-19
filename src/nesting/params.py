@@ -11,9 +11,10 @@ significa nada. Una sola fuente de verdad para la regla, dos maneras de
 contarla.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from nesting.engine.oracle import NestConfig
+from nesting.pipeline import DEFAULT_CHAIN_TOL
 
 DEFAULT_ANGLES: tuple[float, ...] = (0.0, 90.0, 180.0, 270.0)
 
@@ -29,7 +30,7 @@ class NestParams:
     angulos: tuple[float, ...] = DEFAULT_ANGLES
     espejo: bool = True
     unidades: str | None = None
-    tol_cierre: float = 0.1
+    tol_cierre: float = DEFAULT_CHAIN_TOL
     resolucion: float = 2.0
     esfuerzo: str = "normal"
 

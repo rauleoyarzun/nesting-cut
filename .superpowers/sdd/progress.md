@@ -511,3 +511,13 @@ DIAGNOSTICO DE LOS ARCHIVOS DEL USUARIO (lo que el pregunto):
       dice por que (la previsualizacion dibuja el acomodo) y adonde ir (--diagnostico).
 
 ESTADO: 495 tests, 0 fallas (eran 434). Verificado end to end sobre los dos archivos reales del usuario.
+
+=== INTERFAZ GRÁFICA (2026-09-19) ===
+Plan: docs/superpowers/plans/2026-09-19-interfaz-grafica.md (14 tareas)
+Rama: interfaz-grafica, desde main en de51338.
+Pre-flight: ningún test existente toca _validate_numeric_args ni _pack_once, así que las tareas 1 y 4
+  no pueden romper la suite por la puerta de atrás. DEFAULT_MATERIALS_PATH sí lo usan
+  tests/model/test_material.py:73 y :192, y la Task 2 lo contempla explícitamente.
+DECISIÓN del usuario (pre-flight): los tests de HTML/JS por búsqueda de texto se quedan, PERO se sacan los
+  frágiles (tipo `assert "180" not in js`). Se conservan los que verifican contrato real: que exista cada id
+  que el JavaScript busca, y que se use cada ruta que la API expone. Aplica a las tareas 10, 11 y 12.

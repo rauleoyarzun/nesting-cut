@@ -88,3 +88,12 @@ def test_a_config_no_valida_por_su_cuenta():
     así el que llama no puede creer que traducir ya lo protegió."""
     config = a_config(p(sep=-5.0))
     assert config.sep == -5.0
+
+
+def test_la_tolerancia_de_cierre_por_omision_sale_de_una_sola_fuente():
+    """Dos literales con el mismo valor se despegan en silencio el día que
+    alguien recalibre la constante, y nada lo avisa hasta que la CLI y la
+    interfaz acomodan distinto el mismo archivo."""
+    from nesting.pipeline import DEFAULT_CHAIN_TOL
+
+    assert NestParams(material="mdf18").tol_cierre == DEFAULT_CHAIN_TOL
