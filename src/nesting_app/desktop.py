@@ -154,10 +154,40 @@ class Puente:
                 "el destino elegido es un enlace simbólico a otro archivo; "
                 "no se escribe a través de un enlace"
             )
+        # Un hard link no es un symlink: is_symlink() da False y el chequeo
+        # de arriba lo deja pasar de largo. Pero si `destino` y `victima`
+        # son dos nombres del mismo inodo, escribir en uno escribe en el
+        # otro -- y es peor que el symlink porque a simple vista, incluso
+        # en el selector de archivos nativo, un hard link es indistinguible
+        # de un archivo común. `st_nlink > 1` lo detecta. Sólo tiene
+        # sentido si el archivo ya existe: si todavía no existe (el caso
+        # normal al guardar) no hay inodo que consultar. En Windows no lo
+        # chequeamos: `st_nlink` ahí depende de cómo se resolvió el handle
+        # (comparticiones de red, ciertos puntos de reanálisis) y no es un
+        # dato del que fiarse sin verificarlo en esa plataforma en
+        # particular; preferimos no bloquear guardados legítimos con un
+        # dato dudoso antes que dar una falsa sensación de seguridad ahí.
+        if sys.platform != "win32" and ruta.exists() and ruta.stat().st_nlink > 1:
+            raise PermissionError(
+                "el destino elegido tiene más de un nombre apuntando al "
+                "mismo archivo (hard link); escribirlo cambiaría también "
+                "el otro nombre"
+            )
         if self._clave(destino) not in self._autorizadas:
             raise PermissionError(
                 "ese destino no salió de un diálogo de guardado"
             )
+        # Residual conocido y aceptado: el patrón sigue siendo "chequear y
+        # después escribir". Entre el chequeo de arriba y el write_bytes de
+        # abajo queda una ventana microscópica en la que, en teoría,
+        # alguien con acceso a este mismo directorio podría reemplazar
+        # `destino` por un hard link. Cerrarla del todo exigiría abrir el
+        # archivo con O_NOFOLLOW y escribir por descriptor en vez de por
+        # ruta. No lo hacemos ahora porque la ventana que importaba de
+        # verdad -- entre `elegir_destino`/`_autorizar` y `guardar`, con
+        # tiempo real de por medio para que el usuario mire otra cosa -- ya
+        # está cerrada por el chequeo de arriba. Esto queda anotado para
+        # que no se lea como un descuido.
         ruta.write_bytes(bytes(datos))
         # Guardar es lo que resuelve el pendiente. Dejar que el JavaScript se
         # acuerde de avisarlo aparte sería una forma de olvidarse.

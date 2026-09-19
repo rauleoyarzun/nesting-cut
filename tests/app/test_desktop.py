@@ -182,6 +182,59 @@ def test_el_puente_rechaza_symlink_creado_despues_de_autorizar(tmp_path):
     assert victima.read_text() == "dato sensible original"
 
 
+def test_el_puente_rechaza_guardar_a_traves_de_un_hard_link(tmp_path):
+    """Un hard link no es un symlink: `is_symlink()` da False y el chequeo
+    de arriba lo deja pasar. Pero `elegido` y `victima` son dos nombres del
+    mismo inodo, así que escribir en uno escribe en el otro -- y encima el
+    selector de archivos no tiene forma de marcarlo, porque a simple vista
+    es un archivo común. Tiene que rechazarse, y la víctima no puede haber
+    cambiado."""
+    import os
+
+    if sys.platform == "win32":
+        pytest.skip("el chequeo de hard links no corre en Windows")
+
+    victima = tmp_path / "cliente_importante.txt"
+    victima.write_text("CONTRATO ORIGINAL - NO TOCAR")
+    elegido = tmp_path / "pieza.dxf"
+    os.link(victima, elegido)
+
+    puente = desktop.Puente()
+    puente._autorizar(str(elegido))
+
+    with pytest.raises(PermissionError):
+        puente.guardar(str(elegido), list(b"DXF FALSO"))
+
+    assert victima.read_text() == "CONTRATO ORIGINAL - NO TOCAR"
+
+
+def test_el_puente_permite_sobrescribir_un_archivo_comun_existente(tmp_path):
+    """El chequeo de hard links no puede romper el caso normal: sobrescribir
+    un archivo propio, que tiene un único nombre (`st_nlink == 1`), tiene
+    que seguir funcionando."""
+    puente = desktop.Puente()
+    destino = tmp_path / "elegido.dxf"
+    destino.write_text("version vieja")
+    puente._autorizar(str(destino))
+
+    puente.guardar(str(destino), list(b"version nueva"))
+
+    assert destino.read_bytes() == b"version nueva"
+
+
+def test_el_puente_permite_guardar_un_archivo_que_todavia_no_existe(tmp_path):
+    """Si el destino no existe todavía -- el caso normal al guardar -- no
+    hay inodo que consultar, y el chequeo de hard links no tiene que
+    interponerse."""
+    puente = desktop.Puente()
+    destino = tmp_path / "nuevo.dxf"
+    puente._autorizar(str(destino))
+
+    puente.guardar(str(destino), list(b"contenido"))
+
+    assert destino.read_bytes() == b"contenido"
+
+
 def test_guardar_deja_de_marcar_pendiente(tmp_path):
     """Guardar es justamente lo que resuelve el pendiente. Que el JavaScript
     tenga que acordarse de avisarlo aparte sería una forma de olvidarse."""
