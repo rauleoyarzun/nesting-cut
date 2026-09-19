@@ -521,3 +521,195 @@ Pre-flight: ningún test existente toca _validate_numeric_args ni _pack_once, as
 DECISIÓN del usuario (pre-flight): los tests de HTML/JS por búsqueda de texto se quedan, PERO se sacan los
   frágiles (tipo `assert "180" not in js`). Se conservan los que verifican contrato real: que exista cada id
   que el JavaScript busca, y que se use cada ruta que la API expone. Aplica a las tareas 10, 11 y 12.
+Task 2: completa (commits 0ce9601..fad34e0, revisión limpia).
+  ERROR DEL PLAN que se coló hasta la revisión: recurso("web") resolvía a <repo>/web, pero la interfaz vive
+  en src/nesting_app/web/ (adentro del paquete, para que pip install la instale). Como el test sólo pedía
+  .is_dir(), el implementador creó una carpeta vacía en la raíz y pasó en verde contra la equivocada.
+  Arreglado con el mapa EN_EL_REPO, que separa el camino congelado (todo aplanado en _MEIPASS) del camino
+  desde el repo (cada recurso donde de verdad está).
+  Segundo hallazgo, que el revisor comprobó ARMANDO EL WHEEL: package-data con "web/*" no es recursivo y
+  dejaba las subcarpetas afuera sin error. Ahora son cuatro patrones.
+  Tercer hallazgo: el test de eso NO PROBABA NADA. Con sólo .gitkeep adentro y un break en el bucle, el
+  patrón recursivo nunca se ejercitaba. Ahora arma un árbol sintético en tmp_path y se verificó que falla
+  al sacar cada patrón.
+  MENORES anotados, no arreglados: ninguno pendiente (los dos se arreglaron en fad34e0).
+  LECCIÓN: un test que pide "existe un directorio" se satisface con cualquier directorio vacío. Tres veces
+  en dos tareas el test pasó en verde sobre la cosa equivocada.
+Task 3: completa (commits fad34e0..c31dbfb, revisión limpia).
+  El implementador transcribió el brief tal cual, así que los huecos que quedaron ya estaban en el brief:
+  editar() rechazaba renombrar encima de otro material pero NINGÚN test lo ejercitaba -- borrar ese if
+  dejaba los 14 tests en verde mientras el usuario perdía las medidas de un material. El test nuevo además
+  verifica que ninguno de los dos materiales quedó modificado: levantar después de haber escrito sería
+  pérdida de datos igual. El revisor lo probó rompiendo editar() de tres formas distintas y las agarra todas.
+  Dos mensajes decían qué falló y no qué hacer. Al completarlos, el primer intento inventó una causa
+  ("se puede haber borrado desde otra ventana") que no existe: el programa tiene una sola ventana.
+  LECCIÓN: al hacer accionable un mensaje, la acción tiene que ser real. Un diagnóstico inventado manda a
+  buscar donde no es, que es peor que no decir nada.
+Task 4: completa (commits c31dbfb..4256db4, revisión limpia). Único cambio al motor en todo el plan.
+  pack() acepta progreso: Callable[[Avance], bool]; devolver False levanta Cancelado. _compact_last_sheet
+  NO recibe avisos a propósito: reacomoda una sola placa y sus conteos no son comparables con los de una
+  pasada completa; harían saltar la barra.
+  DOS ERRORES DE MI PLAN que encontró el implementador: el helper config(**cambios) del test duplicaba
+  `effort`, y la comparación usaba p.part cuando Placement sólo tiene part_id. Los corrigió bien y además
+  sumó p.transform a la comparación, así el test de "sin callback da lo mismo" compara POSICIONES y no
+  sólo ids.
+  MENOR anotado, no arreglado: test_cancelar_no_deja_el_resultado_a_medias es redundante con
+  test_devolver_False_cancela_y_levanta. Para la limpieza final.
+Task 5: completa (commits 4256db4..HEAD, revisión limpia).
+  archivos.py es la única puerta que sabe escritorio-contra-web. El revisor probó a mano C:\x.dxf, UNC,
+  "..", ".dxf" y "" y ninguno escapa la carpeta: por construcción, como la extensión válida tiene que estar
+  al final del string, el segmento final nunca puede quedar vacío ni ser "..".
+  TRES IMPORTANTES: un byte nulo en el nombre reventaba con ValueError crudo en inglés; el consejo sobre
+  CorelDRAW aparecía aunque hubieras subido un PNG; y ningún test ejercitaba el rechazo de extensión por
+  registrar_local, así que un refactor podía romper la paridad entre las dos puertas sin que nada avisara.
+  El revisor de la segunda vuelta hizo PRUEBAS DE MUTACIÓN sobre cada arreglo: revirtió cada uno y confirmó
+  que el test correspondiente vuelve a fallar. Encontró además que el arreglo había reducido un parametrize
+  sin necesidad.
+  OBSERVACIÓN para la Task 8: el brief declaraba `Consumes: nesting_app.rutas` pero archivos.py no lo usa.
+  Deposito recibe su carpeta por parámetro, así que quien lo instancie tiene que pasarle una ruta derivada
+  de rutas.carpeta_datos().
+Task 6: completa (commits c1ca0b9..a6714b9, código de producción verificado limpio). TRES vueltas de arreglo.
+  jobs.py separa administrar trabajos de hacerlos: recibe un `corredor` y lo ejecuta, así los tests del ciclo
+  de vida tardan milisegundos en vez de medio minuto.
+  R1 -- TRES carreras reales, todas reproducidas por el revisor: cerrar() recorría self._trabajos.values()
+    mientras crear() escribía (RuntimeError); crear() después de cerrar() dejaba el trabajo en PENDIENTE para
+    siempre, sin señal; y ERRORES_DEL_USUARIO incluía KeyError, así que un bug nuestro le decía al usuario
+    "revisá tu dibujo". Ahora la lista es explícita: las 7 excepciones que el motor levanta por problemas del
+    archivo, y ChainingInvariantError / UnknownPartError / InvalidEntityIdError del lado de bug nuestro.
+  R2 -- el arreglo dejó una VENTANA RESIDUAL: los dos cola.put() habían quedado fuera del lock. Y el test de
+    concurrencia NO TENÍA MORDIDA: el revisor lo corrió 20 veces contra el código sin lock y pasó las 20.
+  R3 -- el test nuevo decía "esto no es una apuesta de timing" y detectaba 8 de 90. Ahora detecta 23 de 30 y
+    el docstring DICE ESE NÚMERO en vez de prometer determinismo.
+  LECCIÓN: en código con hilos, "los tests pasan" no dice nada. Lo único que vale es revertir el arreglo y
+  contar cuántas corridas lo detectan. Tres tests de esta tarea parecían cubrir algo y no lo cubrían.
+Task 7: completa (commits a6714b9..1817bbe, revisión limpia). TRES vueltas.
+  corredor.py hace el mismo recorrido que cli.py: verifica ANTES de escribir, y si la verificación falla no
+  queda ningún archivo.
+  R1 -- LOS AVISOS SE CALCULABAN Y SE TIRABAN. Resultado no tenía campo y Registro nunca escribía en
+    Trabajo.avisos. Importaba sobre todo por el aviso del rectángulo del tamaño de la placa, que SÓLO se
+    puede generar en acomodar() porque necesita las medidas del material: no había ningún otro lugar del
+    sistema donde el usuario pudiera enterarse. Y write_preview no estaba protegido como en la CLI: si
+    fallaba después de un write_dxf exitoso, el trabajo quedaba en ERROR aunque el DXF estuviera perfecto.
+  R2 -- el arreglo cubrió cuatro raise y se escapaban replicate(), pack() y verify(). El revisor lo
+    reprodujo con esfuerzo inválido: ERROR, es_bug=False, avisos vacíos.
+  R3 -- se reemplazó por UN try/except Exception que envuelve todo el bloque posterior a que avisos exista,
+    con `except Cancelado: raise` adelante para no romper la cancelación. Así un raise nuevo mañana queda
+    cubierto sin que nadie tenga que acordarse.
+  LECCIÓN: arreglar caso por caso deja el próximo caso afuera. Cuando el problema es "hay que acordarse",
+  la solución tiene que quitar la necesidad de acordarse.
+  NOTA: el import de nesting_app adentro de una función en nesting/model/material.py NO es una violación;
+  es deliberado y está documentado ahí. Un revisor lo marcó de paso.
+Task 8: completa (commits 1817bbe..e18c9a6, revisión limpia). API: token, materiales, archivos, análisis.
+  El implementador cambió el token de "dependencia por ruta" (lo que traía el brief: una lista que hay que
+  acordarse de actualizar) a un middleware. Bien pensado, pero la primera versión usaba @app.middleware("http")
+  = BaseHTTPMiddleware, que DEJA PASAR TODO SCOPE QUE NO SEA HTTP, incluidos los websockets. El revisor lo
+  comprobó agregando una ruta websocket: el handshake se aceptaba sin token. Y el test que debía protegerlo
+  filtraba por getattr(ruta,"methods") -- una APIWebSocketRoute no lo tiene, así que quedaba excluida EN
+  SILENCIO y el test seguía verde. Ahora es un middleware ASGI puro y el test recorre todas las rutas.
+  /openapi.json estaba abierto sin token y exponía las seis rutas con el nombre de cada campo. openapi_url=None.
+  ERROR MÍO: commiteé "Declarar python-multipart y httpx" y httpx nunca entró -- mi str.replace no matcheó
+  (la línea era dev = ["pytest"], sin pyinstaller, que recién llega en la Task 14) y no verifiqué la salida
+  del grep, que sólo mostraba python-multipart.
+  LECCIÓN: un reemplazo de texto que no matchea no falla, no hace nada. Hay que verificar el resultado, no
+  que el comando salió con código 0.
+Task 9: completa (commits e18c9a6..0c2f182, revisión limpia, sólo un Menor). API de trabajos.
+  El revisor probó la ruta de descarga con ../../../etc/passwd, ..%2F..%2F, %00 y un scope ASGI crudo sin
+  normalizar, para descartar que el resultado dependiera de que httpx normaliza del lado cliente. Los seis
+  dan 404: el nombre se compara contra un diccionario cerrado de tres claves ANTES de tocar disco.
+  Dos errores más del brief que corrigió el implementador: `dependencies=protegido` no existe (la protección
+  la hace el middleware de la Task 8, no una dependencia por ruta), y el DXF de ezdxf usa \n y no \r\n.
+  MENOR anotado: el 404 de un nombre de archivo inválido no dice cuáles son los válidos.
+Task 10: completa (commits 0c2f182..15c1e51, revisión limpia). HTML y CSS de la dirección D.
+  El revisor comparó el HTML y el CSS contra el brief BYTE A BYTE, extrajo los 49 ids programáticamente y
+  verificó que los 11 label-for apunten a ids que existen. Recalculó los tres contrastes por su cuenta:
+  #606B7B/#FFFFFF 5.40:1, #606B7B/#F4F6F8 4.99:1, #FFFFFF/#047857 5.48:1, y además midió los que nadie había
+  medido (rojo de error, insignias): todos arriba de 4.5:1.
+  DOS MENORES heredados de mi brief, arreglados: el box-shadow del foco tenía rgba(4,120,87,.12) -- el acento
+  escrito a mano, así que cambiar --acento habría desincronizado el halo del borde. Y el regex de emojis
+  dejaba pasar banderas, ⭐, ⌛ y ‼.
+Task 11: completa (commits 15c1e51..HEAD). CUATRO vueltas. El flujo principal en JavaScript.
+  CRÍTICO, y era un bug de mi plan: mostrarImagen() hacía img.src = "/api/..." y el botón Guardar hacía
+  a.href = "/api/...". Un <img> y un <a download> son pedidos nativos del navegador y NO PUEDEN LLEVAR
+  CABECERAS, así que el middleware del token los rechazaba con 401. La previsualización mostraba siempre una
+  imagen rota y la descarga web no bajaba nada -- la función central de la pantalla, rota de punta a punta,
+  en escritorio y en web. Ningún test de texto podía verlo: este JavaScript no se ejecuta en ningún test.
+  Ahora se trae con fetch vía api(), se arma un Blob y se usa createObjectURL.
+  Después: una carrera entre dos pedidos de imagen superpuestos (dos <img> apilados y un blob filtrado si la
+  segunda respuesta llegaba antes que la primera), un catch que tapaba un 500 mostrando el mismo texto que un
+  409, y tres promesas sin catch.
+  El test que debía cubrir el bug crítico SÓLO AGARRABA LA MITAD: su regex exigía la ruta pegada al `=`, y el
+  bug del botón Guardar era `a.href = url` con url armado antes. Ahora cubre las dos formas, verificado
+  reintroduciendo cada una.
+  LECCIÓN: el código que ningún test ejecuta necesita que alguien lo lea como si lo ejecutara. Las cuatro
+  vueltas salieron de leer, no de correr nada.
+Task 12: completa (commits 7007319..HEAD, revisión limpia). Pantalla de materiales.
+  El brief traía TRES bugs que el implementador corrigió: un onclick sobre btn-materiales que pisaba el de
+  app.js (.onclick= es asignación, no addEventListener, así que el segundo gana y el primero desaparece),
+  btn-volver que no volvía a mostrar la pantalla principal, y un await sin catch.
+  HALLAZGO IMPORTANTE: el nombre del material iba sin escapar a innerHTML. Es texto libre que el usuario
+  tipea y queda guardado en materials.yaml, así que se re-ejecuta cada vez que alguien abre la pantalla --
+  persistente, no reflejado. En la versión web con catálogo compartido, el material que guarda uno corre en
+  el navegador de todos. Ahora las celdas van con createElement/textContent.
+  El test de ids tenía un punto ciego: su regex sólo tomaba $("literal") y se comía los del ternario
+  $(cond ? "a" : "b"). Arreglado en los dos tests.
+  SE DESCARTÓ, con el visto bueno del dueño: `assert "180" not in js_materiales`, frágil (se rompe con un
+  180px). Lo que quería verificar ya lo cubre el test de que use las palabras libre/respetar.
+Task 13: completa (commits e70407c..14cbf8e). TRES vueltas. La ventana de escritorio.
+  Un TEST VACUO DE MI BRIEF: la URL se armaba con "127.0.0.1" hardcodeado y el test que verificaba "escucha
+  sólo en localhost" comparaba contra el mismo literal que la construía. El implementador lo detectó mutando
+  host a "0.0.0.0" y viendo que el test seguía verde. Ahora host y puerto salen de getsockname().
+  DOS CRÍTICOS de seguridad en Puente.guardar(), los dos reproducidos por el revisor:
+   1. SYMLINK: Path.resolve() sigue los enlaces, así que la autorización quedaba registrada contra el destino
+      del enlace y la escritura lo atravesaba. Se sobrescribía un archivo que el usuario nunca eligió, sin
+      ningún error. Arreglado: _clave() resuelve sólo el directorio contenedor y conserva el nombre final sin
+      resolver, más un is_symlink() en el momento de escribir (contra un enlace plantado después de autorizar).
+   2. HARD LINK: is_symlink() da False para un hard link. Peor que el symlink, porque un selector de archivos
+      suele marcar visualmente un enlace simbólico y un hard link se ve idéntico a un archivo común -- el
+      usuario no tiene forma de notarlo. Arreglado con st_nlink > 1, condicionado a no-Windows porque ahí el
+      dato no es confiable.
+  RESIDUAL ANOTADO EN EL CÓDIGO, a propósito: sigue siendo "chequear y después escribir", así que queda una
+  ventana de carrera microscópica. Cerrarla exigiría O_NOFOLLOW y escribir por descriptor. La ventana que sí
+  importaba, entre autorizar y guardar, está cerrada.
+  SIN VERIFICAR, para el dueño: abrir la ventana a mano y recorrer la lista de 9 puntos del brief. Ningún
+  agente puede ver la pantalla.
+Task 14: completa (commits 14cbf8e..4a797f1). Empaquetado para Mac.
+  Armó a la primera: --autotest sobre el paquete congelado salió ok sin tener que agregar NADA al .spec.
+  Eso es mérito de la Task 2 (rutas.py) -- la clase de bug que ese módulo existe para impedir no apareció.
+  PESO REAL MEDIDO: carpeta 106 MB, zip 56 MB. La spec estimaba 250-400 MB y 100-150 MB; esa estimación
+  asumía un binario universal2 y éste es arm64 puro. Spec actualizada con los números reales.
+  El log de PyInstaller avisó dos hidden-imports de scipy "not found" (scipy._lib.array_api_compat.numpy.fft
+  y scipy.special._cdflib). No rompieron nada acá; son nombres atados a la versión de scipy, así que anotar
+  por si reaparecen al armar el de Windows.
+  SIN HACER, para el dueño: abrir dist/Nesting/Nesting a mano. Ningún agente puede ver la pantalla.
+  FUERA DE ALCANCE, decisión del dueño: el .exe de Windows. PyInstaller no compila cruzado y este Mac es ARM.
+
+=== LAS 14 TAREAS COMPLETAS === Falta la revisión final de toda la rama.
+
+=== REVISIÓN FINAL DE LA RAMA === 12 hallazgos, 1 crítico. Los 7 accionables arreglados en 44db898.
+  CRÍTICO: elegir un archivo nuevo NO reseteaba el trabajo anterior. Acomodabas A.dxf, elegías B.dxf, y el
+    botón Guardar seguía habilitado apuntando al trabajo de A: bajaba el corte de A y lo ofrecía como
+    "B_acomodado.dxf". Ese archivo va a una fresadora. Además la solapa Revisión mostraba los descartes de A
+    creyendo que eran de B. Es el hueco exacto entre el flujo de archivo y el flujo de trabajo: nadie
+    reseteaba el estado del trabajo al cambiar la fuente.
+  IMPORTANTES: /api/analizar devolvía 500 "Internal Server Error" en inglés para los defectos de dibujo MÁS
+    COMUNES (contorno abierto, contornos que se pisan, curva no plana), porque sólo atajaba ValueError y esas
+    tres heredan de Exception pelado -- el MISMO archivo por /api/trabajos daba el mensaje bueno en español.
+    Los avisos llegaban hasta la API y morían en un console.info que la ventana de pywebview no puede abrir,
+    tirando por la borda la cadena que la Task 7 construyó a propósito. Y un material que desaparecía entre
+    el pre-chequeo de la API y la lectura del hilo trabajador se reportaba como BUG DEL PROGRAMA, con
+    traceback y un repr pelado de una clave de diccionario.
+  MENORES arreglados: dos literales pegados sin espacio; POST/PUT/DELETE de materiales daban 500 crudo con
+    el catálogo corrupto mientras GET daba el mensaje bueno; y un mensaje del motor mandaba a usar
+    "--tol-cierre" en una pantalla donde el control se llama "Tolerancia de cierre" (se traduce en corredor.py
+    para no romper la CLI, que sí tiene ese flag).
+  MENORES ANOTADOS, NO ARREGLADOS: los descartes se serializan enteros y la interfaz sólo usa .length;
+    resultado.aprovechamiento y resultado.segundos no se leen; el comentario de cabecera de app.js dice que
+    nada sabe de escritorio y hay cuatro lugares que sí; POST /api/archivos/local es una capacidad de
+    escritorio registrada sin condición en la API compartida; index.html carga Google Fonts con un <link>
+    bloqueante en cada arranque; y --autotest nunca ejerce un acomodo, así que no toca el camino de
+    scipy/rhino3dm que es donde estarían los bugs de empaquetado que dice atajar.
+  PARA EL DUEÑO, sin resolver: tres commits al motor (998bb5b rhino_reader, 246d479 ai_reader, 46ad971
+    dxf_writer) que no son ninguna de las 14 tareas y que ninguna revisión por tarea miró. Llevan la línea de
+    coautoría de esta sesión. Verifiqué que NO debilitaron tests: las aserciones borradas contaban entidades
+    Line y la representación cambió a Polyline, así que cambiar esas cuentas era obligatorio; las de reemplazo
+    verifican vértices y coordenadas, y los tres commits suman 7 tests sin borrar ninguno.
