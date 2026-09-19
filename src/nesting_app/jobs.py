@@ -20,7 +20,12 @@ from enum import StrEnum
 from pathlib import Path
 
 from nesting.engine.packer import Avance, Cancelado
-from nesting.params import NestParams
+from nesting.engine.packer import PartTooLargeError, UnknownEffortError
+from nesting.geometry.nesting_tree import OverlappingContourError
+from nesting.io.dxf_reader import UnknownUnitsError
+from nesting.io.rhino_reader import NonPlanarCurveError
+from nesting.params import NestParams, ParamsInvalidosError
+from nesting.pipeline import OpenContourError
 from nesting_app.archivos import Fuente
 
 
@@ -69,13 +74,57 @@ class TrabajoDesconocidoError(KeyError):
         return self.args[0] if self.args else ""
 
 
+class RegistroCerradoError(Exception):
+    """Se pidió crear un trabajo después de que el registro ya cerró.
+
+    Aceptarlo igual lo dejaría encolado sin nadie que lo consuma: el
+    `Trabajo` quedaría en PENDIENTE para siempre, sin pasar a ERROR ni a
+    CANCELADO, y una interfaz que sondee el estado esperaría sin ningún
+    indicio. Mejor rechazarlo en el momento.
+    """
+
+
 Corredor = Callable[[Fuente, NestParams, Callable[[Avance], bool], Path], Resultado]
 
-ERRORES_DEL_USUARIO = (ValueError, OSError, KeyError)
+ERRORES_DEL_USUARIO = (
+    ParamsInvalidosError,
+    UnknownUnitsError,
+    OpenContourError,
+    OverlappingContourError,
+    PartTooLargeError,
+    UnknownEffortError,
+    NonPlanarCurveError,
+    OSError,
+    ValueError,
+)
 """Lo que significa 'tu archivo o tus parámetros tienen un problema'.
 
-Los lectores, el pipeline y el empacador levantan estos para lo que el
-usuario puede arreglar. Cualquier otra cosa es un bug nuestro.
+Es una lista explícita, no una regla general, porque una regla general se
+equivoca fácil para el lado peligroso: culpar al usuario de un bug nuestro.
+
+- `ParamsInvalidosError`, `UnknownUnitsError`, `OpenContourError`,
+  `OverlappingContourError`, `PartTooLargeError`, `UnknownEffortError` y
+  `NonPlanarCurveError` son las excepciones puntuales que el motor define
+  para "tu archivo o tus parámetros tienen un problema": unidades no
+  declaradas, un contorno que no cierra, piezas que se pisan, una pieza que
+  no entra en la placa, un nivel de esfuerzo que no existe, una curva que no
+  apoya en el plano XY.
+- `OSError` es el entorno del usuario (no se pudo leer o escribir un
+  archivo), no un defecto del programa.
+- `ValueError` a secas queda porque los lectores y el pipeline lo usan en
+  varios puntos para "tu archivo tiene un problema" sin una subclase
+  dedicada.
+
+Deliberadamente NO está `KeyError`: es ambiguo. Un `KeyError` de un
+diccionario interno del programa es un bug de verdad, y con la regla vieja
+cualquiera de esos cae disfrazado de "revisá tu dibujo" -- exactamente lo
+que `Trabajo.es_bug` existe para evitar.
+
+`ChainingInvariantError` hereda de `RuntimeError`, no de nada de esta
+lista, así que cae del lado del bug sin necesidad de excluirlo a mano. Y
+ninguna de las excepciones marcadas como bug (`ChainingInvariantError`,
+`UnknownPartError`, `InvalidEntityIdError`) hereda de nada de esta tupla:
+se comprobó con `issubclass` contra cada una, no de memoria.
 """
 
 
@@ -86,6 +135,7 @@ class Registro:
         self.carpeta = Path(carpeta)
         self.carpeta.mkdir(parents=True, exist_ok=True)
         self._trabajos: dict[str, Trabajo] = {}
+        self._trabajos_lock = threading.Lock()
         self._cola: queue.Queue = queue.Queue()
         self._cerrando = threading.Event()
         self._hilo = threading.Thread(target=self._trabajar, daemon=True)
@@ -93,7 +143,17 @@ class Registro:
 
     def crear(self, fuente: Fuente, params: NestParams, corredor: Corredor) -> Trabajo:
         trabajo = Trabajo(id=uuid.uuid4().hex)
-        self._trabajos[trabajo.id] = trabajo
+        with self._trabajos_lock:
+            # El chequeo y el alta van bajo el mismo lock que usa `cerrar()`
+            # para marcar el cierre y sacar su copia: así un trabajo o bien
+            # queda adentro a tiempo para que `cerrar()` lo cancele, o bien
+            # `crear()` ya ve el cierre y lo rechaza. Nunca las dos cosas a
+            # la vez ni ninguna.
+            if self._cerrando.is_set():
+                raise RegistroCerradoError(
+                    "no se puede crear un trabajo: el registro ya cerró"
+                )
+            self._trabajos[trabajo.id] = trabajo
         self._cola.put((trabajo, fuente, params, corredor))
         return trabajo
 
@@ -114,10 +174,17 @@ class Registro:
         self.obtener(trabajo_id)._cancelar.set()
 
     def cerrar(self) -> None:
-        if self._cerrando.is_set():
-            return
-        self._cerrando.set()
-        for trabajo in self._trabajos.values():
+        with self._trabajos_lock:
+            if self._cerrando.is_set():
+                return
+            self._cerrando.set()
+            # Copia adentro del lock; se recorre afuera. `crear()` puede
+            # seguir escribiendo en `self._trabajos` desde otro hilo hasta
+            # el instante en que ve `_cerrando` marcado, así que iterar el
+            # dict en vivo puede reventar con "dictionary changed size
+            # during iteration".
+            trabajos = list(self._trabajos.values())
+        for trabajo in trabajos:
             trabajo._cancelar.set()
         self._cola.put(None)
         self._hilo.join(timeout=5)

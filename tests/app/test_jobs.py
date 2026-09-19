@@ -7,7 +7,13 @@ import pytest
 
 from nesting.engine.packer import Avance, Cancelado
 from nesting_app.archivos import Fuente
-from nesting_app.jobs import Estado, Registro, Resultado, TrabajoDesconocidoError
+from nesting_app.jobs import (
+    Estado,
+    Registro,
+    RegistroCerradoError,
+    Resultado,
+    TrabajoDesconocidoError,
+)
 from nesting.params import NestParams
 
 PARAMS = NestParams(material="mdf18")
@@ -207,3 +213,66 @@ def test_cerrar_no_deja_el_hilo_vivo(registro):
     registro.cerrar()
 
     assert not registro._hilo.is_alive()
+
+
+def test_cerrar_no_revienta_si_entran_trabajos_al_mismo_tiempo(registro):
+    """Reproduce el `RuntimeError: dictionary changed size during
+    iteration` de `cerrar()` recorriendo `self._trabajos` mientras otro
+    hilo llama a `crear()`. Es justo el escenario que el módulo espera:
+    `cerrar()` se llama al apagar mientras pueden estar entrando pedidos."""
+    arrancar = threading.Event()
+    parar = threading.Event()
+    errores = []
+
+    def creador():
+        arrancar.wait(timeout=5)
+        while not parar.is_set():
+            try:
+                registro.crear(FUENTE, PARAMS, lambda f, p, pr, c: resultado_falso(c))
+            except RegistroCerradoError:
+                return
+            except Exception as error:  # noqa: BLE001 - lo que se busca detectar
+                errores.append(error)
+                return
+
+    hilos = [threading.Thread(target=creador) for _ in range(8)]
+    for h in hilos:
+        h.start()
+    arrancar.set()
+
+    registro.cerrar()
+
+    parar.set()
+    for h in hilos:
+        h.join(timeout=5)
+
+    assert errores == []
+
+
+def test_crear_despues_de_cerrar_levanta_registro_cerrado(registro):
+    registro.cerrar()
+
+    with pytest.raises(RegistroCerradoError):
+        registro.crear(FUENTE, PARAMS, lambda f, p, pr, c: resultado_falso(c))
+
+
+def test_key_error_interno_se_marca_como_bug(registro):
+    """Un `KeyError` de un diccionario interno del programa es un bug de
+    verdad, no algo que el usuario pueda arreglar en su dibujo."""
+    def corredor(fuente, params, progreso, carpeta):
+        raise KeyError("clave_interna")
+
+    trabajo = registro.crear(FUENTE, PARAMS, corredor)
+    esperar(trabajo, {Estado.ERROR})
+
+    assert trabajo.es_bug is True
+
+
+def test_value_error_se_marca_como_error_del_usuario(registro):
+    def corredor(fuente, params, progreso, carpeta):
+        raise ValueError("el contorno no cierra")
+
+    trabajo = registro.crear(FUENTE, PARAMS, corredor)
+    esperar(trabajo, {Estado.ERROR})
+
+    assert trabajo.es_bug is False
