@@ -1,7 +1,7 @@
 import pytest
 
 from nesting.io.ai_reader import PT_TO_MM, cmyk_to_rgb, read_ai
-from nesting.model.entities import Bezier, Line
+from nesting.model.entities import Bezier, Line, Polyline
 
 HEADER = "%!PS-Adobe-3.0\n%%BeginSetup\njunk m junk l\n%%EndSetup\n"
 TRAILER = "%%Trailer\n999 999 m 999 999 l\n%%EOF\n"
@@ -11,6 +11,18 @@ def write_ai(tmp_path, body, name="t.ai"):
     path = tmp_path / name
     path.write_text(HEADER + body + TRAILER, encoding="latin-1")
     return path
+
+
+def only_contour(drawing):
+    """Los vertices del unico contorno del dibujo.
+
+    Un subtrazo de rectas sale como UNA polilinea sobre sus propios vertices
+    (ver `_entities_of_subpath`), asi que contar vertices es lo que contar
+    entidades `Line` sueltas decia antes: cuantas esquinas sobrevivieron.
+    """
+    contours = [e for e in drawing.entities if isinstance(e, Polyline)]
+    assert len(contours) == 1, f"se esperaba un solo contorno, hay {len(contours)}"
+    return contours[0].points
 
 
 def test_cmyk_to_rgb_black_and_white():
@@ -26,16 +38,18 @@ def test_reads_a_simple_closed_triangle(tmp_path):
     body = "0 0 m\n72 0 L\n72 72 L\ns\n"
     drawing = read_ai(write_ai(tmp_path, body))
 
-    lines = [e for e in drawing.entities if isinstance(e, Line)]
-    assert len(lines) == 3, "dos tramos dibujados mas el cierre"
-    assert lines[0].start == pytest.approx((0.0, 0.0))
-    assert lines[0].end == pytest.approx((25.4, 0.0)), "72 pt son 25.4 mm"
+    contour = only_contour(drawing)
+    assert len(contour) == 3, "los tres vertices del triangulo"
+    assert drawing.entities[0].closed, "el operador 's' cierra el trazo"
+    assert contour[0] == pytest.approx((0.0, 0.0))
+    assert contour[1] == pytest.approx((25.4, 0.0)), "72 pt son 25.4 mm"
 
 
 def test_an_uppercase_paint_operator_does_not_close_the_path(tmp_path):
     body = "0 0 m\n72 0 L\n72 72 L\nS\n"
     drawing = read_ai(write_ai(tmp_path, body))
-    assert len([e for e in drawing.entities if isinstance(e, Line)]) == 2
+    assert not drawing.entities[0].closed
+    assert len(only_contour(drawing)) == 3, "dos tramos, tres vertices, sin cierre"
 
 
 def test_points_are_converted_to_millimetres(tmp_path):
@@ -111,7 +125,7 @@ def test_several_subpaths_each_close_on_their_own(tmp_path):
         "200 200 m\n272 200 L\n272 272 L\ns\n"
     )
     drawing = read_ai(write_ai(tmp_path, body))
-    assert len(drawing.entities) == 6
+    assert len(drawing.entities) == 2, "un contorno por subtrazo, no uno por segmento"
 
 
 def test_an_ai_file_without_geometry_reads_as_empty(tmp_path):
@@ -156,10 +170,10 @@ def test_a_rectangle_matching_the_declared_bbox_is_discarded_with_a_warning(tmp_
     )
     drawing = read_ai(write_ai_with_bbox(tmp_path, body))
 
-    lines = [e for e in drawing.entities if isinstance(e, Line)]
-    assert len(lines) == 4, "solo las 4 lineas de la pieza chica, no las de la mesa"
-    assert all(max(abs(p) for p in (*line.start, *line.end)) < 30 for line in lines), (
-        "ninguna linea remanente debe pertenecer al rectangulo de la mesa"
+    corners = only_contour(drawing)
+    assert len(corners) == 4, "solo la pieza chica, no el rectangulo de la mesa"
+    assert all(max(abs(c) for c in corner) < 30 for corner in corners), (
+        "ningun vertice remanente debe pertenecer al rectangulo de la mesa"
     )
     assert len(drawing.warnings) == 1
     assert "rectángulo" in drawing.warnings[0]
@@ -171,8 +185,7 @@ def test_a_non_rectangular_shape_spanning_the_bbox_is_not_discarded(tmp_path):
     body = "0 0 m\n100 0 L\n0 200 L\ns\n"
     drawing = read_ai(write_ai_with_bbox(tmp_path, body))
 
-    lines = [e for e in drawing.entities if isinstance(e, Line)]
-    assert len(lines) == 3
+    assert len(only_contour(drawing)) == 3
     assert drawing.warnings == []
 
 
@@ -181,8 +194,7 @@ def test_an_l_shape_reaching_all_four_edges_is_not_discarded(tmp_path):
     body = "0 0 m\n100 0 L\n100 100 L\n50 100 L\n50 200 L\n0 200 L\ns\n"
     drawing = read_ai(write_ai_with_bbox(tmp_path, body))
 
-    lines = [e for e in drawing.entities if isinstance(e, Line)]
-    assert len(lines) == 6
+    assert len(only_contour(drawing)) == 6
     assert drawing.warnings == []
 
 
@@ -190,8 +202,7 @@ def test_a_rectangle_matching_only_three_sides_is_not_discarded(tmp_path):
     body = "0 0 m\n80 0 L\n80 200 L\n0 200 L\ns\n"  # el lado derecho esta adentro
     drawing = read_ai(write_ai_with_bbox(tmp_path, body))
 
-    lines = [e for e in drawing.entities if isinstance(e, Line)]
-    assert len(lines) == 4
+    assert len(only_contour(drawing)) == 4
     assert drawing.warnings == []
 
 
@@ -199,8 +210,7 @@ def test_a_correctly_sized_but_shifted_rectangle_is_not_discarded(tmp_path):
     body = "10 10 m\n110 10 L\n110 210 L\n10 210 L\ns\n"
     drawing = read_ai(write_ai_with_bbox(tmp_path, body))
 
-    lines = [e for e in drawing.entities if isinstance(e, Line)]
-    assert len(lines) == 4
+    assert len(only_contour(drawing)) == 4
     assert drawing.warnings == []
 
 
@@ -208,8 +218,7 @@ def test_no_bbox_declared_means_nothing_is_discarded(tmp_path):
     body = "0 0 m\n100 0 L\n100 200 L\n0 200 L\ns\n"
     drawing = read_ai(write_ai(tmp_path, body))  # HEADER no declara %%BoundingBox
 
-    lines = [e for e in drawing.entities if isinstance(e, Line)]
-    assert len(lines) == 4
+    assert len(only_contour(drawing)) == 4
     assert drawing.warnings == []
 
 
@@ -219,8 +228,7 @@ def test_a_rotated_rectangle_enclosing_the_bbox_is_not_discarded(tmp_path):
     body = "50 0 m\n100 100 L\n50 200 L\n0 100 L\ns\n"
     drawing = read_ai(write_ai_with_bbox(tmp_path, body))
 
-    lines = [e for e in drawing.entities if isinstance(e, Line)]
-    assert len(lines) == 4
+    assert len(only_contour(drawing)) == 4
     assert drawing.warnings == []
 
 
@@ -246,3 +254,62 @@ def test_the_canvas_border_is_recorded_as_a_discard_with_its_rectangle(tmp_path)
 def test_a_file_without_a_canvas_border_records_no_discards(tmp_path):
     body = "40 40 m\n60 40 L\n60 60 L\n40 60 L\ns\n"
     assert read_ai(write_ai_with_bbox(tmp_path, body)).discards == []
+
+
+# --- Un subtrazo de .ai es UN trazo dibujado: los segmentos que lo forman
+# estan unidos en el archivo original. Partirlo en una entidad suelta por
+# segmento llega intacto al DXF de salida, donde cada recta queda como una
+# entidad LINE independiente: la maquina ve tramos sueltos en vez del
+# contorno de una pieza, y el dibujo muestra dos nodos superpuestos en cada
+# vertice. ---
+
+
+def test_a_closed_subpath_of_straight_segments_is_one_polyline(tmp_path):
+    from nesting.model.entities import Polyline
+
+    body = "0 0 m\n72 0 L\n72 72 L\n0 72 L\ns\n"
+    drawing = read_ai(write_ai(tmp_path, body))
+
+    assert len(drawing.entities) == 1, "un trazo dibujado, una entidad"
+    polyline = drawing.entities[0]
+    assert isinstance(polyline, Polyline)
+    assert polyline.closed
+    assert [(round(x, 9), round(y, 9)) for x, y in polyline.points] == [
+        (0.0, 0.0), (25.4, 0.0), (25.4, 25.4), (0.0, 25.4)
+    ], "los 4 vertices del original, sin repetir el de cierre"
+
+
+def test_an_open_subpath_of_several_segments_is_one_open_polyline(tmp_path):
+    from nesting.model.entities import Polyline
+
+    body = "0 0 m\n72 0 L\n72 72 L\nS\n"
+    drawing = read_ai(write_ai(tmp_path, body))
+
+    assert len(drawing.entities) == 1
+    assert isinstance(drawing.entities[0], Polyline)
+    assert not drawing.entities[0].closed
+    assert len(drawing.entities[0].points) == 3
+
+
+def test_a_subpath_mixing_lines_and_curves_stays_end_to_end(tmp_path):
+    """No hay entidad DXF que mezcle rectas y curvas, asi que un trazo mixto
+    sale como varias; lo que no puede pasar es que se corte la cadena."""
+    from nesting.model.entities import Bezier, Polyline
+
+    body = "0 0 m\n72 0 L\n72 72 L\n100 100 130 100 144 72 C\n144 0 L\ns\n"
+    drawing = read_ai(write_ai(tmp_path, body))
+
+    kinds = [type(e).__name__ for e in drawing.entities]
+    assert kinds == ["Polyline", "Bezier", "Polyline"], kinds
+
+    def ends(entity):
+        if isinstance(entity, Bezier):
+            return entity.p0, entity.p3
+        if isinstance(entity, Polyline):
+            return entity.points[0], entity.points[-1]
+        return entity.start, entity.end
+
+    for before, after in zip(drawing.entities, drawing.entities[1:]):
+        assert ends(before)[1] == pytest.approx(ends(after)[0]), "la cadena no se corta"
+    first, last = ends(drawing.entities[0])[0], ends(drawing.entities[-1])[1]
+    assert last == pytest.approx(first), "el operador 's' cierra el trazo"

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from nesting.io.dxf_reader import Drawing
 from nesting.model.discard import Discard
-from nesting.model.entities import Bezier, Line, Point, Style
+from nesting.model.entities import Bezier, Line, Point, Polyline, Style
 
 PT_TO_MM = 25.4 / 72.0
 
@@ -168,14 +168,15 @@ def _parse_body(body: str, bbox_mm: tuple[float, float, float, float] | None) ->
                 "de esa posición"
             )
         else:
-            for kind, payload in pending:
-                if kind == "line":
-                    drawing.entities.append(Line(payload[0], payload[1], style()))
-                else:
-                    drawing.entities.append(Bezier(*payload, style()))
-            if close and current is not None and subpath_start is not None:
-                if current != subpath_start:
-                    drawing.entities.append(Line(current, subpath_start, style()))
+            ops = list(pending)
+            if (
+                close
+                and current is not None
+                and subpath_start is not None
+                and current != subpath_start
+            ):
+                ops.append(("line", (current, subpath_start)))
+            drawing.entities.extend(_entities_of_subpath(ops, close, style()))
         pending = []
         current = None
         subpath_start = None
@@ -248,6 +249,53 @@ def _parse_body(body: str, bbox_mm: tuple[float, float, float, float] | None) ->
 
     flush(close=False)
     return drawing
+
+
+def _entities_of_subpath(
+    ops: list[tuple[str, tuple]], close: bool, style: Style
+) -> list:
+    """Turn one drawn subpath into as few entities as it can be written with.
+
+    A subpath in the file is a single stroke: its segments are joined there,
+    and they have to stay joined all the way to the output, because the DXF
+    writer emits one entity per entity read. One `Line` per `l` operator used
+    to turn a four-sided part into four loose LINEs in the output -- geometry
+    a CAM tool sees as four separate cuts, and a drawing program as eight
+    anchor points where the original had four.
+
+    So every maximal run of straight segments collapses into ONE `Polyline`
+    over the very same vertices (no node added, none moved), closed when the
+    paint operator closed the subpath. A `Bezier` cannot be folded into a
+    polyline without flattening it -- which is exactly the node inflation
+    this is here to avoid -- and no DXF entity holds straight and curved
+    pieces at once, so a subpath mixing both comes out as the few entities
+    those runs need, still end to end.
+    """
+    runs: list[tuple[str, list]] = []
+    for kind, payload in ops:
+        if kind == "line":
+            if runs and runs[-1][0] == "line":
+                runs[-1][1].append(payload[1])
+            else:
+                runs.append(("line", [payload[0], payload[1]]))
+        else:
+            runs.append(("bezier", list(payload)))
+
+    if close and len(runs) == 1 and runs[0][0] == "line":
+        points = runs[0][1]
+        if len(points) > 1 and _same_point(points[0], points[-1]):
+            points = points[:-1]
+        return [Polyline(tuple(points), True, style)]
+
+    entities: list = []
+    for kind, payload in runs:
+        if kind == "bezier":
+            entities.append(Bezier(*payload, style))
+        elif len(payload) == 2:
+            entities.append(Line(payload[0], payload[1], style))
+        else:
+            entities.append(Polyline(tuple(payload), False, style))
+    return entities
 
 
 def _pt(x: float, y: float) -> Point:
