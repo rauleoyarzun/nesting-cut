@@ -44,19 +44,43 @@ async function dibujarTabla() {
   const cuerpo = $("tabla-materiales");
   cuerpo.innerHTML = "";
   for (const m of materiales) {
+    // `m.nombre` es texto libre que el usuario tipea y queda guardado en el
+    // catálogo: si se interpolara en un `innerHTML` un nombre como
+    // `<img src=x onerror=...>` se ejecutaría cada vez que alguien abre esta
+    // pantalla -- persistente, no un reflejo pasajero. Por eso esta celda
+    // (y cualquier otra con un dato del usuario) va por `textContent`, igual
+    // que `refrescarMateriales` en app.js.
     const fila = document.createElement("tr");
-    fila.innerHTML =
-      `<td>${m.nombre}</td>` +
-      `<td class="der">${m.ancho}</td>` +
-      `<td class="der">${m.alto}</td>` +
-      `<td><span class="insignia ${m.veta}">${ETIQUETA_VETA[m.veta]}</span></td>` +
-      `<td class="der"></td>`;
 
-    const acciones = fila.lastElementChild;
+    const celdaNombre = document.createElement("td");
+    celdaNombre.textContent = m.nombre;
+
+    const celdaAncho = document.createElement("td");
+    celdaAncho.className = "der";
+    celdaAncho.textContent = m.ancho;
+
+    const celdaAlto = document.createElement("td");
+    celdaAlto.className = "der";
+    celdaAlto.textContent = m.alto;
+
+    // La veta no es texto libre: la API sólo acepta "libre" o "respetar"
+    // (Literal de Pydantic), así que esta celda sí puede seguir siendo HTML
+    // armado por interpolación. Se copia a una variable propia antes de
+    // interpolar para no depender de `m` directamente acá: lo que entra en
+    // un `innerHTML` de esta pantalla tiene que poder auditarse sin mirar
+    // de dónde sale cada campo del material.
+    const veta = m.veta;
+    const celdaVeta = document.createElement("td");
+    celdaVeta.innerHTML = `<span class="insignia ${veta}">${ETIQUETA_VETA[veta]}</span>`;
+
+    const acciones = document.createElement("td");
+    acciones.className = "der";
     acciones.append(
       botonIcono(LAPIZ, `Editar ${m.nombre}`, () => cargarEnFormulario(m)),
       botonIcono(TACHO, `Borrar ${m.nombre}`, () => borrar(m.nombre))
     );
+
+    fila.append(celdaNombre, celdaAncho, celdaAlto, celdaVeta, acciones);
     cuerpo.append(fila);
   }
 

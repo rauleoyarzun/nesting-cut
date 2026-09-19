@@ -179,13 +179,30 @@ def test_usa_createobjecturl_y_lo_libera_con_revokeobjecturl(js):
     assert "revokeObjectURL" in js
 
 
+def _ids_que_busca(js):
+    """Todo id que el archivo le pasa a `$(...)`.
+
+    Cubre la forma directa, `$("id")`, y la condicional que usa
+    `materiales.js` para elegir un radio button según el estado del
+    material, `$(condición ? "id-a" : "id-b")`: sin esto, los dos ids de
+    adentro del ternario no entraban al conjunto que se compara contra
+    `index.html`, que es exactamente el punto ciego que esta batería
+    existe para atajar (un id mal tipeado ahí quedaría en verde). No cubre
+    un id armado con un template literal (`` $(`algo-${x}`) ``) ni uno que
+    salga de una variable o de una llamada a función: `materiales.js` y
+    `app.js` no usan esas formas hoy."""
+    directos = re.findall(r'\$\("([^"]+)"\)', js)
+    del_ternario = re.findall(r'\$\([^()]*\?\s*"([^"]+)"\s*:\s*"([^"]+)"\)', js)
+    return set(directos) | {id_ for par in del_ternario for id_ in par}
+
+
 def test_todo_id_que_busca_el_js_existe_en_el_html(js, html):
     """Un id que `$("...")` busca y no está en `index.html` no falla en
     ningún lado: el botón correspondiente simplemente se queda mudo, y
     nadie se entera hasta que alguien lo aprieta. Es el error más probable
     de este archivo, y el más fácil de atajar comparando los dos lados."""
     ids_del_html = set(re.findall(r'id="([^"]+)"', html))
-    ids_que_busca_el_js = set(re.findall(r'\$\("([^"]+)"\)', js))
+    ids_que_busca_el_js = _ids_que_busca(js)
     faltantes = ids_que_busca_el_js - ids_del_html
     assert not faltantes, f"ids que $() busca y no están en index.html: {faltantes}"
 
@@ -225,8 +242,45 @@ def test_materiales_refresca_el_desplegable_de_la_pantalla_principal(js_material
 def test_todo_id_que_busca_materiales_js_existe_en_el_html(js_materiales, html):
     """El mismo contrato que `test_todo_id_que_busca_el_js_existe_en_el_html`
     verifica para `app.js`, pero para `materiales.js`: un id mal tipeado acá
-    deja un botón mudo de la misma forma."""
+    deja un botón mudo de la misma forma. `materiales.js` es justamente el
+    archivo que elige un id con un ternario (`$(m.veta === "libre" ?
+    "m-veta-libre" : "m-veta-respetar")`), así que usa la misma extracción
+    que ya contempla esa forma -- ver el docstring de `_ids_que_busca`."""
     ids_del_html = set(re.findall(r'id="([^"]+)"', html))
-    ids_que_busca_el_js = set(re.findall(r'\$\("([^"]+)"\)', js_materiales))
+    ids_que_busca_el_js = _ids_que_busca(js_materiales)
     faltantes = ids_que_busca_el_js - ids_del_html
     assert not faltantes, f"ids que $() busca y no están en index.html: {faltantes}"
+
+
+def test_ningun_dato_del_material_se_interpola_en_un_innerhtml(js_materiales):
+    """El bug que esta revisión encontró: `dibujarTabla()` armaba la fila
+    con `fila.innerHTML = `<td>${m.nombre}</td>` + ...`, y `m.nombre` es
+    texto libre que el usuario tipea y que vuelve del catálogo guardado
+    (`materials.yaml`). Un nombre como `<img src=x onerror=...>` quedaba
+    persistente: se ejecutaba cada vez que alguien abría esta pantalla, no
+    sólo para quien lo escribió -- y en la versión web el catálogo puede
+    ser compartido entre usuarios.
+
+    Cubre: que ningún campo de `m` (`${m.algo}`) aparezca dentro del texto
+    de una asignación a `.innerHTML` (buscando desde `.innerHTML =` hasta
+    el primer `;`, con `re.DOTALL` para plantillas de varias líneas). No
+    cubre: una interpolación armada en una variable aparte y asignada a
+    `innerHTML` recién en la statement siguiente (la misma clase de
+    indirección que la Forma 2 de
+    `test_no_asigna_src_o_href_con_una_ruta_de_api_directa` persigue para
+    `.src`/`.href`; acá no hace falta ese segundo paso porque hoy no hay
+    ningún caso así), ni `insertAdjacentHTML`, ni el caso legítimo de la
+    insignia de veta: ese campo no es texto libre (la API sólo acepta
+    "libre" o "respetar") y el archivo lo copia a una variable propia
+    (`veta`) antes de interpolarlo, así que no matchea `${m.`.
+
+    Verificación manual de que este test puede fallar de verdad: si en
+    `dibujarTabla()` se vuelve a escribir `celdaNombre.innerHTML =
+    `${m.nombre}`` en vez de `celdaNombre.textContent = m.nombre`, este
+    test detecta el `${m.nombre}` adentro de la asignación y falla."""
+    asignaciones = re.findall(r"\.innerHTML\s*\+?=\s*[^;]*;", js_materiales, re.DOTALL)
+    assert asignaciones, "no se encontró ninguna asignación a innerHTML para revisar"
+    sospechosas = [a for a in asignaciones if "${m." in a]
+    assert not sospechosas, (
+        f"interpola un campo de un material en un innerHTML: {sospechosas}"
+    )
