@@ -21,7 +21,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+# httpx sólo lo usa TestClient de FastAPI en los tests de la API; ningún
+# módulo de src/ lo importa, por eso va en dev y no en dependencies.
+dev = ["pytest", "httpx"]
 
 [project.scripts]
 nest = "nesting.cli:main"

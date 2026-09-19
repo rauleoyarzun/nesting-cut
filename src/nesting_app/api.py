@@ -6,13 +6,15 @@ localhost. Por eso toda ruta bajo /api/ exige un token que sólo conoce la
 ventana, porque se lo pasamos al cargarla.
 """
 
+import hmac
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
-from starlette.requests import Request
+from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from nesting.model.material import Material
 from nesting_app import corredor, materials_store, rutas
@@ -72,25 +74,55 @@ class PedidoAnalisis(BaseModel):
     tol_cierre: float = Field(default=0.1, gt=0)
 
 
+class _ExigirTokenEnApi:
+    """Corta cualquier pedido a /api/ sin el token correcto, antes de que
+    llegue a enrutarse.
+
+    A propósito NO es una dependencia puesta ruta por ruta: una lista así
+    se puede olvidar al agregar un endpoint nuevo, y ese olvido no avisa.
+    Acá alcanza con que el path empiece con /api/ -- exista o no una ruta
+    que lo atienda -- así que no hay nada que acordarse de actualizar.
+
+    Y a propósito NO es un `@app.middleware("http")`: ese se implementa con
+    `BaseHTTPMiddleware`, que arranca con "si el scope no es http, pasalo
+    de largo sin mirarlo" -- así que deja pasar cualquier WebSocket sin
+    tocarlo, token o no. Este middleware es ASGI puro: mira `scope["path"]`
+    sin importar de qué tipo es el scope, así que un handshake de WebSocket
+    bajo /api/ sin token se cierra igual que un pedido HTTP se rechaza con
+    401. Hoy no hay ninguna ruta websocket, pero el punto de este mecanismo
+    es que no haga falta acordarse cuando aparezca la primera.
+    """
+
+    def __init__(self, app: ASGIApp, token: str) -> None:
+        self.app = app
+        self.token = token
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket") or not scope["path"].startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+
+        recibido = Headers(scope=scope).get("x-token", "")
+        # hmac.compare_digest en vez de == : acá no hay una amenaza concreta
+        # (explotar la fuga de tiempo desde JavaScript contra este stack no
+        # es viable en la práctica), pero comparar secretos así es gratis y
+        # evita tener que volver a razonarlo cada vez.
+        if not hmac.compare_digest(recibido, self.token):
+            if scope["type"] == "websocket":
+                await send({"type": "websocket.close", "code": 1008})
+            else:
+                response = JSONResponse(
+                    {"detail": "token inválido o ausente"}, status_code=401
+                )
+                await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
 def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
-    app = FastAPI(title="nesting", docs_url=None, redoc_url=None)
-
-    @app.middleware("http")
-    async def exigir_token_en_api(request: Request, call_next):
-        """Corta cualquier pedido a /api/ sin el token correcto, antes de
-        que llegue a enrutarse.
-
-        A propósito NO es una dependencia puesta ruta por ruta: una lista
-        así se puede olvidar al agregar un endpoint nuevo, y ese olvido no
-        avisa. Acá alcanza con que el path empiece con /api/ -- exista o no
-        una ruta que lo atienda -- así que no hay nada que acordarse de
-        actualizar.
-        """
-        if request.url.path.startswith("/api/") and request.headers.get("x-token") != token:
-            return JSONResponse(
-                {"detail": "token inválido o ausente"}, status_code=401
-            )
-        return await call_next(request)
+    app = FastAPI(title="nesting", docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(_ExigirTokenEnApi, token=token)
 
     # --- materiales ---------------------------------------------------------
 

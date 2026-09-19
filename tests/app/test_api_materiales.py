@@ -4,6 +4,7 @@ import re
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from nesting_app import materials_store, rutas
 from nesting_app.api import crear_app
@@ -146,20 +147,73 @@ def test_un_catalogo_corrupto_da_500_con_la_salida_adentro(cliente):
 
 def test_ninguna_ruta_de_api_puede_saltarse_el_token(cliente):
     """No hay que confiar en que cada ruta nueva se acuerde de pedir el
-    token: este test recorre las rutas que la app tiene registradas bajo
-    /api/ -- las de hoy y las que se agreguen mañana -- y confirma que
-    todas, sin excepción, lo exigen."""
+    token: este test recorre TODAS las rutas que la app tiene registradas
+    bajo /api/ -- las de hoy y las que se agreguen mañana, tengan método
+    HTTP o sean WebSocket -- y confirma que todas, sin excepción, lo
+    exigen.
+
+    A propósito no filtra con `getattr(ruta, "methods", None) or ()`: una
+    ruta WebSocket (`APIWebSocketRoute`) no tiene `.methods`, así que ese
+    filtro la deja afuera en silencio -- se podría agregar una ruta así sin
+    protección y este test seguiría en verde. Acá se clasifica cada ruta
+    por si tiene `.methods` o no, y a las que no lo tienen se las verifica
+    como WebSocket."""
     del cliente.headers["X-Token"]
     metodos = {"GET": cliente.get, "POST": cliente.post, "PUT": cliente.put, "DELETE": cliente.delete}
 
-    rutas_api = {
-        (metodo, re.sub(r"\{[^}]+\}", "x", ruta.path))
-        for ruta in cliente.app.routes
-        for metodo in getattr(ruta, "methods", None) or ()
-        if ruta.path.startswith("/api/") and metodo in metodos
-    }
+    rutas_http = set()
+    rutas_ws = set()
+    for ruta in cliente.app.routes:
+        if not ruta.path.startswith("/api/"):
+            continue
+        camino = re.sub(r"\{[^}]+\}", "x", ruta.path)
+        metodos_de_la_ruta = getattr(ruta, "methods", None)
+        if metodos_de_la_ruta is None:
+            rutas_ws.add(camino)
+        else:
+            for metodo in metodos_de_la_ruta:
+                if metodo in metodos:
+                    rutas_http.add((metodo, camino))
 
-    assert rutas_api, "no se encontró ninguna ruta /api/ para verificar"
-    for metodo, ruta in rutas_api:
+    assert rutas_http, "no se encontró ninguna ruta /api/ para verificar"
+    for metodo, ruta in rutas_http:
         respuesta = metodos[metodo](ruta)
         assert respuesta.status_code == 401, f"{metodo} {ruta} no exige token"
+
+    for ruta in rutas_ws:
+        with pytest.raises(WebSocketDisconnect):
+            with cliente.websocket_connect(ruta):
+                pass
+
+
+def test_una_ruta_websocket_bajo_api_no_se_puede_usar_sin_token(tmp_path, monkeypatch):
+    """El middleware es ASGI puro justamente para cubrir este caso: un
+    handshake de WebSocket bajo /api/ sin token tiene que cerrarse igual
+    que se rechaza con 401 un pedido HTTP. Se agrega la ruta a mano acá
+    porque hoy la app todavía no tiene ninguna."""
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+    registro = Registro(tmp_path / "trabajos")
+    app = crear_app(TOKEN, Deposito(tmp_path / "fuentes"), registro)
+
+    @app.websocket("/api/ws")
+    async def _ws_de_prueba(websocket):
+        await websocket.accept()
+
+    try:
+        with TestClient(app) as cliente:
+            with pytest.raises(WebSocketDisconnect):
+                with cliente.websocket_connect("/api/ws"):
+                    pass
+    finally:
+        registro.cerrar()
+
+
+def test_openapi_json_no_esta_disponible(cliente):
+    """`docs_url=None` y `redoc_url=None` apagan /docs y /redoc, pero no el
+    esquema en sí: /openapi.json no empieza con /api/, así que el
+    middleware de token ni lo mira. Sin `openapi_url=None` queda abierto y
+    expone las seis rutas, sus métodos y los nombres exactos de cada campo
+    a cualquier página que lo pida."""
+    del cliente.headers["X-Token"]
+
+    assert cliente.get("/openapi.json").status_code == 404
