@@ -45,7 +45,11 @@ def test_reads_a_polyline_exactly(tmp_path):
 
     polylines = [e for e in drawing.entities if isinstance(e, Polyline)]
     assert len(polylines) == 1
-    assert len(polylines[0].points) == 4
+    assert polylines[0].closed
+    assert len(polylines[0].points) == 3, (
+        "los 3 vertices distintos: el cierre lo dice `closed`, y repetir el "
+        "primer punto al final deja un tramo de largo cero en la salida"
+    )
 
 
 def test_a_circle_is_sampled_into_a_polyline(tmp_path):
@@ -283,3 +287,65 @@ def test_a_clean_drawing_records_no_discards(tmp_path):
     model.Objects.AddLine(rhino3dm.Point3d(0, 0, 0), rhino3dm.Point3d(10, 0, 0))
 
     assert read_3dm(save(model, tmp_path)).discards == []
+
+
+# --- Una curva "unida" de Rhino (PolyCurve) es UNA pieza hecha de varios
+# tramos. Muestrearla por parametro, como si fuera una curva cualquiera,
+# ignora esa estructura: los tramos rectos salen con nodos de mas y las
+# esquinas quedan redondeadas por debajo de la tolerancia. Estos tests fijan
+# que los tramos rectos salgan exactos y que la pieza siga siendo una sola
+# entidad. ---
+
+
+def polycurve_of_lines(points):
+    curve = rhino3dm.PolyCurve()
+    for start, end in zip(points, points[1:]):
+        curve.AppendSegment(
+            rhino3dm.LineCurve(
+                rhino3dm.Point3d(start[0], start[1], 0),
+                rhino3dm.Point3d(end[0], end[1], 0),
+            )
+        )
+    return curve
+
+
+HEX_NUT = [(0, 0), (100, 0), (100, 40), (60, 40), (60, 100), (0, 100), (0, 0)]
+
+
+def test_a_polycurve_of_straight_segments_keeps_its_exact_vertices(tmp_path):
+    model = new_model(rhino3dm.UnitSystem.Millimeters)
+    model.Objects.AddCurve(polycurve_of_lines(HEX_NUT), None)
+    drawing = read_3dm(save(model, tmp_path))
+
+    assert len(drawing.entities) == 1, "la curva unida es una sola entidad"
+    polyline = drawing.entities[0]
+    assert isinstance(polyline, Polyline)
+    assert polyline.closed
+    assert [
+        (round(x, 9), round(y, 9)) for x, y in polyline.points
+    ] == [(float(x), float(y)) for x, y in HEX_NUT[:-1]], (
+        "los vertices originales, sin agregar ni mover ninguno"
+    )
+
+
+def test_a_polycurve_mixing_a_curve_keeps_the_straight_corners_exact(tmp_path):
+    model = new_model(rhino3dm.UnitSystem.Millimeters)
+    curve = polycurve_of_lines([(0, 0), (100, 0), (100, 50)])
+    arc = rhino3dm.Arc(
+        rhino3dm.Point3d(100, 50, 0), rhino3dm.Point3d(50, 90, 0), rhino3dm.Point3d(0, 50, 0)
+    )
+    curve.AppendSegment(rhino3dm.NurbsCurve.CreateFromArc(arc))
+    curve.AppendSegment(
+        rhino3dm.LineCurve(rhino3dm.Point3d(0, 50, 0), rhino3dm.Point3d(0, 0, 0))
+    )
+    model.Objects.AddCurve(curve, None)
+    drawing = read_3dm(save(model, tmp_path))
+
+    assert len(drawing.entities) == 1, "sigue siendo una sola pieza, no cinco tramos"
+    points = [(round(x, 6), round(y, 6)) for x, y in drawing.entities[0].points]
+    for corner in [(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)]:
+        assert corner in points, f"la esquina {corner} tiene que estar exacta"
+    straight_run = points[: points.index((100.0, 50.0)) + 1]
+    assert straight_run == [(0.0, 0.0), (100.0, 0.0), (100.0, 50.0)], (
+        "los dos tramos rectos no llevan ni un nodo de mas"
+    )

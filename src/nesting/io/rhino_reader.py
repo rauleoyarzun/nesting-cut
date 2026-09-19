@@ -1,11 +1,17 @@
 """Read Rhino .3dm files.
 
-Lines and polylines come through exactly. Everything else - NURBS, arcs,
-polycurves - is sampled to a polyline at read time, because converting general
-NURBS to Beziers needs knot insertion that rhino3dm does not expose reliably.
-That makes .3dm the one format whose output is not bit-exact with its input; at
-0.05 mm the difference is far below anything that matters for cutting wood, but
-it is a real difference and it is declared rather than hidden.
+Every straight piece comes through exactly, wherever it sits: a line, a
+polyline, and each straight segment of a joined curve (a `PolyCurve`, which
+is how Rhino stores a contour drawn as one piece). Only genuinely curved
+pieces - arcs and NURBS - are sampled to a polyline at read time, because
+converting general NURBS to Beziers needs knot insertion that rhino3dm does
+not expose reliably. That makes .3dm the one format whose output is not
+bit-exact with its input, and only along its curves; at 0.05 mm the
+difference is far below anything that matters for cutting wood, but it is a
+real difference and it is declared rather than hidden.
+
+A joined curve stays one entity, as it was drawn, so the output keeps it
+joined too -- see `_curve_points`.
 """
 
 import math
@@ -165,18 +171,85 @@ def _convert(curve, scale: float, style: Style, tol: float) -> list:
         end = _point(curve.PointAtEnd, scale)
         return [Line(start, end, style)]
 
-    if isinstance(curve, rhino3dm.PolylineCurve):
-        raw = [curve.Point(i) for i in range(curve.PointCount)]
-        _require_planar(raw)
-        points = tuple(_point(p, scale) for p in raw)
-        return [Polyline(points, bool(curve.IsClosed), style)]
-
-    raw = _sample(curve, tol / scale)
+    raw = _curve_points(curve, tol / scale)
     _require_planar(raw)
-    points = tuple(_point(p, scale) for p in raw)
+    points = _drop_repeats(tuple(_point(p, scale) for p in raw))
+
+    # Una curva cerrada vuelve a su punto de partida, y ese punto repetido al
+    # final sobra: `closed` ya lo dice, y escribirlo deja un tramo de largo
+    # cero en la polilinea de salida.
+    closed = bool(curve.IsClosed)
+    if closed and len(points) > 2 and _same_point(points[0], points[-1]):
+        points = points[:-1]
+
     if len(points) < 2:
         return []
-    return [Polyline(points, bool(curve.IsClosed), style)]
+    return [Polyline(points, closed, style)]
+
+
+def _curve_points(curve, tol: float):
+    """Los puntos de `curve`, EXACTOS en todo tramo que sea recto.
+
+    Una curva unida de Rhino es un `PolyCurve`: varios tramos que forman UN
+    dibujo. Muestrearla entera por parámetro, como si fuera una curva
+    cualquiera, ignora esa estructura y sale carísimo en los tramos rectos,
+    que son la mayoría de lo que se corta: la subdivisión no cae en las
+    esquinas, así que para acercarse a cada una mete una decena de nodos y
+    aun así la redondea por una fracción de la tolerancia. Medido sobre un
+    contorno de 6 vértices: 32 nodos, ninguna esquina exacta.
+
+    Así que cada tramo se resuelve por lo que ES -- recta, polilínea o curva
+    de verdad -- y solo lo genuinamente curvo se muestrea, cada uno en su
+    propio dominio. La pieza sigue saliendo como una sola entidad: los tramos
+    se concatenan, que es como estaban unidos en el archivo.
+    """
+    if isinstance(curve, rhino3dm.PolyCurve):
+        points: list = []
+        for index in range(curve.SegmentCount):
+            # El punto repetido de cada juntura lo saca `_drop_repeats`, ya
+            # en milímetros, para que "el mismo punto" se decida en un solo
+            # lugar y en una sola unidad.
+            points.extend(_curve_points(curve.SegmentCurve(index), tol))
+        return points
+
+    if isinstance(curve, rhino3dm.PolylineCurve):
+        return [curve.Point(i) for i in range(curve.PointCount)]
+
+    if isinstance(curve, rhino3dm.LineCurve):
+        return [curve.PointAtStart, curve.PointAtEnd]
+
+    # Grado 1 es una polilínea escrita como NURBS, que es como vienen los
+    # tramos rectos de un `PolyCurve` guardado por Rhino. Con grado 1 cada
+    # nudo corresponde a un punto de control, así que evaluar la curva en sus
+    # nudos devuelve exactamente sus vértices -- sin tocar las coordenadas
+    # homogéneas, que para una curva racional no son las del vértice.
+    if isinstance(curve, rhino3dm.NurbsCurve) and curve.Degree == 1:
+        return [curve.PointAt(knot) for knot in curve.Knots]
+
+    return _sample(curve, tol)
+
+
+_JOINT_TOLERANCE_MM = 1e-9
+"""Cuándo dos puntos seguidos son el mismo punto: la juntura entre dos tramos
+de una curva unida. Un nanómetro es ruido de punto flotante puro, muchos
+órdenes por debajo de cualquier hueco real del dibujo (que tiene que llegar
+al encadenado para que lo reporte, no desaparecer acá)."""
+
+
+def _same_point(a: Point, b: Point) -> bool:
+    return (
+        abs(a[0] - b[0]) <= _JOINT_TOLERANCE_MM
+        and abs(a[1] - b[1]) <= _JOINT_TOLERANCE_MM
+    )
+
+
+def _drop_repeats(points: tuple[Point, ...]) -> tuple[Point, ...]:
+    """Saca los puntos repetidos consecutivos, que salen de las junturas."""
+    kept: list[Point] = []
+    for point in points:
+        if not kept or not _same_point(kept[-1], point):
+            kept.append(point)
+    return tuple(kept)
 
 
 def _sample(curve, tol: float) -> list:
