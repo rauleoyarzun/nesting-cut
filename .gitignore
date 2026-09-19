@@ -26,3 +26,9 @@ __pycache__/
 out/
 files/
 bench/files/
+
+# Artefactos de trabajo de la ejecución por subagentes: briefs, informes,
+# paquetes de revisión. Se regeneran del plan y de git. El registro de
+# avance (.superpowers/sdd/progress.md) SÍ se versiona: es la memoria de
+# por qué las cosas quedaron como quedaron.
+.superpowers/sdd/ui/
