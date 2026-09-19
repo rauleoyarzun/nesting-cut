@@ -144,17 +144,25 @@ class Registro:
     def crear(self, fuente: Fuente, params: NestParams, corredor: Corredor) -> Trabajo:
         trabajo = Trabajo(id=uuid.uuid4().hex)
         with self._trabajos_lock:
-            # El chequeo y el alta van bajo el mismo lock que usa `cerrar()`
-            # para marcar el cierre y sacar su copia: así un trabajo o bien
-            # queda adentro a tiempo para que `cerrar()` lo cancele, o bien
-            # `crear()` ya ve el cierre y lo rechaza. Nunca las dos cosas a
-            # la vez ni ninguna.
+            # El chequeo, el alta y el `put` van bajo el mismo lock que usa
+            # `cerrar()` para marcar el cierre, sacar su copia y encolar su
+            # propio `None`. Si el `put` quedara afuera, un hilo podía pasar
+            # el chequeo, cargar el trabajo en `self._trabajos`, y ser
+            # desalojado antes de encolarlo; si en ese instante `cerrar()`
+            # corría entero, encolaba su `None` primero, el trabajador lo
+            # sacaba y terminaba, y el `put` de `crear()` llegaba después a
+            # una cola sin consumidor: el trabajo quedaba en PENDIENTE para
+            # siempre. Con todo bajo el mismo lock, un trabajo o bien queda
+            # adentro a tiempo para que `cerrar()` lo cancele -- y su `put`
+            # llega antes que el `None` de cierre, porque comparten lock --,
+            # o bien `crear()` ya ve el cierre y lo rechaza. Nunca las dos
+            # cosas a la vez ni ninguna.
             if self._cerrando.is_set():
                 raise RegistroCerradoError(
                     "no se puede crear un trabajo: el registro ya cerró"
                 )
             self._trabajos[trabajo.id] = trabajo
-        self._cola.put((trabajo, fuente, params, corredor))
+            self._cola.put((trabajo, fuente, params, corredor))
         return trabajo
 
     def obtener(self, trabajo_id: str) -> Trabajo:
@@ -178,15 +186,27 @@ class Registro:
             if self._cerrando.is_set():
                 return
             self._cerrando.set()
-            # Copia adentro del lock; se recorre afuera. `crear()` puede
-            # seguir escribiendo en `self._trabajos` desde otro hilo hasta
-            # el instante en que ve `_cerrando` marcado, así que iterar el
-            # dict en vivo puede reventar con "dictionary changed size
-            # during iteration".
+            # Copia adentro del lock. `crear()` puede seguir escribiendo en
+            # `self._trabajos` desde otro hilo hasta el instante en que ve
+            # `_cerrando` marcado, así que iterar el dict en vivo puede
+            # reventar con "dictionary changed size during iteration".
             trabajos = list(self._trabajos.values())
-        for trabajo in trabajos:
-            trabajo._cancelar.set()
-        self._cola.put(None)
+            # Los `_cancelar.set()` van antes del `put(None)`, y los dos
+            # bajo el mismo lock que protege el alta en `crear()`. Antes:
+            # si un trabajo ya estaba en la cola pero el trabajador no lo
+            # había sacado, marcarlo cancelado y recién después encolar el
+            # `None` aseguraba que, al sacarlo, `_trabajar` ya lo viera
+            # cancelado y no lo corriera. Ahora, además, el `put(None)`
+            # bajo el mismo lock que el `put` de `crear()` garantiza que
+            # llega a la cola después de cualquier trabajo que ya alcanzó
+            # a entrar a `self._trabajos` (y por lo tanto a `trabajos`,
+            # arriba): el trabajador nunca saca el `None` antes de que ese
+            # trabajo esté también en la cola. `Queue.put` en una cola sin
+            # límite nunca bloquea, así que esto no agrega espera bajo el
+            # lock.
+            for trabajo in trabajos:
+                trabajo._cancelar.set()
+            self._cola.put(None)
         self._hilo.join(timeout=5)
         shutil.rmtree(self.carpeta, ignore_errors=True)
 

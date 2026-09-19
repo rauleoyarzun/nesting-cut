@@ -12,6 +12,7 @@ from nesting_app.jobs import (
     Registro,
     RegistroCerradoError,
     Resultado,
+    Trabajo,
     TrabajoDesconocidoError,
 )
 from nesting.params import NestParams
@@ -215,38 +216,172 @@ def test_cerrar_no_deja_el_hilo_vivo(registro):
     assert not registro._hilo.is_alive()
 
 
+class _DiccionarioConIntruso(dict):
+    """Un `dict` cuyo `values()` fuerza, de forma determinística, la
+    interleaving que rompe a `cerrar()` cuando recorre `self._trabajos`
+    sin protegerse de una inserción concurrente.
+
+    Después de entregar el primer elemento, lanza un hilo que intenta
+    colarse insertando una clave nueva directamente en el diccionario --
+    bajo el mismo `_trabajos_lock` que usa `crear()` para su propia alta,
+    pero sin pasar por el chequeo de `_cerrando` -- y espera (con límite)
+    a que ese intento termine antes de seguir iterando. No se usa el
+    `crear()` público a propósito: `cerrar()` ya marcó `_cerrando` antes
+    de empezar a iterar, así que cualquier llamada real a `crear()` acá
+    se rechazaría de entrada y nunca llegaría a tocar el diccionario, sin
+    que eso diga nada sobre si la iteración está protegida. Lo que se
+    modela es el hilo que ya pasó ese chequeo y solo le falta escribir --
+    la misma ventana que motiva el punto 1 -- representado en su forma
+    más directa: tomar el lock y escribir.
+
+    - Si `cerrar()` recorre el diccionario en vivo (sin lock ni copia),
+      el intruso toma el lock (nada se lo impide) y entra en
+      microsegundos. La espera lo confirma casi al instante, y el
+      `next()` siguiente encuentra el diccionario ya mutado --
+      `RuntimeError: dictionary changed size during iteration`, siempre,
+      sin depender del scheduler.
+    - Si `cerrar()` sostiene `self._trabajos_lock` mientras copia (el
+      arreglo de este commit), el intruso queda bloqueado en su propio
+      `with lock:` y no puede terminar hasta que `cerrar()` suelte la
+      copia. La espera agota su plazo sin que nada haya cambiado, la
+      iteración sigue en paz, y recién después el intruso se destraba e
+      inserta sin problema (ya terminó la iteración).
+
+    Ninguna de las dos ramas depende de ganar una carrera contra el
+    intérprete: la que gana depende únicamente de si el lock protege la
+    copia, que es justo lo que este test quiere demostrar.
+    """
+
+    def __init__(self, *args, lock, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._lock = lock
+        self.intruso_insertado = threading.Event()
+        self.intruso_terminado = threading.Event()
+
+    def values(self):
+        it = iter(dict.values(self))
+        try:
+            primero = next(it)
+        except StopIteration:
+            return
+        yield primero
+
+        def intruso():
+            with self._lock:
+                self["intruso"] = Trabajo(id="intruso")
+            self.intruso_insertado.set()
+            self.intruso_terminado.set()
+
+        threading.Thread(target=intruso, daemon=True).start()
+        # Si el lock protege la copia, esto agota el plazo sin que
+        # `intruso_terminado` se dispare -- eso es lo esperado, no una
+        # falla. Si no la protege, el intruso ya insertó antes de que
+        # termine la espera.
+        self.intruso_terminado.wait(timeout=2.0)
+
+        yield from it
+
+
 def test_cerrar_no_revienta_si_entran_trabajos_al_mismo_tiempo(registro):
-    """Reproduce el `RuntimeError: dictionary changed size during
-    iteration` de `cerrar()` recorriendo `self._trabajos` mientras otro
-    hilo llama a `crear()`. Es justo el escenario que el módulo espera:
-    `cerrar()` se llama al apagar mientras pueden estar entrando pedidos."""
-    arrancar = threading.Event()
-    parar = threading.Event()
-    errores = []
+    """Reproduce, de forma determinística, el `RuntimeError: dictionary
+    changed size during iteration` de `cerrar()` recorriendo
+    `self._trabajos` mientras otro hilo inserta ahí mismo.
 
-    def creador():
-        arrancar.wait(timeout=5)
-        while not parar.is_set():
-            try:
-                registro.crear(FUENTE, PARAMS, lambda f, p, pr, c: resultado_falso(c))
-            except RegistroCerradoError:
-                return
-            except Exception as error:  # noqa: BLE001 - lo que se busca detectar
-                errores.append(error)
-                return
+    La versión vieja de este test lanzaba 8 hilos creadores contra un
+    corredor falso instantáneo y confiaba en que el scheduler interrumpiera
+    a `cerrar()` justo en el punto débil. Corrida 20 veces contra el código
+    de antes del lock, las 20 pasaron: el hilo trabajador vacía la cola
+    casi tan rápido como entran los pedidos, y el recorrido de `cerrar()`
+    termina en microsegundos -- una ventana demasiado angosta para que la
+    apuesta pague. Un test que puede pasar con el bug adentro no prueba
+    nada. Esta versión no apuesta: instrumenta `self._trabajos` para que
+    la interleaving ocurra siempre (ver `_DiccionarioConIntruso`)."""
+    trabajo = registro.crear(FUENTE, PARAMS, lambda f, p, pr, c: resultado_falso(c))
+    esperar(trabajo, {Estado.LISTO})
 
-    hilos = [threading.Thread(target=creador) for _ in range(8)]
-    for h in hilos:
-        h.start()
-    arrancar.set()
+    intruso = _DiccionarioConIntruso(registro._trabajos, lock=registro._trabajos_lock)
+    registro._trabajos = intruso
 
-    registro.cerrar()
+    registro.cerrar()  # no debe reventar
 
-    parar.set()
-    for h in hilos:
-        h.join(timeout=5)
+    # El intruso pudo haber quedado bloqueado hasta recién ahora si el
+    # lock protegía la copia; se le da margen para que termine de una vez
+    # que `cerrar()` ya soltó todo.
+    assert intruso.intruso_terminado.wait(timeout=5), "el intruso nunca terminó"
+    assert intruso.intruso_insertado.is_set()
 
-    assert errores == []
+
+def test_ventana_entre_alta_y_encolado_no_deja_trabajo_huerfano(registro):
+    """El bug que este commit corrige: `crear()` cargaba el trabajo en
+    `self._trabajos` y encolaba (`self._cola.put`) como dos pasos
+    separados, el segundo afuera del lock. Si un hilo pasaba el chequeo y
+    el alta, y era desalojado justo antes de su `put`, y en ese instante
+    `cerrar()` corría entero -- marcaba `_cerrando`, copiaba la lista (que
+    ya incluía ese trabajo), encolaba su propio `None`, y el trabajador lo
+    sacaba y terminaba --, el `put` del primer hilo llegaba después a una
+    cola sin consumidor: el trabajo quedaba en el diccionario, en
+    PENDIENTE, para siempre.
+
+    Fuerza esa ventana demorando el `put` real de la cola con un `Event`,
+    y dispara `cerrar()` desde otro hilo mientras `crear()` sigue adentro
+    de su sección crítica. Con el alta y el `put` bajo el mismo lock,
+    `cerrar()` no puede avanzar hasta que `crear()` termine -- eso se
+    verifica explícitamente --, así que el trabajo entra a la cola antes
+    de que exista el `None` de cierre y nunca queda huérfano."""
+    cola = registro._cola
+    put_original = cola.put
+    alcanzó_el_put = threading.Event()
+    seguir = threading.Event()
+
+    def put_demorado(item, *args, **kwargs):
+        alcanzó_el_put.set()
+        seguir.wait(timeout=5)
+        return put_original(item, *args, **kwargs)
+
+    cola.put = put_demorado
+
+    resultado: dict = {}
+
+    def crear_en_otro_hilo():
+        try:
+            resultado["trabajo"] = registro.crear(
+                FUENTE, PARAMS, lambda f, p, pr, c: resultado_falso(c)
+            )
+        except RegistroCerradoError as error:
+            resultado["error"] = error
+
+    hilo_creador = threading.Thread(target=crear_en_otro_hilo)
+    hilo_creador.start()
+    assert alcanzó_el_put.wait(timeout=5), "crear() nunca llegó al put"
+
+    hilo_cerrando = threading.Thread(target=registro.cerrar)
+    hilo_cerrando.start()
+
+    # `crear()` sigue bloqueado en el `put` demorado, y por lo tanto sigue
+    # sosteniendo `self._trabajos_lock`: `cerrar()` no tiene forma de
+    # avanzar todavía. Esto no es una apuesta de timing -- mientras
+    # `seguir` no se dispare, `crear()` no puede haber soltado el lock.
+    hilo_cerrando.join(timeout=0.2)
+    assert hilo_cerrando.is_alive(), (
+        "cerrar() no debería poder avanzar mientras crear() sostiene el "
+        "lock adentro de su propio put"
+    )
+
+    seguir.set()
+    hilo_creador.join(timeout=5)
+    hilo_cerrando.join(timeout=5)
+    assert not hilo_cerrando.is_alive()
+
+    assert "error" not in resultado, (
+        f"crear() no debía rechazarse acá, y se rechazó con {resultado.get('error')!r}"
+    )
+    trabajo = resultado["trabajo"]
+    estado_final = esperar(
+        trabajo, {Estado.LISTO, Estado.CANCELADO, Estado.ERROR}
+    )
+    assert estado_final is not Estado.PENDIENTE, (
+        "el trabajo quedó huérfano: nunca salió de PENDIENTE ni se rechazó"
+    )
 
 
 def test_crear_despues_de_cerrar_levanta_registro_cerrado(registro):
