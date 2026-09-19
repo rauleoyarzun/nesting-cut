@@ -333,7 +333,14 @@ def test_ventana_entre_alta_y_encolado_no_deja_trabajo_huerfano(registro):
     el `put` bajo el mismo lock, `cerrar()` no puede avanzar hasta que
     `crear()` termine -- eso se verifica explícitamente --, así que el
     trabajo entra a la cola antes de que exista el `None` de cierre y
-    nunca queda huérfano."""
+    nunca queda huérfano.
+
+    NO es determinístico: medido contra el código con el bug adentro,
+    detecta 23 de 30 corridas. Lo que queda librado al planificador es el
+    orden en que arrancan los dos hilos. Se deja así en vez de prometer
+    determinismo que no tiene, porque 23 de 30 en cada corrida de la suite
+    es protección real, y porque el escenario se verificó además a mano.
+    """
     cola = registro._cola
     put_original = cola.put
     alcanzó_el_put = threading.Event()
