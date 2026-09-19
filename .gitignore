@@ -1,0 +1,20 @@
+# Entorno y cachés: regenerables, y el venv trae rutas absolutas grabadas
+# adentro, así que copiarlo a otra máquina no sirve de nada.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.coverage
+
+# Basura de macOS
+.DS_Store
+
+# Salidas del programa. Se rehacen con un comando a partir de los archivos
+# de entrada, que sí están versionados. Si alguna vez querés guardar un
+# resultado concreto, sacalo de acá o ponelo con `git add -f`.
+out/
+files/robot_ai.*
+files/robot_3dm.*
+files/robot_dxf.*
+files/revision_*.png

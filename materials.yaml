@@ -1,0 +1,26 @@
+# Catalogo de materiales.
+#
+# placa:            [ancho, alto] en milimetros. Ambos valores estrictamente positivos.
+# tolerancia_veta:  cuantos grados puede desviarse una pieza del eje de la veta.
+#                   Tiene que estar entre 0 y 180 grados inclusive.
+#                   El rango util real es 0 a 90 (la distancia angular al eje
+#                   de veta nunca supera 90 grados), asi que cualquier valor
+#                   de 90 o mas ya equivale a rotacion libre.
+#                   180 = rotacion libre, por convencion (la veta no importa, tipico de MDF)
+#                     5 = solo 0 y 180 grados, corte cruzado bloqueado
+
+mdf18:
+  placa: [1830, 2600]
+  tolerancia_veta: 180
+
+mdf15:
+  placa: [1830, 2600]
+  tolerancia_veta: 180
+
+multilam18:
+  placa: [1220, 2440]
+  tolerancia_veta: 5
+
+fenolico18:
+  placa: [1220, 2440]
+  tolerancia_veta: 5
