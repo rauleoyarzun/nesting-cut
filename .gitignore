@@ -10,11 +10,19 @@ __pycache__/
 # Basura de macOS
 .DS_Store
 
-# Salidas del programa. Se rehacen con un comando a partir de los archivos
-# de entrada, que sí están versionados. Si alguna vez querés guardar un
-# resultado concreto, sacalo de acá o ponelo con `git add -f`.
+# ARCHIVOS DE DISEÑO Y SALIDAS. Nada de esto se versiona, por dos razones
+# distintas que dan la misma regla:
+#
+#   - Los de entrada (.ai, .cdr, .3dm y los .dxf que traés de afuera) son
+#     trabajo tuyo, no del programa. No tienen por qué viajar a un servidor
+#     ajeno el día que esto se pushee a algún lado.
+#   - Los de salida se rehacen con un comando.
+#
+# Ningún test depende de estos archivos: cada uno se fabrica el suyo en una
+# carpeta temporal con bench/make_sample.py. `bench/files/` es sólo material
+# de prueba a mano, para bench/run_bench.py.
+#
+# Si alguna vez querés versionar un archivo concreto: `git add -f <archivo>`.
 out/
-files/robot_ai.*
-files/robot_3dm.*
-files/robot_dxf.*
-files/revision_*.png
+files/
+bench/files/
