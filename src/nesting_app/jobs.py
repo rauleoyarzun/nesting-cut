@@ -47,6 +47,7 @@ class Resultado:
     segundos: float
     sobrante_mm: float
     carpeta: Path
+    avisos: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -232,16 +233,23 @@ class Registro:
 
         try:
             trabajo.resultado = corredor(fuente, params, progreso, propia)
+            trabajo.avisos = list(trabajo.resultado.avisos)
         except Cancelado:
             trabajo.estado = Estado.CANCELADO
         except ERRORES_DEL_USUARIO as error:
             trabajo.error = str(error)
             trabajo.es_bug = False
+            # Si el corredor llegó a generar avisos antes de fallar -- por
+            # ejemplo, por qué no quedó ninguna pieza -- viajan colgados de
+            # la excepción (ver `corredor._con_avisos`) y no hay que
+            # perderlos: son la explicación de por qué no quedó nada.
+            trabajo.avisos = list(getattr(error, "avisos", ()))
             trabajo.estado = Estado.ERROR
         except Exception as error:  # noqa: BLE001 - se clasifica y se reporta
             trabajo.error = str(error) or type(error).__name__
             trabajo.detalle_tecnico = traceback.format_exc()
             trabajo.es_bug = True
+            trabajo.avisos = list(getattr(error, "avisos", ()))
             trabajo.estado = Estado.ERROR
         else:
             trabajo.estado = Estado.LISTO

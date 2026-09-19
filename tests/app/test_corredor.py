@@ -1,11 +1,14 @@
 """El corredor: de un archivo de entrada a un DXF acomodado."""
 
+import time
+
 import ezdxf
 import pytest
 
 from nesting.params import NestParams
 from nesting_app import corredor
 from nesting_app.archivos import Deposito
+from nesting_app.jobs import Estado, Registro
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +22,19 @@ def catalogo_aislado(tmp_path, monkeypatch):
 @pytest.fixture
 def deposito(tmp_path):
     return Deposito(tmp_path / "fuentes")
+
+
+def dxf_con_contorno_de_placa(tmp_path):
+    """El mismo archivo que usa el test de más abajo para el descarte: trae
+    dibujado, además de una pieza, el rectángulo del tamaño de la placa."""
+    doc = ezdxf.new("R2010", setup=True)
+    doc.units = 4
+    msp = doc.modelspace()
+    msp.add_lwpolyline([(0, 0), (1830, 0), (1830, 2600), (0, 2600)], close=True)
+    msp.add_lwpolyline([(2000, 0), (2100, 0), (2100, 100), (2000, 100)], close=True)
+    ruta = tmp_path / "con_placa.dxf"
+    doc.saveas(ruta)
+    return ruta
 
 
 def dxf_con(tmp_path, cuadrados, unidades=4, nombre="entrada.dxf"):
@@ -159,17 +175,59 @@ def test_si_la_verificacion_falla_no_queda_ningun_dxf(tmp_path, deposito, monkey
 def test_el_contorno_de_placa_se_descarta_igual_que_en_la_cli(tmp_path, deposito):
     """Los archivos reales del usuario traen dibujado el rectángulo de la
     placa. Si la interfaz no lo descartara, fallaría donde la CLI anda."""
-    doc = ezdxf.new("R2010", setup=True)
-    doc.units = 4
-    msp = doc.modelspace()
-    msp.add_lwpolyline([(0, 0), (1830, 0), (1830, 2600), (0, 2600)], close=True)
-    msp.add_lwpolyline([(2000, 0), (2100, 0), (2100, 100), (2000, 100)], close=True)
-    ruta = tmp_path / "con_placa.dxf"
-    doc.saveas(ruta)
-    fuente = deposito.registrar_local(ruta)
+    fuente = deposito.registrar_local(dxf_con_contorno_de_placa(tmp_path))
     salida = tmp_path / "t"
     salida.mkdir()
 
     resultado = corredor.acomodar(fuente, params(), lambda a: True, salida)
 
     assert resultado.placas == 1
+    assert any("rectángulo" in a and "placa" in a for a in resultado.avisos), (
+        f"esperaba un aviso sobre el contorno descartado, avisos={resultado.avisos!r}"
+    )
+
+
+def test_el_aviso_del_contorno_de_placa_llega_hasta_el_trabajo(tmp_path, deposito):
+    """El aviso solo se puede generar adentro de `acomodar()` -- necesita
+    las medidas del material, que `analizar()` ni siquiera conoce --, así
+    que este es el único punto donde puede probarse que de verdad llega
+    hasta `Trabajo.avisos`, que es lo que la interfaz puede leer."""
+    fuente = deposito.registrar_local(dxf_con_contorno_de_placa(tmp_path))
+    registro = Registro(tmp_path / "trabajos")
+    try:
+        trabajo = registro.crear(fuente, params(), corredor.acomodar)
+        fin = time.monotonic() + 10
+        while trabajo.estado not in (Estado.LISTO, Estado.ERROR, Estado.CANCELADO):
+            if time.monotonic() > fin:
+                raise AssertionError(f"el trabajo quedó en {trabajo.estado}")
+            time.sleep(0.01)
+
+        assert trabajo.estado == Estado.LISTO
+        assert any("rectángulo" in a and "placa" in a for a in trabajo.avisos), (
+            f"esperaba que el aviso llegara a trabajo.avisos, "
+            f"avisos={trabajo.avisos!r}"
+        )
+    finally:
+        registro.cerrar()
+
+
+def test_write_preview_que_falla_no_impide_terminar_bien(tmp_path, deposito, monkeypatch):
+    """Igual que en la CLI: si falla la previsualización, el DXF -- lo que
+    de verdad va a la fresadora -- ya se escribió con éxito, así que abortar
+    acá le haría creer al usuario que no salió nada."""
+    def preview_roto(*a, **k):
+        raise ValueError("no se pudo dibujar la previsualización")
+
+    monkeypatch.setattr(corredor, "write_preview", preview_roto)
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200), (300, 0, 150)]))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(fuente, params(), lambda a: True, salida)
+
+    assert (salida / "salida.dxf").is_file()
+    assert not (salida / "preview.png").exists()
+    assert any("previsualización" in a for a in resultado.avisos), (
+        f"esperaba un aviso explicando que la previsualización falló, "
+        f"avisos={resultado.avisos!r}"
+    )

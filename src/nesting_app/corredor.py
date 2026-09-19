@@ -39,6 +39,21 @@ class UnidadesNoDeclaradasError(ValueError):
     """
 
 
+def _con_avisos(error: Exception, avisos: list[str]) -> Exception:
+    """Cuelga los avisos ya generados de una excepción antes de lanzarla.
+
+    Si `acomodar()` falla después de haber calculado avisos (por ejemplo,
+    "no se encontró ninguna pieza", que es justamente el que explica por
+    qué no quedó nada), esos avisos no tienen dónde más viajar: `Resultado`
+    no llega a existir porque el trabajo no terminó bien. Se los deja como
+    atributo de la excepción -- el mismo lugar de donde `VerificacionFallidaError`
+    ya sacaba sus `violaciones` -- y `Registro._correr` los lee de ahí con
+    `getattr`, sin necesidad de conocer cada tipo de excepción en particular.
+    """
+    error.avisos = list(avisos)
+    return error
+
+
 class VerificacionFallidaError(ValueError):
     """El árbitro geométrico encontró el acomodo inválido.
 
@@ -133,12 +148,25 @@ def acomodar(
             for parte in contornos_placa
         )
 
-    write_diagnostic(carpeta / NOMBRE_DIAGNOSTICO, piezas, descartes)
+    try:
+        write_diagnostic(carpeta / NOMBRE_DIAGNOSTICO, piezas, descartes)
+    except OSError as error:
+        raise _con_avisos(
+            OSError(
+                f"no se pudo escribir el diagnóstico en "
+                f"{carpeta / NOMBRE_DIAGNOSTICO}: {error}. Verifique que el "
+                "directorio de destino exista."
+            ),
+            avisos,
+        ) from error
 
     if not piezas:
-        raise ValueError(
-            f"no se encontró ninguna pieza en {fuente.nombre}. "
-            "Mirá la revisión para ver qué se descartó y por qué."
+        raise _con_avisos(
+            ValueError(
+                f"no se encontró ninguna pieza en {fuente.nombre}. "
+                "Mirá la revisión para ver qué se descartó y por qué."
+            ),
+            avisos,
         )
 
     piezas = replicate(piezas, params.copias)
@@ -155,17 +183,39 @@ def acomodar(
     if violaciones:
         # Antes de escribir nada, y sin escribir nada. Esta es la regla más
         # dura del motor y no se ablanda por venir de una interfaz.
-        raise VerificacionFallidaError([v.detail for v in violaciones])
+        raise _con_avisos(
+            VerificacionFallidaError([v.detail for v in violaciones]), avisos
+        )
 
-    write_dxf(
-        carpeta / NOMBRE_DXF, drawing, piezas, resultado.placements,
-        material.sheet_w, material.sheet_h,
-    )
-    write_preview(
-        carpeta / NOMBRE_PREVIEW, piezas, resultado.placements,
-        material.sheet_w, material.sheet_h, resultado.utilization,
-        colors=_colores(drawing, piezas),
-    )
+    try:
+        write_dxf(
+            carpeta / NOMBRE_DXF, drawing, piezas, resultado.placements,
+            material.sheet_w, material.sheet_h,
+        )
+    except OSError as error:
+        raise _con_avisos(
+            OSError(
+                f"no se pudo escribir la salida en {carpeta / NOMBRE_DXF}: "
+                f"{error}. Verifique que el directorio de destino exista."
+            ),
+            avisos,
+        ) from error
+
+    try:
+        write_preview(
+            carpeta / NOMBRE_PREVIEW, piezas, resultado.placements,
+            material.sheet_w, material.sheet_h, resultado.utilization,
+            colors=_colores(drawing, piezas),
+        )
+    except (ValueError, OSError) as error:
+        # Cosmético, no estructural: el DXF (lo que de verdad va a la
+        # fresadora) ya se escribió arriba, con éxito. Igual que en la CLI,
+        # fallar acá con una excepción le haría creer al usuario que no
+        # quedó nada. Se degrada a aviso y se sigue.
+        avisos.append(
+            f"no se pudo generar la previsualización: {error}. El DXF sí se "
+            "escribió correctamente y está listo para usar."
+        )
 
     _, alto_usado = layout_cost(resultado, piezas)
     return Resultado(
@@ -175,6 +225,7 @@ def acomodar(
         segundos=resultado.seconds,
         sobrante_mm=material.sheet_h - alto_usado,
         carpeta=carpeta,
+        avisos=list(avisos),
     )
 
 
