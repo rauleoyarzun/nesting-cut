@@ -348,3 +348,59 @@ def test_beziers_that_do_not_meet_stay_separate(tmp_path):
 
     splines = [e for e in read_back(out).modelspace() if e.dxftype() == "SPLINE"]
     assert len(splines) == 2, "unir lo que no se toca inventaria geometria"
+
+
+# --- Un arco dentro de una polilínea (`bulges`) tiene que llegar al archivo
+# COMO arco: el CNC lo corta con una sola orden en vez de con una cadena de
+# rectas, y la pieza sigue siendo una entidad. ---
+
+ARQUEADA = Polyline(
+    ((0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)),
+    True, STYLE, bulges=(0.5, 0.0, 0.0, 0.0),
+)
+
+
+def arc_part():
+    return Part(id=0, outer=((0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)),
+                holes=(), entity_ids=(0,))
+
+
+def written_polyline(tmp_path, transform):
+    out = tmp_path / "out.dxf"
+    write_dxf(out, drawing_with([ARQUEADA]), [arc_part()],
+              [Placement(0, 0, transform)], 1000.0, 1000.0)
+    return [
+        e for e in read_back(out).modelspace()
+        if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == STYLE.layer
+    ]
+
+
+def test_a_bulged_polyline_keeps_its_arcs_in_the_output(tmp_path):
+    written = written_polyline(tmp_path, Transform.identity())
+
+    assert len(written) == 1, "una sola entidad, con arco y todo"
+    assert written[0].closed
+    assert [round(p[4], 9) for p in written[0].get_points("xyseb")] == [
+        0.5, 0.0, 0.0, 0.0
+    ]
+
+
+def test_a_mirrored_part_writes_the_mirrored_arc(tmp_path):
+    written = written_polyline(tmp_path, Transform(0.0, True, 0.0, 0.0))
+    assert [round(p[4], 9) for p in written[0].get_points("xyseb")] == [
+        -0.5, 0.0, 0.0, 0.0
+    ], "espejar invierte el sentido de giro del arco"
+
+
+def test_a_polyline_without_bulges_is_written_exactly_as_before(tmp_path):
+    recta = Polyline(((0.0, 0.0), (100.0, 0.0), (100.0, 100.0)), True, STYLE)
+    out = tmp_path / "out.dxf"
+    write_dxf(out, drawing_with([recta]), [arc_part()],
+              [Placement(0, 0, Transform.identity())], 1000.0, 1000.0)
+
+    written = [
+        e for e in read_back(out).modelspace()
+        if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == STYLE.layer
+    ]
+    assert len(written) == 1
+    assert all(p[4] == 0.0 for p in written[0].get_points("xyseb"))

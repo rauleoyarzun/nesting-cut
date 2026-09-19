@@ -139,7 +139,18 @@ def _emit(msp, doc, e) -> None:
         case Arc():
             msp.add_arc(e.center, e.radius, e.start_angle, e.end_angle, dxfattribs=attribs)
         case Polyline():
-            msp.add_lwpolyline(e.points, close=e.closed, dxfattribs=attribs)
+            if e.bulges:
+                # "xyb" = x, y, bulge por vértice: así guarda el DXF una
+                # polilínea con arcos, que es UNA entidad con tramos curvos
+                # exactos, sin un solo nodo intermedio.
+                msp.add_lwpolyline(
+                    [(x, y, b) for (x, y), b in zip(e.points, e.bulges)],
+                    format="xyb",
+                    close=e.closed,
+                    dxfattribs=attribs,
+                )
+            else:
+                msp.add_lwpolyline(e.points, close=e.closed, dxfattribs=attribs)
         case Bezier():
             _emit_bezier_path(msp, doc, [e])
         case _:

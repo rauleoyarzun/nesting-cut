@@ -64,3 +64,25 @@ def test_transform_identity():
     assert identity.mirror is False
     assert identity.dx == 0.0
     assert identity.dy == 0.0
+
+
+# --- Un tramo de polilínea puede ser un arco: es como el DXF guarda un
+# contorno con curvas en UNA entidad, sin nodos intermedios. `bulges` nace
+# vacío, que significa "todo recto" -- el comportamiento de siempre. ---
+
+
+def test_a_polyline_has_no_bulges_by_default():
+    polyline = Polyline(((0.0, 0.0), (10.0, 0.0)), False, STYLE)
+    assert polyline.bulges == ()
+
+
+def test_a_bulge_per_vertex_is_accepted():
+    polyline = Polyline(((0.0, 0.0), (10.0, 0.0), (10.0, 10.0)), True, STYLE,
+                        bulges=(0.0, 1.0, 0.0))
+    assert polyline.bulges == (0.0, 1.0, 0.0)
+
+
+def test_a_wrong_number_of_bulges_is_rejected():
+    """Callar un desajuste acá deja tramos con la curvatura de otro."""
+    with pytest.raises(ValueError, match="bulges"):
+        Polyline(((0.0, 0.0), (10.0, 0.0), (10.0, 10.0)), True, STYLE, bulges=(1.0,))
