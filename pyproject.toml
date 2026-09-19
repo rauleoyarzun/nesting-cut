@@ -11,6 +11,9 @@ dependencies = [
     "Pillow",
     "PyYAML",
     "rhino3dm",
+    "fastapi",
+    "uvicorn",
+    "pywebview",
 ]
 
 [project.optional-dependencies]

@@ -10,7 +10,28 @@ from pathlib import Path
 
 import yaml
 
-DEFAULT_MATERIALS_PATH = Path(__file__).resolve().parents[3] / "materials.yaml"
+def _default_materials_path() -> Path:
+    """Dónde está el catálogo que viene con el programa.
+
+    Contar niveles sobre `__file__` funciona desde el repo y NO funciona
+    dentro de un ejecutable congelado, donde PyInstaller deja los recursos
+    en otro lado. `nesting_app.rutas` sabe distinguir los dos casos.
+
+    La importación es perezosa a propósito: `nesting` no puede depender de
+    `nesting_app` al importarse, o se invertiría la dependencia que sostiene
+    toda la arquitectura. Acá se usa sólo si alguien pide el valor por
+    omisión, y si el paquete de la interfaz no está (una instalación del
+    motor a secas), se cae a la cuenta de siempre.
+    """
+    try:
+        from nesting_app.rutas import recurso
+
+        return recurso("materials.yaml")
+    except (ImportError, FileNotFoundError):
+        return Path(__file__).resolve().parents[3] / "materials.yaml"
+
+
+DEFAULT_MATERIALS_PATH = _default_materials_path()
 
 GRAIN_EPS = 1e-9
 
