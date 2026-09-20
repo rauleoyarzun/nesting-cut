@@ -15,6 +15,45 @@ from nesting.engine.raster.search import feasible_positions
 from nesting.model.part import Part
 
 
+MAX_SHEET_PIXELS = 200_000_000
+"""Tope de la grilla de la PLACA, distinta de la de las piezas (MAX_GRID_PIXELS
+en masks.py) y con su propio presupuesto.
+
+Sin este tope, `reset` aloca lo que le pidan. Con resolución 0.005 mm/px sobre
+una placa de 1000x1000 pide 196000x196000 = 35.8 GiB. En macOS y Linux eso NO
+falla: el sistema entrega memoria virtual sin respaldarla, y `np.zeros` usa
+calloc, que recibe páginas en cero de forma perezosa. El programa seguía
+adelante y recién más tarde chocaba con el tope de la grilla de las piezas,
+que sí levanta un ValueError con mensaje claro. O sea que el mensaje bueno
+salía POR CASUALIDAD, por el orden de las dos asignaciones.
+
+En Windows no hay sobrecompromiso: la asignación falla en el acto con
+`MemoryError`, que no es ninguno de los errores que `nesting_app.jobs`
+clasifica como problema del usuario. Resultado: alguien que escribía una
+resolución muy fina veía "se rompió el programa" con un traceback, por una
+decisión enteramente suya. Lo encontró la primera corrida de los tests en
+Windows.
+
+El tope se chequea acá, donde está la asignación, así que las dos plataformas
+se comportan igual y el error sale antes de reservar un solo byte.
+
+El valor, medido sobre la placa más grande del catálogo (1830x2600, margen 10,
+o sea 1810x2580 mm útiles), en píxeles de la grilla -- un byte cada uno:
+
+    2 mm/px (el valor por omisión)      1,2 M     1 MB
+    1 mm/px                             4,7 M     4 MB
+    0,5 mm/px                            19 M    18 MB
+    0,25 mm/px                           75 M    71 MB
+    0,2 mm/px                           117 M   111 MB
+    0,1 mm/px                           467 M   445 MB   <- rechazada
+
+200 millones (unos 190 MB) deja pasar hasta 0,2 mm/px en la placa más grande
+y rechaza de ahí para abajo. Para cortar madera eso ya es absurdo: la fresa
+más fina del taller mide varios milímetros, así que una grilla más fina que
+medio milímetro no cambia ningún corte, sólo consume memoria.
+"""
+
+
 class RasterOracle:
     """Collision by bitmap overlap, position search by cross-correlation."""
 
@@ -35,6 +74,15 @@ class RasterOracle:
         usable_h = sheet_h - 2 * config.margin
         cols = max(0, math.floor(usable_w / resolution))
         rows = max(0, math.floor(usable_h / resolution))
+
+        if rows * cols > MAX_SHEET_PIXELS:
+            raise ValueError(
+                "la grilla de la placa es demasiado grande: una placa de "
+                f"{sheet_w:.0f}x{sheet_h:.0f} mm a resolución {resolution} mm/px "
+                f"necesita {cols}x{rows} = {rows * cols:,} píxeles "
+                f"(tope: {MAX_SHEET_PIXELS:,}). "
+                "Probá con una resolución más gruesa."
+            )
 
         self._sheet = np.zeros((rows, cols), dtype=bool)
         self._frontier = 0

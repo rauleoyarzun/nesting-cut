@@ -72,14 +72,23 @@ def test_los_tres_archivos_se_pueden_bajar(cliente, tmp_path):
     }).json()["id"]
     esperar(cliente, trabajo_id, {"listo"})
 
+    # El DXF se compara sin el salto de línea a propósito. ezdxf escribe en
+    # modo texto, así que en Windows el archivo arranca con "  0\r\n" y en
+    # macOS con "  0\n". Las dos cosas son DXF válido -- AutoCAD en Windows
+    # escribe CRLF -- y cualquier lector acepta las dos. La versión anterior
+    # comparaba los primeros cuatro bytes contra b"  0\n" y fallaba en
+    # Windows por el \r, marcando como roto un archivo perfectamente bueno.
     for nombre, arranque in [
-        ("salida.dxf", b"  0\nSECTION"),
+        ("salida.dxf", b"  0"),
         ("preview.png", b"\x89PNG"),
         ("diagnostico.png", b"\x89PNG"),
     ]:
         respuesta = cliente.get(f"/api/trabajos/{trabajo_id}/{nombre}")
         assert respuesta.status_code == 200, nombre
-        assert respuesta.content[:4] == arranque[:4], nombre
+        assert respuesta.content.startswith(arranque), nombre
+
+    dxf = cliente.get(f"/api/trabajos/{trabajo_id}/salida.dxf").content
+    assert dxf[3:4] in (b"\n", b"\r"), "después del código de grupo va un salto de línea"
 
 
 def test_el_nombre_de_archivo_no_sale_de_la_lista_permitida(cliente, tmp_path):

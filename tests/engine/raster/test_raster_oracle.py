@@ -5,7 +5,7 @@ import pytest
 
 from nesting.engine.oracle import NestConfig, Weights
 from nesting.engine.packer import pack
-from nesting.engine.raster.oracle import RasterOracle
+from nesting.engine.raster.oracle import MAX_SHEET_PIXELS, RasterOracle
 from nesting.engine.shelf_oracle import ShelfOracle
 from nesting.geometry.verify import verify
 from nesting.model.entities import Transform
@@ -233,3 +233,48 @@ def test_a_finer_resolution_does_not_break_the_verifier():
     result = pack(parts, MATERIAL, config, RasterOracle)
     assert verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
                   sep=config.sep, margin=config.margin) == []
+
+
+# --- el tope de la grilla de la placa ---------------------------------------
+
+
+def test_una_resolucion_absurda_se_rechaza_antes_de_pedir_la_memoria():
+    """Lo encontró la primera corrida de los tests en Windows.
+
+    Sin este tope, `reset` pide lo que le digan: 1000x1000 mm a 0.005 mm/px
+    son 196000x196000 = 35.8 GiB. En macOS y Linux esa asignación NO falla
+    -- hay sobrecompromiso y `np.zeros` recibe páginas en cero de forma
+    perezosa --, así que el programa seguía adelante y el mensaje bueno salía
+    más tarde y por casualidad, desde el tope de la grilla de las PIEZAS.
+
+    En Windows no hay sobrecompromiso: `MemoryError` en el acto. Y
+    `MemoryError` no está entre los errores que `nesting_app.jobs` clasifica
+    como problema del usuario, así que la interfaz decía "se rompió el
+    programa" y mostraba un traceback por una decisión enteramente suya.
+
+    Se chequea donde está la asignación, así que las dos plataformas se
+    comportan igual y nadie reserva un byte antes de saber que sobra.
+    """
+    oracle = RasterOracle()
+    config = replace(CONFIG, resolution=0.005)
+
+    with pytest.raises(ValueError) as capturado:
+        oracle.reset(1000.0, 1000.0, config)
+
+    assert not isinstance(capturado.value, MemoryError)
+    mensaje = str(capturado.value)
+    assert "grilla" in mensaje and "resolución" in mensaje
+    assert "más gruesa" in mensaje, "el error tiene que decir qué hacer"
+
+
+def test_la_resolucion_por_omision_sobre_la_placa_mas_grande_pasa_holgada():
+    """Un tope que estorba el uso normal es peor que no tenerlo. La placa más
+    grande del catálogo que viene con el programa mide 1830x2600."""
+    oracle = RasterOracle()
+    oracle.reset(1830.0, 2600.0, replace(CONFIG, margin=10.0, resolution=2.0))
+
+    usados = oracle._sheet.size
+    assert usados < MAX_SHEET_PIXELS // 100, (
+        f"el uso normal consume {usados:,} de un tope de {MAX_SHEET_PIXELS:,}: "
+        "el margen se achicó demasiado"
+    )
