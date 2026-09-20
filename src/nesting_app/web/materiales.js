@@ -6,6 +6,15 @@
  * es exacto y no le dice nada a nadie: quien compra multilaminado sabe que
  * hay que respetar la veta, no que eso son 5 grados. */
 
+// Todo el archivo va adentro de una IIFE. Un <script> clásico comparte el
+// ámbito global con los demás, así que declarar acá `const apiJson` --
+// que app.js ya declaró -- es un SyntaxError que mata este archivo ENTERO
+// antes de registrar un solo handler. Pasó: la pantalla de materiales
+// abría (ese botón lo registra app.js) pero no andaban ni "Volver" ni
+// "Cancelar" ni aparecía ningún material, y la consola de una ventana de
+// pywebview no se puede abrir para verlo.
+(() => {
+
 const { apiJson, postJson, refrescarMateriales, mostrarMateriales, mostrarError, $ } =
   window.__nesting;
 
@@ -173,3 +182,5 @@ $("btn-restaurar").onclick = async () => {
   limpiarFormulario();
   await dibujarTabla();
 };
+
+})();

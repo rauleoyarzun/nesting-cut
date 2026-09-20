@@ -343,3 +343,88 @@ def test_ningun_dato_del_material_se_interpola_en_un_innerhtml(js_materiales):
     assert not sospechosas, (
         f"interpola un campo de un material en un innerHTML: {sospechosas}"
     )
+
+
+# --- Lo que rompió la pantalla de materiales la primera vez que se abrió ------
+
+
+def _sin_comentarios_ni_textos(js: str) -> str:
+    """Reemplaza comentarios y literales de texto por espacios.
+
+    Deja las llaves y los saltos de línea donde estaban, que es lo único que
+    le importa al escaneo de abajo. Se hace a mano porque Python no trae un
+    analizador de JavaScript y sumar uno por esto sería más máquina que
+    problema.
+    """
+    salida = []
+    i, n = 0, len(js)
+    while i < n:
+        c = js[i]
+        par = js[i : i + 2]
+        if par == "//":
+            fin = js.find("\n", i)
+            fin = n if fin == -1 else fin
+            salida.append(" " * (fin - i))
+            i = fin
+        elif par == "/*":
+            fin = js.find("*/", i + 2)
+            fin = n if fin == -1 else fin + 2
+            salida.append("".join(ch if ch == "\n" else " " for ch in js[i:fin]))
+            i = fin
+        elif c in "\"'`":
+            cierre, j = c, i + 1
+            while j < n and js[j] != cierre:
+                j += 2 if js[j] == "\\" else 1
+            j = min(j + 1, n)
+            salida.append("".join(ch if ch == "\n" else " " for ch in js[i:j]))
+            i = j
+        else:
+            salida.append(c)
+            i += 1
+    return "".join(salida)
+
+
+def _declaraciones_globales(js: str) -> set[str]:
+    """Los nombres que el archivo declara en el ámbito de más afuera."""
+    limpio = _sin_comentarios_ni_textos(js)
+    nombres: set[str] = set()
+    profundidad = 0
+    for linea in limpio.split("\n"):
+        if profundidad == 0:
+            hallazgo = re.match(
+                r"\s*(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)", linea
+            )
+            if hallazgo:
+                nombres.add(hallazgo.group(1))
+            destructurado = re.match(r"\s*(?:const|let|var)\s*\{([^}]*)\}", linea)
+            if destructurado:
+                for parte in destructurado.group(1).split(","):
+                    nombre = parte.split(":")[-1].strip()
+                    if nombre:
+                        nombres.add(nombre)
+        profundidad += linea.count("{") + linea.count("(") - linea.count("}") - linea.count(")")
+    return nombres
+
+
+def test_los_dos_scripts_no_declaran_el_mismo_nombre_global(js, js_materiales):
+    """Dos `<script>` clásicos comparten el ámbito global.
+
+    Declarar en `materiales.js` un `const` que `app.js` ya declaró es un
+    SyntaxError, y no falla la línea: **falla el archivo entero** antes de
+    registrar un solo handler. Pasó de verdad la primera vez que se abrió la
+    pantalla: `materiales.js` hacía `const { apiJson, ... } = window.__nesting`
+    y `app.js` ya tenía `const apiJson`. La pantalla abría --ese botón lo
+    registra app.js-- pero no andaban ni "Volver" ni "Cancelar" ni aparecía
+    ningún material, y la consola de una ventana de pywebview no se puede
+    abrir para ver el error.
+
+    El arreglo fue envolver `materiales.js` en una IIFE. Este test existe
+    para que nadie la saque sin enterarse.
+    """
+    chocan = _declaraciones_globales(js) & _declaraciones_globales(js_materiales)
+
+    assert not chocan, (
+        f"app.js y materiales.js declaran los mismos nombres globales: {sorted(chocan)}. "
+        "Dos <script> clásicos comparten ámbito, así que eso es un SyntaxError "
+        "que mata el segundo archivo entero."
+    )

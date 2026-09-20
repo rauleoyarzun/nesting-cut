@@ -166,7 +166,19 @@ select.control { padding: 0 12px; appearance: none; cursor: pointer; }
 }
 .form-material h2 { margin: 0; font-size: 15px; }
 .fila { display: flex; gap: 10px; }
-.fila > .campo { flex-grow: 1; }
+/* `min-width: 0` no es decorativo: sin él un campo de flex no baja de su
+   ancho de contenido, y dos inputs numéricos con su unidad al lado suman
+   más que los 284 px útiles del panel. Se desbordaban 124 px: el campo
+   "Alto" quedaba dibujado fuera de la tarjeta blanca. */
+.fila > .campo { flex-grow: 1; min-width: 0; }
+/* La flechita del input numérico choca con la unidad que ya está al lado,
+   y en una medida en milímetros no sirve de nada: se escribe, no se
+   incrementa de a uno. */
+.control input[type="number"] { appearance: textfield; margin: 0; }
+.control input[type="number"]::-webkit-outer-spin-button,
+.control input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
 .opcion {
   display: flex; gap: 10px; padding: 10px 12px; cursor: pointer;
   border: 1px solid var(--borde); border-radius: var(--radio);
