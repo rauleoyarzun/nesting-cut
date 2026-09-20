@@ -843,3 +843,42 @@ Task 14: completa (commits 14cbf8e..4a797f1). Empaquetado para Mac.
   BIEN, está oculta. El bug es medir 0 estando visible. Sin esa distinción la herramienta daría una falsa
   alarma en cada corrida, y una herramienta que siempre se queja se deja de mirar. Tiene su test.
   La revisión de cierre es sólo macOS y se saltea diciéndolo, en vez de dar un falso verde.
+
+=== REVISIÓN DE SEGURIDAD (pedida por el dueño) ===
+Dos revisiones en paralelo: fuga de datos personales, y superficie de ataque del programa instalado.
+
+UNA VULNERABILIDAD REAL, ARREGLADA (435f27f). Con el programa abierto, cualquier página que el usuario
+visitara podía leerle archivos del disco. DNS rebinding: el atacante pone el TTL de su DNS en cero y
+rebindea su dominio a 127.0.0.1; para el navegador sigue siendo el MISMO ORIGEN, así que lo deja leer las
+respuestas. Pide `GET /`, que entrega el token en un <meta> sin pedir nada a cambio -- tiene que ser así,
+es como arranca la interfaz --, y con ese token encadena POST /api/archivos/local, que acepta CUALQUIER
+ruta del disco. Reproducido de punta a punta antes de arreglar: con `Host: evil.attacker.com` salió el
+token y después un PNG de 37 KB con un dibujo privado. El puerto aleatorio no protege: son 65535.
+  Lo corta el `Host`, que el JavaScript no puede falsificar. La cerradura envuelve a `_ConToken` y no al
+  revés -- la página que entrega el token es lo que el atacante quiere leer --, y vive en desktop.py y no
+  en api.py, porque "el único host válido es el local" es falso para la versión web.
+
+LIMPIO Y VERIFICADO, NO SUPUESTO: cero XSS (se rastreó cada dato de archivo y catálogo hasta el DOM), cero
+recorrido de rutas, el middleware del token no se esquiva (15 variantes de path), sin deserialización
+insegura, y `Puente.guardar()` aguanta ADS, mayúsculas en FS insensibles, nombres reservados, UNC y \\?\.
+Ningún archivo de diseño estuvo JAMÁS en la historia de git -- censo de todas las rutas de todos los
+commits --, y el reflog prueba que la historia previa al filter-branch nunca se pusheó. Cero credenciales
+en los 304 blobs. Sin telemetría.
+
+QUEDA ABIERTO, SIN ARREGLAR:
+  - Cualquier proceso local con el mismo usuario se lleva el token con un curl a `GET /` tras barrer
+    puertos. El Host no lo tapa. Un proceso que corre como el usuario ya puede leer sus archivos sin esto;
+    importa de verdad si hay OTRA cuenta en la máquina. El arreglo es no pasar el token por HTTP sino por
+    el canal de pywebview, con coletazos en la versión web.
+  - El binario está firmado sólo ad-hoc, sin hardened runtime, y la interfaz se relee del disco en cada
+    pedido: otro admin de la máquina reescribe app.js y su código corre dentro de la ventana.
+
+DECISIÓN DEL DUEÑO: NO se reescribe la historia. Su argumento, que es el bueno: el path `/Users/raulo` no
+agrega nada que el repo no diga ya -- la cuenta es rauleoyarzun, el README y la licencia llevan su nombre.
+Un path absoluto no es una credencial. Reescribir historia era el riesgo más alto de toda la jornada para
+tapar lo de menor valor, y el filter-branch anterior de este mismo proyecto había borrado archivos del
+disco además de sacarlos de git. El árbol de trabajo SÍ quedó limpio (07f8d1b), así que esto sólo afecta a
+lo ya pusheado.
+  LO QUE SIGUE EN LA HISTORIA Y ES DISTINTO EN NATURALEZA: las dos capturas viejas dibujan robot_raaulo.ai
+  entero. No son fabricables a esa resolución, pero sí identificables. Si el repo se hace público alguna
+  vez, hay que volver a mirarlo -- y ahí alcanza con reescribir esos dos blobs, que es mucho más chico.
