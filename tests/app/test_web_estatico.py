@@ -235,3 +235,42 @@ def test_el_css_se_carga_desde_el_html(html):
 
 def test_el_javascript_se_carga_desde_el_html(html):
     assert 'src="app.js"' in html
+
+
+def test_la_pagina_no_le_pide_nada_a_ningun_servidor_de_afuera(html):
+    """La tipografía venía de fonts.googleapis.com, o sea que cada vez que
+    alguien abría el programa su IP y su user-agent viajaban a un servidor de
+    Google sin que nadie le avisara -- en una herramienta de taller que por lo
+    demás no habla con nadie. Y sin internet no cargaba.
+
+    Lo notó una revisión de seguridad. Ahora la fuente la sirve el programa.
+    """
+    externos = re.findall(r'(?:href|src)="(https?://[^"]+)"', html)
+    assert externos == [], f"la página carga cosas de afuera: {externos}"
+
+
+def test_la_fuente_viaja_con_el_programa(css):
+    ruta = rutas.recurso("web") / "fuentes"
+    hoja = ruta / "plus-jakarta-sans.css"
+    assert hoja.is_file()
+
+    declarados = re.findall(r"url\(([^)]+\.woff2)\)", hoja.read_text(encoding="utf-8"))
+    assert declarados, "la hoja de la fuente no declara ningún archivo"
+    for nombre in declarados:
+        assert not nombre.startswith("http"), f"{nombre} sigue apuntando afuera"
+        assert (ruta / nombre).is_file(), f"falta {nombre}"
+
+    # Los pesos que la interfaz usa de verdad, no los que vinieron de regalo.
+    usados = {int(p) for p in re.findall(r"font-weight:\s*(\d+)", css)}
+    disponibles = {int(p) for p in re.findall(r"-(\d+)-latin\.woff2", " ".join(declarados))}
+    assert usados <= disponibles, f"faltan pesos: {sorted(usados - disponibles)}"
+
+
+def test_viaja_la_licencia_de_la_fuente():
+    """Plus Jakarta Sans es SIL Open Font License: se puede redistribuir, y
+    la licencia exige que el aviso de copyright viaje con ella."""
+    licencia = rutas.recurso("web") / "fuentes" / "LICENSE-fuente.txt"
+    assert licencia.is_file()
+    texto = licencia.read_text(encoding="utf-8")
+    assert "SIL OPEN FONT LICENSE" in texto.upper()
+    assert "Copyright" in texto
