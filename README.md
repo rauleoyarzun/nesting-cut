@@ -65,10 +65,14 @@ para correrlo sobre un servidor sin pantalla.
 
 ![La pantalla principal: el archivo elegido, los parámetros y el acomodo terminado](docs/imagenes/pantalla.png)
 
-Un acomodo de verdad: 94 piezas de un `.ai` sobre una placa de MDF de
-1830 × 2600. Entraron todas en **una sola placa**, ocupando el 47.7% de la
-superficie, y —esto es lo que importa— la franja de **715 mm** que se ve libre
-arriba queda entera para el próximo trabajo.
+Un acomodo de verdad: las 12 piezas de una banqueta —asientos redondos y patas
+cóncavas—, tres copias de cada una, sobre una placa de MDF de 1830 × 2600.
+Entraron todas en **una sola placa**, ocupando el 40.7% de la superficie, y
+—esto es lo que importa— la franja de **694 mm** que se ve libre arriba queda
+entera para el próximo trabajo.
+
+El archivo de la captura lo genera `bench/make_sample.py`, así que podés
+reproducirla.
 
 El resultado dice tres cosas: **cuántas placas** hicieron falta, **qué
 porcentaje** de esa superficie quedó ocupado por piezas, y el **sobrante** —los
@@ -85,9 +89,10 @@ resultado a medias: el DXF no llega a escribirse.
 ![La solapa Revisión: los descartes marcados sobre el dibujo original, con una lupa y el motivo de cada uno](docs/imagenes/revision.png)
 
 Los descartes marcados **sobre tu propio dibujo**, con un círculo de color en el
-lugar exacto, una lupa por cada uno y el motivo escrito al lado: dos tramos
-sueltos que no encierran área y un rectángulo que resultó ser del tamaño exacto
-de la placa. Abajo, cuántos hubo de cada clase.
+lugar exacto, una lupa por cada uno y el motivo escrito al lado. Acá son dos
+tramos sueltos de 10 y 12 mm que no encierran área, así que no pueden ser el
+contorno de ninguna pieza; la lupa muestra dónde están y a qué escala. Abajo,
+cuántos hubo de cada clase.
 
 Esto aparece **al segundo de abrir el archivo**, sin acomodar nada. Es cuando
 sirve: todavía estás a tiempo de volver al original y corregirlo.
