@@ -5,6 +5,7 @@ queda es un servidor HTTP que sirve exactamente igual detrás de un dominio.
 """
 
 import argparse
+import os
 import secrets
 import sys
 import threading
@@ -49,6 +50,130 @@ def falta_webview2() -> bool:
         except OSError:
             continue
     return True
+
+
+def _cartel(mensaje: str) -> None:
+    """El cartel nativo de Windows. Aparte para poder probar `avisar`."""
+    import ctypes
+
+    MB_ICONERROR = 0x10
+    ctypes.windll.user32.MessageBoxW(0, mensaje, "Nesting", MB_ICONERROR)
+
+
+def avisar(mensaje: str) -> None:
+    """Le pone el mensaje delante al usuario, y no en una consola que no hay.
+
+    El .exe se arma con `console=False` -- que es lo correcto, porque si no
+    queda una ventana negra detrás del programa --, y eso hace que stdout y
+    stderr no vayan a ningún lado. Todo lo que este programa tiene para
+    decirle al usuario antes de abrir la ventana pasa por acá: un `print` a
+    secas es un doble click que no hace nada, que es peor que el error feo.
+
+    El cartel no necesita que la ventana del programa exista, que es
+    exactamente el caso en el que hace falta.
+    """
+    print(mensaje, file=sys.stderr)
+    if sys.platform == "win32" and rutas.esta_congelado():
+        _cartel(mensaje)
+
+
+class VentanaNoDisponible(RuntimeError):
+    """El motor nativo de la ventana no cargó. El mensaje es para el usuario."""
+
+
+def desmarcar_zona_internet(carpeta: Path | None = None) -> int:
+    """Le saca a las DLL del paquete la marca de "esto vino de internet".
+
+    Windows le pone esa marca -- un flujo alternativo de NTFS llamado
+    `Zone.Identifier` -- a todo archivo que sale de un .zip bajado con el
+    navegador, y el Explorador se la propaga a cada cosa que descomprime.
+    A Python no le importa, por eso el programa arranca igual. Pero la
+    ventana la dibuja .NET, y .NET SE NIEGA a cargar un assembly marcado
+    así: la carga tira FileLoadException y clr_loader, que no la ve venir,
+    devuelve un puntero nulo.
+
+    Lo que le llegó al primero que recibió el .zip fue "Failed to resolve
+    Python.Runtime.Loader.Initialize", un renglón que no nombra ni la marca
+    ni la forma de sacarla, en un programa que se cierra solo.
+
+    Borrar el flujo es literalmente lo que hace `Unblock-File` de PowerShell,
+    y el programa puede hacérselo a sí mismo: para cuando esto corre, el
+    proceso ya está andando.
+
+    Sólo las .dll, que son los únicos archivos que .NET va a cargar como
+    assembly. Recorrer todo lo demás que trae scipy sería pagar un rato de
+    arranque, en cada arranque, por nada.
+
+    Devuelve cuántas desmarcó. Que no pueda -- una carpeta de sólo lectura,
+    un antivirus -- no es motivo para no abrir: si la marca frena igual, el
+    mensaje de `motor_de_ventana` explica cómo sacarla a mano.
+    """
+    if sys.platform != "win32":
+        return 0
+    # La rendija por la que el CI prueba que la marca es de verdad la causa:
+    # con esto puesto el programa NO se defiende, así que el autotest sobre
+    # un paquete marcado tiene que fallar. Si un día deja de fallar, es que
+    # Windows o .NET cambiaron y esta función dejó de hacer falta.
+    if os.environ.get("NESTING_SIN_DESMARCAR"):
+        return 0
+    if carpeta is None:
+        if not rutas.esta_congelado():
+            return 0
+        carpeta = Path(sys._MEIPASS)  # noqa: SLF001 - así lo expone PyInstaller
+    desmarcadas = 0
+    for dll in carpeta.rglob("*.dll"):
+        try:
+            os.remove(f"{dll}:Zone.Identifier")
+        except OSError:
+            continue  # no tenía la marca, o no nos dejan escribir ahí
+        desmarcadas += 1
+    return desmarcadas
+
+
+def _por_que_no_abre(error: Exception) -> str:
+    """El mensaje que reemplaza a la traza que el usuario no puede leer."""
+    detalle = f"{type(error).__name__}: {error}"
+    if sys.platform != "win32":
+        return f"no cargó el motor de la ventana -- {detalle}"
+    return (
+        "No se pudo cargar la parte de .NET que dibuja la ventana.\n"
+        "\n"
+        "Si bajaste el programa comprimido, lo más probable es que Windows le "
+        "haya puesto a sus archivos la marca de 'esto vino de internet': .NET "
+        "se niega a cargarlos así. Abrí PowerShell en la carpeta del programa "
+        "y corré\n"
+        "\n"
+        "    Get-ChildItem -Recurse . | Unblock-File\n"
+        "\n"
+        f"El error de abajo fue -- {detalle}"
+    )
+
+
+def motor_de_ventana(inicializar=None):
+    """Importa pywebview y carga el motor nativo de la plataforma.
+
+    Es el paso donde se rompió el paquete de Windows, y el único del arranque
+    que se puede ejercer sin abrir una ventana: por eso vive separado de
+    `main()` y por eso el autotest lo llama. `import webview` a secas no
+    alcanzaría: el backend -- y con él pythonnet, y con él .NET -- se carga
+    recién en `initialize()`.
+
+    `inicializar` es para los tests. pywebview atrapa sólo `ImportError` al
+    elegir el backend, así que cualquier otra cosa que pase abajo sale por
+    acá; de ahí el `except Exception` y no algo más fino.
+    """
+    desmarcar_zona_internet()
+    import webview
+    # Del módulo y no de `webview.guilib`: el paquete define `guilib = None`
+    # después de importar el submódulo, así que el atributo del paquete es
+    # None hasta que pywebview elige el backend.
+    from webview.guilib import initialize
+
+    try:
+        (inicializar or initialize)()
+    except Exception as error:  # noqa: BLE001 - ver el docstring
+        raise VentanaNoDisponible(_por_que_no_abre(error)) from error
+    return webview
 
 
 HOSTS_LOCALES = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
@@ -402,6 +527,10 @@ def _autotest() -> int:
     """
     registro = Registro(Path(rutas.carpeta_datos()) / "autotest")
     try:
+        # Primero el motor de la ventana: es la parte que más se rompe al
+        # empaquetar -- .NET, pythonnet, las DLL nativas de pywebview -- y no
+        # necesita que el servidor esté arriba para contestar.
+        motor_de_ventana()
         token, _, url = servidor(Deposito(Path(rutas.carpeta_datos()) / "autotest-f"), registro)
         pedido = urllib.request.Request(
             f"{url}/api/materiales", headers={"X-Token": token}
@@ -432,14 +561,17 @@ def main(argv: list[str] | None = None) -> int:
         return _autotest()
 
     if falta_webview2():
-        print(
+        avisar(
             "Falta el runtime de WebView2, que es lo que dibuja la ventana.\n"
-            "Se baja gratis de https://go.microsoft.com/fwlink/p/?LinkId=2124703",
-            file=sys.stderr,
+            "Se baja gratis de https://go.microsoft.com/fwlink/p/?LinkId=2124703"
         )
         return 1
 
-    import webview
+    try:
+        webview = motor_de_ventana()
+    except VentanaNoDisponible as error:
+        avisar(str(error))
+        return 1
 
     carpeta = rutas.carpeta_datos()
     deposito = Deposito(carpeta / "fuentes")

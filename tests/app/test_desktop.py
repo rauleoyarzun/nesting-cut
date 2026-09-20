@@ -100,6 +100,185 @@ def test_autotest_falla_si_falta_un_recurso(tmp_path, monkeypatch, capsys):
     assert "falta" in capsys.readouterr().err.lower()
 
 
+def test_el_autotest_carga_el_motor_de_la_ventana(tmp_path, monkeypatch):
+    """El agujero por el que se coló el bug que le llegó al primer usuario.
+
+    El autotest arrancaba el servidor, pedía una ruta, decía "ok" y salía 0
+    sin haber tocado una sola línea del stack de la ventana: `import webview`
+    estaba en la rama de `main()` que el autotest justamente no toma. El .exe
+    se armaba con el check en verde y reventaba al abrirlo.
+    """
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+    llamadas = []
+    monkeypatch.setattr(desktop, "motor_de_ventana", lambda: llamadas.append(1))
+
+    assert desktop.main(["--autotest"]) == 0
+    assert llamadas == [1]
+
+
+def test_el_autotest_falla_si_el_motor_de_la_ventana_no_carga(
+    tmp_path, monkeypatch, capsys
+):
+    """Que falle es todo el punto: es lo que tiene que frenar al paquete
+    antes de que salga de la máquina que lo arma."""
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+
+    def explota():
+        raise desktop.VentanaNoDisponible("el motor de la ventana no cargó")
+
+    monkeypatch.setattr(desktop, "motor_de_ventana", explota)
+
+    assert desktop.main(["--autotest"]) == 1
+    assert "el motor de la ventana no cargó" in capsys.readouterr().err
+
+
+def test_desmarcar_zona_internet_borra_la_marca_de_las_dll(tmp_path, monkeypatch):
+    """La marca que Windows le pone a todo lo que sale de un .zip bajado.
+
+    .NET se niega a cargar un assembly marcado así, y eso es exactamente lo
+    que rompió en la máquina del primer usuario: el programa arrancaba (a
+    Python la marca no le importa) y moría al cargar Python.Runtime.dll.
+    """
+    monkeypatch.setattr(sys, "platform", "win32")
+    (tmp_path / "pythonnet" / "runtime").mkdir(parents=True)
+    (tmp_path / "pythonnet" / "runtime" / "Python.Runtime.dll").write_bytes(b"")
+    (tmp_path / "clr_loader.dll").write_bytes(b"")
+    (tmp_path / "materials.yaml").write_bytes(b"")
+    borrados = []
+    monkeypatch.setattr(desktop.os, "remove", borrados.append)
+
+    assert desktop.desmarcar_zona_internet(tmp_path) == 2
+    assert all(ruta.endswith(":Zone.Identifier") for ruta in borrados)
+    assert any("Python.Runtime.dll" in ruta for ruta in borrados)
+    assert not any("materials.yaml" in ruta for ruta in borrados)
+
+
+def test_desmarcar_zona_internet_no_toca_nada_fuera_de_windows(tmp_path, monkeypatch):
+    """`Zone.Identifier` es un flujo alternativo de NTFS. En Mac, el nombre
+    con dos puntos es un archivo común y borrarlo sería borrar otra cosa."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    (tmp_path / "algo.dll").write_bytes(b"")
+    borrados = []
+    monkeypatch.setattr(desktop.os, "remove", borrados.append)
+
+    assert desktop.desmarcar_zona_internet(tmp_path) == 0
+    assert borrados == []
+
+
+def test_desmarcar_zona_internet_sigue_cuando_un_archivo_no_se_deja(
+    tmp_path, monkeypatch
+):
+    """Lo normal es que la marca no esté: ahí `os.remove` tira
+    FileNotFoundError por cada archivo. Y en una carpeta de sólo lectura tira
+    PermissionError. Ninguno de los dos puede impedir que el programa abra:
+    si la marca sigue estando, el mensaje de `motor_de_ventana` explica cómo
+    sacarla a mano."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    (tmp_path / "primera.dll").write_bytes(b"")
+    (tmp_path / "segunda.dll").write_bytes(b"")
+    intentos = []
+
+    def negarse(ruta):
+        intentos.append(ruta)
+        raise PermissionError(ruta)
+
+    monkeypatch.setattr(desktop.os, "remove", negarse)
+
+    assert desktop.desmarcar_zona_internet(tmp_path) == 0
+    assert len(intentos) == 2
+
+
+def test_el_motor_de_la_ventana_desmarca_antes_de_cargar(monkeypatch):
+    """Al revés no sirve de nada: para cuando .NET rechazó el assembly, el
+    error ya está tirado."""
+    orden = []
+    monkeypatch.setattr(
+        desktop, "desmarcar_zona_internet", lambda: orden.append("desmarcar")
+    )
+
+    desktop.motor_de_ventana(inicializar=lambda: orden.append("cargar"))
+
+    assert orden == ["desmarcar", "cargar"]
+
+
+def test_el_motor_de_la_ventana_explica_la_marca_de_internet(monkeypatch):
+    """El usuario recibió un renglón que no nombra ni la causa ni la salida.
+    Esto es lo que tendría que haber leído en su lugar."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(desktop, "desmarcar_zona_internet", lambda: 0)
+
+    def explota():
+        raise RuntimeError(
+            "Failed to resolve Python.Runtime.Loader.Initialize from "
+            r"C:\Nesting\_internal\pythonnet\runtime\Python.Runtime.dll"
+        )
+
+    with pytest.raises(desktop.VentanaNoDisponible) as capturado:
+        desktop.motor_de_ventana(inicializar=explota)
+
+    mensaje = str(capturado.value)
+    assert "Unblock-File" in mensaje
+    # El error de abajo no se pierde: es lo único que distingue este caso de
+    # cualquier otra cosa que no cargue.
+    assert "Failed to resolve" in mensaje
+
+
+def test_el_aviso_se_ve_aunque_no_haya_consola(monkeypatch):
+    """El .exe se arma con `console=False` -- si no, queda una ventana negra
+    detrás del programa --, y eso hace que stdout y stderr no vayan a ningún
+    lado. Un print ahí es un programa que se cierra sin decir nada, que para
+    el que lo recibió es peor que el error feo."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(rutas, "esta_congelado", lambda: True)
+    carteles = []
+    monkeypatch.setattr(desktop, "_cartel", carteles.append)
+
+    desktop.avisar("la ventana no abrió")
+
+    assert carteles == ["la ventana no abrió"]
+
+
+def test_el_aviso_desde_la_terminal_no_abre_un_cartel(monkeypatch, capsys):
+    """Corriendo del repo la salida se ve, y un modal sería una molestia."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(rutas, "esta_congelado", lambda: False)
+    carteles = []
+    monkeypatch.setattr(desktop, "_cartel", carteles.append)
+
+    desktop.avisar("la ventana no abrió")
+
+    assert carteles == []
+    assert "la ventana no abrió" in capsys.readouterr().err
+
+
+def test_el_usuario_se_entera_de_que_la_ventana_no_abrio(monkeypatch):
+    """Es el caso que llegó reportado: doble click y nada."""
+    monkeypatch.setattr(desktop, "falta_webview2", lambda: False)
+
+    def explota():
+        raise desktop.VentanaNoDisponible("la parte de .NET no cargó")
+
+    monkeypatch.setattr(desktop, "motor_de_ventana", explota)
+    avisos = []
+    monkeypatch.setattr(desktop, "avisar", avisos.append)
+
+    assert desktop.main([]) == 1
+    assert avisos == ["la parte de .NET no cargó"]
+
+
+def test_el_motor_de_la_ventana_deja_un_backend_elegido():
+    """Sin backend no hay ventana, y `import webview` solo no lo carga: el
+    que lo elige -- y el que abajo termina en pythonnet y en .NET, que es
+    donde rompió en Windows -- es `initialize()`."""
+    # Por sys.modules y no por `webview.guilib`: el paquete pisa ese nombre
+    # con None, así que el atributo no es el módulo.
+    import importlib
+
+    desktop.motor_de_ventana()
+
+    assert importlib.import_module("webview.guilib").guilib is not None
+
+
 def test_webview2_solo_se_verifica_en_windows(monkeypatch):
     """En Mac y Linux la pregunta no tiene sentido y tiene que dar False sin
     tocar el registro de Windows."""

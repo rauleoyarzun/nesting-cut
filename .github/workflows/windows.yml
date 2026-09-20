@@ -47,6 +47,15 @@ jobs:
         if: always()
         run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging\construir.ps1
 
+      - name: La prueba de la marca de internet
+        # El paso que faltaba cuando el .exe le falló al primero que lo
+        # recibió: el paquete se arma y se verifica en una máquina donde
+        # ningún archivo viene de internet, que es justo lo contrario de la
+        # máquina del usuario. El script marca el paquete a mano y lo corre
+        # así. Ver packaging/prueba-zona.ps1.
+        if: always()
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging\prueba-zona.ps1
+
       - name: Guardar el paquete
         if: always()
         uses: actions/upload-artifact@v7
