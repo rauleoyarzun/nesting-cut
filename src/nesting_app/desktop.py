@@ -8,6 +8,7 @@ import argparse
 import secrets
 import sys
 import threading
+import traceback
 import urllib.request
 from pathlib import Path
 
@@ -198,6 +199,75 @@ class Puente:
         self.hay_sin_guardar = False
 
 
+def _en_hilo_aparte(funcion) -> None:
+    threading.Thread(target=funcion, daemon=True).start()
+
+
+class CierreSeguro:
+    """Decide si la ventana puede cerrarse, y pregunta cuando hace falta.
+
+    Preguntar parece trivial y no lo es. El handler de `closing` corre
+    SINCRÓNICAMENTE en el hilo principal de Cocoa: pywebview arma ese evento
+    con `should_lock=True` porque necesita su valor de retorno, así que lo
+    ejecuta en el hilo que lo disparó en vez de tirarlo a uno nuevo. Y
+    `create_confirmation_dialog` encola el dibujo del diálogo en el run loop
+    de ese mismo hilo (`AppHelper.callAfter`) y después se queda esperando un
+    semáforo.
+
+    Preguntar desde adentro del handler cuelga el programa para siempre: el
+    hilo que tiene que dibujar el diálogo es exactamente el que está
+    esperando a que el diálogo conteste. Y sólo pasa cuando hay algo sin
+    guardar -- o sea, después de acomodar --, que es justo como lo reportó
+    el usuario.
+
+    La salida es no preguntar ahí. El handler cancela este cierre y vuelve
+    enseguida, con lo cual el hilo principal queda libre; la pregunta va a un
+    hilo aparte; y si el usuario acepta, se cierra la ventana a mano.
+
+    Está afuera de `main()` para poder probarlo. No hay forma de ver este bug
+    leyendo el código ni corriendo la página en un navegador: hace falta el
+    hilo principal de Cocoa, o una simulación fiel de su forma.
+    """
+
+    def __init__(self, puente, preguntar, cerrar, en_hilo=_en_hilo_aparte) -> None:
+        self.puente = puente
+        self._preguntar = preguntar
+        self._cerrar = cerrar
+        self._en_hilo = en_hilo
+        self._preguntando = threading.Event()
+        self._confirmado = threading.Event()
+
+    def puede_cerrar(self) -> bool:
+        """El handler de `closing`. Devolver False cancela ese cierre.
+
+        No puede bloquear: ver la explicación de arriba.
+        """
+        if self._confirmado.is_set() or not self.puente.hay_sin_guardar:
+            return True
+        # Sin esta guarda, el segundo click de alguien impaciente abre otro
+        # diálogo encima del primero.
+        if not self._preguntando.is_set():
+            self._preguntando.set()
+            self._en_hilo(self._preguntar_y_cerrar)
+        return False
+
+    def _preguntar_y_cerrar(self) -> None:
+        try:
+            acepto = self._preguntar()
+        except Exception:  # noqa: BLE001 - la alternativa es no poder salir
+            # Si el diálogo no se pudo mostrar, lo que queda es una ventana
+            # que no cierra nunca y un usuario sin forma de salir. Entre
+            # perder un DXF -- que se vuelve a generar apretando Acomodar --
+            # y dejar el programa trabado, se cierra.
+            traceback.print_exc()
+            acepto = True
+        if acepto:
+            self._confirmado.set()
+        self._preguntando.clear()
+        if acepto:
+            self._cerrar()
+
+
 def servidor(deposito: Deposito, registro: Registro) -> tuple[str, int, str]:
     """Arranca uvicorn en un hilo y devuelve (token, puerto, url)."""
     global _servidor, _hilo
@@ -292,17 +362,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     puente.ventana = ventana
 
-    def al_cerrar() -> bool:
-        """Devolver False cancela el cierre."""
-        if not puente.hay_sin_guardar:
-            return True
-        return ventana.create_confirmation_dialog(
+    cierre = CierreSeguro(
+        puente,
+        preguntar=lambda: ventana.create_confirmation_dialog(
             "Hay un acomodo sin guardar",
             "El DXF todavía no se guardó en ningún lado y se va a perder. "
             "¿Cerrar igual?",
-        )
-
-    ventana.events.closing += al_cerrar
+        ),
+        cerrar=ventana.destroy,
+    )
+    ventana.events.closing += cierre.puede_cerrar
     try:
         webview.start()
     finally:

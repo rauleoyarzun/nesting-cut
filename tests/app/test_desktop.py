@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import sys
+import threading
 import urllib.request
 
 import pytest
@@ -271,3 +272,122 @@ def test_los_dialogos_usan_la_api_vigente_de_pywebview():
     # Que los nombres nuevos existan de verdad en la versión instalada: sin
     # esto el test pasaría igual con un typo.
     assert webview.FileDialog.OPEN and webview.FileDialog.SAVE
+
+
+# --- cerrar la ventana con un acomodo sin guardar ---------------------------
+
+
+class PuenteFalso:
+    def __init__(self, hay_sin_guardar=True):
+        self.hay_sin_guardar = hay_sin_guardar
+
+
+def test_sin_nada_en_riesgo_la_ventana_cierra_sin_preguntar():
+    preguntas = []
+    cierre = desktop.CierreSeguro(
+        PuenteFalso(hay_sin_guardar=False),
+        preguntar=lambda: preguntas.append(1) or True,
+        cerrar=lambda: None,
+    )
+
+    assert cierre.puede_cerrar() is True
+    assert preguntas == [], "preguntó por un acomodo que ya estaba guardado"
+
+
+def test_el_hilo_que_cierra_queda_libre_para_dibujar_el_dialogo():
+    """El bug que reportó el usuario: la app se colgaba al cerrar después de
+    acomodar.
+
+    `preguntar` acá imita la forma exacta del diálogo de pywebview en macOS:
+    encola el dibujo en el run loop del hilo que pidió cerrar y después
+    espera un semáforo. Si `puede_cerrar()` lo llamara sin salirse de ese
+    hilo, ese hilo quedaría esperando a que se libere algo que sólo él puede
+    liberar, y el programa no cierra nunca más.
+    """
+    import queue as _queue
+
+    run_loop = _queue.Queue()
+    contestado = threading.Event()
+    cerrado = threading.Event()
+
+    def preguntar():
+        listo = threading.Semaphore(0)
+        run_loop.put(listo.release)          # AppHelper.callAfter(...)
+        adquirido = listo.acquire(timeout=3)  # semaphore.acquire()
+        assert adquirido, (
+            "el diálogo no llegó a dibujarse: se preguntó desde el mismo "
+            "hilo que tiene que atender el run loop"
+        )
+        contestado.set()
+        return True
+
+    cierre = desktop.CierreSeguro(PuenteFalso(), preguntar, cerrado.set)
+
+    # Este es "el hilo principal de Cocoa". Tiene que volver enseguida.
+    assert cierre.puede_cerrar() is False, "el primer cierre no se cancela"
+
+    # Y recién ahora puede atender su run loop, que es lo que en la versión
+    # con el bug quedaba bloqueado.
+    run_loop.get(timeout=3)()
+
+    assert contestado.wait(3), "el diálogo nunca contestó"
+    assert cerrado.wait(3), "aceptó perder el acomodo y la ventana no cerró"
+    assert cierre.puede_cerrar() is True, "el cierre confirmado no pasa"
+
+
+def test_si_el_usuario_dice_que_no_la_ventana_no_cierra_y_puede_reintentar():
+    veces = []
+
+    def preguntar():
+        veces.append(1)
+        return False
+
+    cerrado = threading.Event()
+    cierre = desktop.CierreSeguro(
+        PuenteFalso(), preguntar, cerrado.set, en_hilo=lambda f: f()
+    )
+
+    assert cierre.puede_cerrar() is False
+    assert not cerrado.is_set(), "cerró una ventana que el usuario quiso dejar abierta"
+    assert cierre.puede_cerrar() is False
+    assert len(veces) == 2, (
+        "el segundo intento de cerrar no vuelve a preguntar: el usuario "
+        "queda sin forma de salir"
+    )
+
+
+def test_dos_clicks_seguidos_no_abren_dos_dialogos():
+    """El diálogo tarda en aparecer y la gente hace click de nuevo."""
+    abiertos = []
+    soltar = threading.Event()
+
+    def preguntar():
+        abiertos.append(1)
+        soltar.wait(3)
+        return False
+
+    cierre = desktop.CierreSeguro(PuenteFalso(), preguntar, lambda: None)
+    cierre.puede_cerrar()
+    cierre.puede_cerrar()
+    cierre.puede_cerrar()
+    soltar.set()
+
+    assert abiertos == [1], f"se abrieron {len(abiertos)} diálogos encima"
+
+
+def test_si_el_dialogo_falla_la_ventana_igual_cierra(capsys):
+    """La alternativa sería una ventana que no cierra nunca y un usuario sin
+    forma de salir. Un DXF se vuelve a generar apretando Acomodar."""
+    def preguntar():
+        raise RuntimeError("no hay pantalla")
+
+    cerrado = threading.Event()
+    cierre = desktop.CierreSeguro(
+        PuenteFalso(), preguntar, cerrado.set, en_hilo=lambda f: f()
+    )
+
+    assert cierre.puede_cerrar() is False
+    assert cerrado.is_set(), "el programa quedó trabado por un diálogo que falló"
+    assert "no hay pantalla" in capsys.readouterr().err, (
+        "el fallo se tragó sin dejar rastro"
+    )

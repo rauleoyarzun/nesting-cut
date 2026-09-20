@@ -800,3 +800,29 @@ Task 14: completa (commits 14cbf8e..4a797f1). Empaquetado para Mac.
         `min-width: 0` de flex -- el mismo bug que ya había roto los campos Ancho/Alto.
   LECCIÓN: el arnés de la ventana real es la tercera clase de verificación de esta interfaz, después de
   leer el código y de correrlo en el navegador embebido. El bug 2 no era alcanzable por ninguna de las dos.
+
+=== LA APP SE COLGABA AL CERRAR DESPUÉS DE ACOMODAR (reportado por el usuario) ===
+  Abrazo mortal de manual, y la cadena entera se lee en el código de pywebview:
+  - `window.events.closing = Event(self, True)` -> `should_lock=True` -> `Event.set()` ejecuta los
+    handlers SINCRÓNICAMENTE en el hilo que lo disparó, en vez de tirarlos a un hilo nuevo (lo hace así
+    porque necesita el valor de retorno para poder cancelar el cierre).
+  - `cocoa.BrowserView.should_close()` -- o sea el hilo principal de Cocoa -- es quien lo dispara.
+  - `cocoa.create_confirmation_dialog()` hace `AppHelper.callAfter(_confirm)` + `semaphore.acquire()`
+    SIN timeout.
+  Resultado: el hilo principal encola el dibujo del diálogo en su propio run loop y se queda esperando un
+  semáforo que sólo se libera cuando ese dibujo corre. No corre nunca. Y sólo pasa con `hay_sin_guardar`
+  en True, o sea después de acomodar y antes de guardar: exactamente como lo reportó el usuario.
+  ARREGLO: `CierreSeguro`. El handler cancela ese cierre y devuelve enseguida (con eso el hilo principal
+  queda libre), la pregunta va a un hilo aparte, y si el usuario acepta se llama `ventana.destroy()` a
+  mano. Un `_confirmado` deja pasar el `closing` que dispara ese destroy.
+  Vive afuera de `main()` para poder probarlo: los tests le inyectan `preguntar`, `cerrar` y `en_hilo`.
+  El test que importa imita la FORMA del diálogo de pywebview (callAfter + semáforo) en vez de mockearlo,
+  así que falla si alguien vuelve a preguntar desde el hilo que cierra.
+  VERIFICADO EN LA VENTANA REAL, las dos direcciones, disparando `should_close` con `AppHelper.callAfter`
+  para que corra en el hilo principal de verdad:
+    handler viejo -> "el diálogo NO se pudo dibujar: el hilo principal está trabado" (y sólo escapó
+                     porque el diálogo del arnés tiene timeout; el de pywebview no tiene).
+    handler nuevo -> devuelve enseguida, el diálogo contesta, y `BrowserView.instances` queda en 0, o sea
+                     que `ventana.destroy()` desde un hilo que no es el principal cierra de verdad.
+  Este es el tercer bug seguido que sólo aparece en el hilo principal de Cocoa. El arnés dejó de ser un
+  truco de una vez: es la única forma de ver esta clase de defecto.
