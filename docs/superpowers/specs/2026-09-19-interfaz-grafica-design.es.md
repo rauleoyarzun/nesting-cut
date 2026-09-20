@@ -69,8 +69,7 @@ que hoy es Python puro, y el Python empaquetado hay que armarlo igual.
 
 ### 2.4 Dirección visual: D · Moderno.
 
-Elegida entre cuatro maquetadas en
-<https://claude.ai/artifact/SmUpS9U8sNKfRSuesnbEEs>.
+Elegida entre cuatro direcciones maquetadas y comparadas en su momento.
 
 Es la más accesible para alguien que no viene de CAD, y la única de las cuatro
 que el día que se publique en la web no va a parecer una app de escritorio

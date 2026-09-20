@@ -70,8 +70,7 @@ is pure Python, and the packaged Python has to be built anyway.
 
 ### 2.4 Visual direction: D · Modern.
 
-Chosen among four mocked up in
-<https://claude.ai/artifact/SmUpS9U8sNKfRSuesnbEEs>.
+Chosen among four directions mocked up and compared at the time.
 
 It is the most approachable for somebody who does not come from CAD, and the
 only one of the four that on the day it is published on the web will not look
