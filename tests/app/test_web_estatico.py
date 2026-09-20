@@ -108,6 +108,54 @@ def test_no_hay_emojis_en_la_interfaz(html):
     assert not sospechosos, f"hay símbolos que no son texto: {sospechosos}"
 
 
+def _reglas(css):
+    """(selector, cuerpo) por cada regla. Alcanza: este CSS no anida."""
+    sin_comentarios = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return [
+        (m.group(1).strip(), m.group(2))
+        for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", sin_comentarios)
+    ]
+
+
+def test_ninguna_regla_le_saca_el_marco_a_un_select(css):
+    """El `<input>` va envuelto en un `.control` que le dibuja el marco, así
+    que el input se dibuja sin borde ni fondo propios. Un `<select>` NO va
+    envuelto: él mismo es el marco.
+
+    Mientras `select.control` estuvo en las dos reglas -- la que da el marco
+    y la que lo saca -- ganaba la última, que tiene la misma especificidad, y
+    Material y Esfuerzo quedaban dibujados como texto suelto: nada indicaba
+    que se pudieran abrir. El usuario lo reportó así."""
+    for selector, cuerpo in _reglas(css):
+        if "select" not in selector:
+            continue
+        for despojo in ("border: 0", "border:0", "border: none", "background: none"):
+            assert despojo not in cuerpo, (
+                f"la regla `{selector}` le saca el marco a un select; sin marco "
+                "no se distingue de un texto y nadie adivina que se abre"
+            )
+
+
+def test_cada_select_esta_dibujado_como_desplegable(html):
+    """`appearance: none` borra la flecha que dibuja el sistema. Sin un
+    reemplazo, el control queda idéntico a un campo de texto -- que es peor
+    que no haber tocado nada, porque ahí al menos había una flecha."""
+    selects = re.findall(r"<select\b", html)
+    flechas = re.findall(r'class="icono flecha"', html)
+    assert len(selects) == len(flechas) > 0, (
+        f"hay {len(selects)} select y {len(flechas)} flechas: alguno quedó "
+        "sin ninguna señal de que se despliega"
+    )
+
+
+def test_la_flecha_no_se_come_el_click(css):
+    """Está dibujada encima del select, no al lado. Sin `pointer-events:
+    none` el click sobre la flecha -- justo donde uno apunta para abrir un
+    desplegable -- cae en el div y no abre nada."""
+    flecha = next(c for sel, c in _reglas(css) if ".flecha" in sel and "position" in c)
+    assert "pointer-events: none" in flecha
+
+
 def test_la_cascara_no_crece_mas_que_la_ventana(css):
     """Con `min-height: 100vh` la fila `1fr` de la grilla crece hasta donde
     llegue el contenido: el body se hace más alto que la ventana y lo que se

@@ -33,7 +33,10 @@
 
     <div class="campo">
       <label class="etiqueta" for="material">Material</label>
-      <select id="material" class="control"></select>
+      <div class="desplegable">
+        <select id="material" class="control"></select>
+        <svg viewBox="0 0 16 16" class="icono flecha" aria-hidden="true"><path d="M4 6.5l4 4 4-4"></path></svg>
+      </div>
     </div>
 
     <div class="campo">
@@ -64,11 +67,14 @@
 
     <div class="campo">
       <label class="etiqueta" for="esfuerzo">Esfuerzo</label>
-      <select id="esfuerzo" class="control">
-        <option value="rapido">Rápido — una pasada</option>
-        <option value="normal" selected>Normal — tres pasadas</option>
-        <option value="lento">Lento — doce pasadas</option>
-      </select>
+      <div class="desplegable">
+        <select id="esfuerzo" class="control">
+          <option value="rapido">Rápido — una pasada</option>
+          <option value="normal" selected>Normal — tres pasadas</option>
+          <option value="lento">Lento — doce pasadas</option>
+        </select>
+        <svg viewBox="0 0 16 16" class="icono flecha" aria-hidden="true"><path d="M4 6.5l4 4 4-4"></path></svg>
+      </div>
     </div>
 
     <span class="espaciador"></span>
