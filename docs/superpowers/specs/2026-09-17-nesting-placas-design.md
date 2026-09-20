@@ -1,393 +1,396 @@
-# Sistema de nesting para optimización de cortes en placas
+# Nesting system for optimising cuts on sheet material
 
-**Fecha:** 2026-09-17
-**Estado:** Diseño aprobado, pendiente de plan de implementación
+*[Español](2026-09-17-nesting-placas-design.es.md)*
 
----
-
-## 1. Problema
-
-Acomodar manualmente (en CorelDRAW) las piezas de un mueble sobre placas de madera es lento y
-deja material sin aprovechar. Existen herramientas que lo resuelven (eCut, SigmaNest, el nesting
-de AutoCAD), pero son cerradas y/o pagas.
-
-**Objetivo:** dado un archivo vectorial con las figuras a cortar, producir un archivo de salida
-con esas figuras acomodadas dentro de una o más placas, usando la menor cantidad de placa posible,
-respetando una separación mínima configurable entre figuras y contra el borde de la placa.
-
-### Escala de referencia
-
-Archivos reales del proyecto (una banqueta): 40-80 contornos por archivo, placa estándar
-1830 × 2600 mm, piezas orgánicas con curvas que se entrelazan.
+**Date:** 2026-09-17
+**Status:** Design approved, implementation plan pending
 
 ---
 
-## 2. Alcance
+## 1. Problem
 
-### Dentro del alcance
+Laying out the parts of a piece of furniture by hand (in CorelDRAW) onto wood sheets is slow and
+wastes material. Tools that solve it exist (eCut, SigmaNest, AutoCAD's nesting), but they are
+closed and/or paid.
 
-- Lectura de `.dxf` (canónico), `.ai` y `.3dm`
-- Escritura de `.dxf` con las piezas acomodadas + preview `.png`
-- Nesting de formas irregulares con rotación y espejado
-- Aprovechamiento de agujeros pasantes como área libre
-- Separación configurable entre piezas y contra el borde de placa
-- Múltiples placas con desborde automático
-- Catálogo de materiales (tamaño de placa + restricción de veta)
-- Interfaz de línea de comandos
-- Verificación geométrica exacta del resultado
+**Goal:** given a vector file with the shapes to cut, produce an output file with those shapes
+laid out inside one or more sheets, using as little sheet as possible, respecting a configurable
+minimum spacing between shapes and against the edge of the sheet.
 
-### Fuera del alcance (v1)
+### Reference scale
 
-| Tema | Motivo |
+Real files from the project (a bench): 40-80 outlines per file, standard sheet 1830 × 2600 mm,
+organic parts with curves that interlock.
+
+---
+
+## 2. Scope
+
+### In scope
+
+- Reading `.dxf` (canonical), `.ai` and `.3dm`
+- Writing `.dxf` with the parts laid out + `.png` preview
+- Nesting of irregular shapes with rotation and mirroring
+- Use of through holes as free area
+- Configurable spacing between parts and against the sheet edge
+- Multiple sheets with automatic overflow
+- Material catalogue (sheet size + grain constraint)
+- Command line interface
+- Exact geometric verification of the result
+
+### Out of scope (v1)
+
+| Topic | Reason |
 |---|---|
-| Lectura directa de `.cdr` | Formato binario propietario cerrado. Se resuelve exportando a DXF desde Corel |
-| Mapeo color → operación de máquina | Todos los cortes se tratan igual. El color se transporta como atributo pasivo |
-| Puentes / lengüetas (tabs) | Las piezas quedan sueltas al cortarse. Limitación conocida |
-| Optimización del recorrido de corte | Es trabajo del CAM, no del nesting |
-| Placas no estándar / retazos | Extensión natural posterior. No v1 |
-| Partir piezas más grandes que la placa | Se reporta como error |
-| Interfaz gráfica | Se puede montar después sobre el mismo motor |
+| Reading `.cdr` directly | Closed proprietary binary format. Solved by exporting to DXF from Corel |
+| Colour → machine operation mapping | Every cut is treated the same. Colour is carried along as a passive attribute |
+| Bridges / tabs | Parts come loose when cut. Known limitation |
+| Cutting path optimisation | That is the CAM's job, not the nesting's |
+| Non-standard sheets / offcuts | Natural later extension. Not v1 |
+| Splitting parts larger than the sheet | Reported as an error |
+| Graphical interface | It can be mounted later on top of the same engine |
 
 ---
 
-## 3. Decisiones de diseño
+## 3. Design decisions
 
-### 3.1 DXF como formato canónico
+### 3.1 DXF as the canonical format
 
-**Decisión:** el motor trabaja sobre DXF. Los demás formatos entran por importadores que
-normalizan al mismo modelo interno.
+**Decision:** the engine works on DXF. The other formats come in through importers that normalise
+to the same internal model.
 
-**Motivo:** el `.cdr` es RIFF binario propietario sin parser libre confiable; implementarlo sería
-la mayor parte del esfuerzo total del proyecto sin aportar nada al núcleo. Corel y Rhino exportan
-DXF, que además es el estándar de facto de CNC y sobrevive con capas y colores intactos.
+**Reason:** `.cdr` is proprietary binary RIFF with no reliable free parser; implementing it would
+be most of the total effort of the project without contributing anything to the core. Corel and
+Rhino export DXF, which is also the de facto CNC standard and survives with layers and colours
+intact.
 
-`.ai` y `.3dm` se leen igual porque son baratos: el `.ai` exportado de Corel es AI3/PostScript en
-texto plano, y `rhino3dm` es la librería oficial de McNeel.
+`.ai` and `.3dm` are read too because they are cheap: the `.ai` exported from Corel is
+AI3/PostScript in plain text, and `rhino3dm` is McNeel's official library.
 
-### 3.2 Nesting por raster, con la interfaz preparada para NFP
+### 3.2 Raster nesting, with the interface ready for NFP
 
-**Decisión:** el oráculo de colisión se implementa con máscaras de bits (raster). La interfaz se
-diseña para que una implementación por No-Fit Polygon (NFP) pueda reemplazarlo sin tocar el resto.
+**Decision:** the collision oracle is implemented with bitmasks (raster). The interface is
+designed so that a No-Fit Polygon (NFP) implementation can replace it without touching the rest.
 
-**Motivos a favor del raster:**
+**Reasons in favour of raster:**
 
-1. La separación entre piezas se reduce a una dilatación morfológica de la máscara, en vez de un
-   offset de polígono (frágil numéricamente).
-2. El aprovechamiento de agujeros sale sin código dedicado (ver §5.2).
-3. Maneja concavidad y entrelazado sin geometría computacional frágil.
-4. La precisión del raster no contamina la salida: solo decide *posiciones*; el archivo final
-   lleva las curvas exactas.
+1. The spacing between parts reduces to a morphological dilation of the mask, instead of a polygon
+   offset (numerically fragile).
+2. The use of holes comes out without dedicated code (see §5.2).
+3. It handles concavity and interlocking without fragile computational geometry.
+4. The raster's precision does not contaminate the output: it only decides *positions*; the final
+   file carries the exact curves.
 
-**Para que la puerta a NFP quede realmente abierta, tres restricciones obligatorias:**
+**For the door to NFP to stay genuinely open, three mandatory constraints:**
 
-1. **El polígono exacto es siempre la fuente de verdad.** La máscara raster es un caché derivado.
-   Está prohibido re-vectorizar el resultado de operaciones morfológicas.
-2. **El offset de separación es responsabilidad del oráculo**, no un preproceso compartido.
-   El raster dilata máscaras; el NFP haría offset de polígonos.
-3. **El banco de pruebas existe desde el principio**, para que la comparación entre motores sea
-   con números medidos (% de aprovechamiento y segundos).
+1. **The exact polygon is always the source of truth.** The raster mask is a derived cache.
+   Re-vectorising the result of morphological operations is forbidden.
+2. **The spacing offset is the oracle's responsibility**, not a shared preprocessing step.
+   The raster dilates masks; NFP would offset polygons.
+3. **The benchmark exists from the start**, so that the comparison between engines is made with
+   measured numbers (% utilisation and seconds).
 
-Aproximadamente el 85% del código es agnóstico al motor: I/O, extracción de piezas, aplanado,
-estrategia de búsqueda, reporte y verificación.
+Roughly 85% of the code is engine-agnostic: I/O, part extraction, flattening, search strategy,
+reporting and verification.
 
-### 3.3 Modelo de pieza
+### 3.3 Part model
 
-- Un **contorno exterior cerrado** = el perímetro de corte de una pieza.
-- Todo lo contenido dentro viaja **rígidamente** con ella (misma traslación, rotación y espejado).
-- Dos contornos exteriores separados **no** viajan juntos: son piezas independientes.
-- **Regla de contención par/impar por profundidad:**
-  - nivel 0 → contorno exterior de una pieza
-  - nivel 1 → agujero (libera material)
-  - nivel ≥ 2 → **pieza independiente**, se reubica en otro lado (no queda anidada donde estaba
-    dibujada)
+- One **closed outer outline** = the cutting perimeter of one part.
+- Everything contained inside travels **rigidly** with it (same translation, rotation and mirror).
+- Two separate outer outlines do **not** travel together: they are independent parts.
+- **Even/odd containment rule by depth:**
+  - level 0 → outer outline of a part
+  - level 1 → hole (frees material)
+  - level ≥ 2 → **independent part**, relocated elsewhere (it does not stay nested where it was
+    drawn)
 
-  Esta regla describe cómo se **interpreta el dibujo de entrada**. No limita la **colocación**:
-  el motor sí puede terminar poniendo una pieza dentro del agujero de otra (§5.2), simplemente no
-  asume que la anidación dibujada por el usuario deba conservarse.
+  This rule describes how the **input drawing is interpreted**. It does not constrain
+  **placement**: the engine can indeed end up putting a part inside another's hole (§5.2), it
+  simply does not assume that the nesting drawn by the user has to be preserved.
 
-### 3.4 El color es un atributo pasivo
+### 3.4 Colour is a passive attribute
 
-Todos los contornos son corte pasante a los efectos geométricos. El motor **nunca** interpreta el
-color ni la capa.
+Every outline is a through cut as far as geometry is concerned. The engine **never** interprets
+colour or layer.
 
-Sin embargo, el archivo de salida **debe preservar los colores y capas originales** de cada
-entidad. Esto se obtiene gratis por la decisión de §3.5.
+However, the output file **must preserve the original colours and layers** of each entity. That
+comes for free from the decision in §3.5.
 
-### 3.5 Aplanar para decidir, transformar los originales para escribir
+### 3.5 Flatten to decide, transform the originals to write
 
-**Este es el principio rector de la arquitectura.**
+**This is the guiding principle of the architecture.**
 
-El motor aplana curvas a polilíneas y rasteriza para calcular *dónde* va cada pieza. El resultado
-de todo ese proceso es una tupla por pieza: `(placa, x, y, ángulo, espejada)`. Esa transformación
-rígida se aplica al final sobre las **entidades originales** — splines, arcos, colores, capas.
+The engine flattens curves into polylines and rasterises in order to work out *where* each part
+goes. The result of that whole process is one tuple per part: `(sheet, x, y, angle, mirrored)`.
+That rigid transformation is applied at the end to the **original entities** — splines, arcs,
+colours, layers.
 
-Consecuencias:
-- No hay pérdida de fidelidad geométrica en la salida.
-- La preservación de color y capa no requiere código dedicado.
-- El aplanado puede ser tan grueso como convenga sin degradar el resultado.
+Consequences:
+- There is no loss of geometric fidelity in the output.
+- Preserving colour and layer requires no dedicated code.
+- The flattening can be as coarse as convenient without degrading the result.
 
-### 3.6 Rotación gobernada por el material
+### 3.6 Rotation governed by the material
 
-Un solo parámetro unifica los casos: **`tolerancia_veta`** (en grados). Los ángulos permitidos son
-los que caen dentro de ±`tolerancia_veta` respecto de 0° o 180°.
+A single parameter unifies the cases: **`tolerancia_veta`** (in degrees). The allowed angles are
+the ones falling within ±`tolerancia_veta` of 0° or 180°.
 
-| Valor | Efecto | Caso de uso |
+| Value | Effect | Use case |
 |---|---|---|
-| `180` | Rotación libre | MDF (la veta es irrelevante) |
-| `5` | Solo 0° / 180°, corte cruzado bloqueado | Multilaminado, fenólico |
+| `180` | Free rotation | MDF (grain is irrelevant) |
+| `5` | 0° / 180° only, cross cutting blocked | Plywood, phenolic |
 
-Vive en el catálogo de materiales junto al tamaño de placa.
+It lives in the material catalogue alongside the sheet size.
 
-**Espejado:** habilitado por defecto. Como todo es corte pasante y el material es homogéneo, una
-pieza espejada dada vuelta es la pieza original. Es densidad extra sin costo. Flag `--sin-espejo`
-para apagarlo.
+**Mirroring:** enabled by default. Since everything is a through cut and the material is
+homogeneous, a mirrored part turned over is the original part. It is extra density at no cost.
+Flag `--sin-espejo` turns it off.
 
-El espejado es **siempre compatible con la restricción de veta**: reflejar una pieza no cambia la
-dirección de su eje de veta, solo el sentido. Por lo tanto `--sin-espejo` y `tolerancia_veta` son
-independientes entre sí.
+Mirroring is **always compatible with the grain constraint**: reflecting a part does not change
+the direction of its grain axis, only its sense. Therefore `--sin-espejo` and `tolerancia_veta`
+are independent of each other.
 
-### 3.7 Contrato de entrada: una figura = una pieza
+### 3.7 Input contract: one shape = one part
 
-El archivo de entrada **es** la lista de materiales: cada contorno exterior es una pieza a cortar.
-No hay tabla de cantidades ni necesidad de nombrar piezas.
+The input file **is** the bill of materials: every outer outline is a part to cut. There is no
+quantity table and no need to name parts.
 
-Un multiplicador global `--copias N` nestea N veces todo el contenido del archivo. Así se dibuja
-una banqueta y se piden cinco.
+A global multiplier `--copias N` nests the entire contents of the file N times. That is how you
+draw one bench and ask for five.
 
-### 3.8 Criterio de optimización multi-placa
+### 3.8 Multi-sheet optimisation criterion
 
-1. **Minimizar la cantidad de placas.**
-2. Alcanzado ese mínimo, **compactar la última placa** todo lo posible, para que el sobrante quede
-   en una pieza grande y aprovechable en vez de recortes dispersos.
+1. **Minimise the number of sheets.**
+2. Once that minimum is reached, **compact the last sheet** as much as possible, so that the
+   leftover is one large usable piece instead of scattered offcuts.
 
 ---
 
-## 4. Arquitectura
+## 4. Architecture
 
-### 4.1 Flujo de datos
+### 4.1 Data flow
 
 ```
-archivo (.dxf/.ai/.3dm)
+file (.dxf/.ai/.3dm)
   │
-  ├─ lectura ──────────►  entidades crudas  (geometría + color + capa)
+  ├─ reading ─────────►  raw entities  (geometry + colour + layer)
   │                              │
-  │                    aplanado (Bézier/arco/spline → polilínea)
+  │                    flattening (Bézier/arc/spline → polyline)
   │                              │
-  │                    encadenado (unir tramos sueltos en contornos cerrados)
+  │                    chaining (join loose segments into closed outlines)
   │                              │
-  │                    árbol de contención (¿qué es pieza, qué es agujero?)
+  │                    containment tree (what is a part, what is a hole?)
   │                              ▼
-  │                           Piezas  ──── × copias
+  │                           Parts  ──── × copies
   │                              │
   │                    ┌─────────▼─────────┐
-  │                    │      PACKER       │ ◄── material + configuración
-  │                    │   (multi-placa)   │
+  │                    │      PACKER       │ ◄── material + configuration
+  │                    │   (multi-sheet)   │
   │                    └─────────┬─────────┘
   │                              ▼
-  │                         Colocaciones
-  │                    (placa, x, y, ángulo, espejo)
+  │                         Placements
+  │                   (sheet, x, y, angle, mirror)
   │                              │
-  │                    verificación geométrica exacta
+  │                  exact geometric verification
   │                              │
-  └──── entidades originales ────┤
+  └──── original entities ───────┤
                                  ▼
                     ┌────────────┴────────────┐
                     ▼                         ▼
               resultado.dxf             preview.png
 ```
 
-### 4.2 Módulos
+### 4.2 Modules
 
 ```
 io/          dxf_reader · ai_reader · rhino_reader · dxf_writer · preview
 geometry/    flatten · chaining · nesting_tree · transform · verify
 model/       Part · Sheet · Placement · Material
-engine/      oracle (INTERFAZ) · raster_oracle · strategy · packer
+engine/      oracle (INTERFACE) · raster_oracle · strategy · packer
 config/      materials.yaml
 cli.py
-bench/       banco de pruebas sobre archivos reales
+bench/       benchmark over real files
 ```
 
-### 4.3 Fronteras principales
+### 4.3 Main boundaries
 
-**`engine/oracle.py` — la costura del motor.** Dos operaciones:
+**`engine/oracle.py` — the seam of the engine.** Two operations:
 
 ```
-posiciones_factibles(pieza, ángulo, estado_placa) → candidatos
-marcar(pieza, ángulo, posición)                   → estado_placa'
+feasible_positions(part, angle, sheet_state) → candidates
+mark(part, angle, position)                  → sheet_state'
 ```
 
-`raster_oracle` la implementa con bitmaps y devuelve candidatos como bitmap. Un futuro
-`nfp_oracle` la implementaría con polígonos y devolvería regiones poligonales. Misma firma,
-distinta representación interna. El offset de separación vive adentro del oráculo.
+`raster_oracle` implements it with bitmaps and returns candidates as a bitmap. A future
+`nfp_oracle` would implement it with polygons and return polygonal regions. Same signature,
+different internal representation. The spacing offset lives inside the oracle.
 
-**`io/` ↔ el resto.** Todos los lectores devuelven la misma estructura. Agregar un formato es un
-archivo nuevo, sin cambios en el motor.
+**`io/` ↔ the rest.** Every reader returns the same structure. Adding a format is a new file, with
+no changes to the engine.
 
-### 4.4 Modelo de entidad intermedio
+### 4.4 Intermediate entity model
 
-Todos los lectores normalizan a las mismas primitivas, con forma de DXF para que el escritor sea
-trivial:
+Every reader normalises to the same primitives, shaped like DXF so that the writer is trivial:
 
-`Línea` · `Arco` · `Círculo` · `Elipse` · `Bézier cúbica` · `Polilínea`
+`Line` · `Arc` · `Circle` · `Ellipse` · `Cubic Bézier` · `Polyline`
 
-Cada una con su **color y capa de origen**.
+Each with its **colour and layer of origin**.
 
-### 4.5 Dos módulos de `geometry/` que parecen detalle y no lo son
+### 4.5 Two `geometry/` modules that look like a detail and are not
 
-- **`chaining`** — los DXF exportados desde Corel traen los contornos partidos en decenas de
-  `LINE`/`ARC`/`SPLINE` sueltos, no como polilíneas cerradas. Hay que reconstruir los ciclos
-  uniendo extremos por tolerancia. **Es el caso normal, no el excepcional.**
-- **`nesting_tree`** — análisis de contención con la regla par/impar de §3.3.
+- **`chaining`** — DXF files exported from Corel bring the outlines broken into dozens of loose
+  `LINE`/`ARC`/`SPLINE` entities, not as closed polylines. The cycles have to be reconstructed by
+  joining endpoints within a tolerance. **This is the normal case, not the exceptional one.**
+- **`nesting_tree`** — containment analysis with the even/odd rule from §3.3.
 
-Son el código más aburrido del proyecto y donde se esconden los bugs que después parecen
-"el nesting anda mal".
+They are the most boring code in the project and where the bugs hide that later look like
+"the nesting is broken".
 
 ---
 
-## 5. El motor de nesting
+## 5. The nesting engine
 
-### 5.1 Dos máscaras por pieza, por ángulo
+### 5.1 Two masks per part, per angle
 
-| Máscara | Definición | Uso |
+| Mask | Definition | Use |
 |---|---|---|
-| `ocupada` | Material real: contorno exterior **menos** agujeros | Se estampa en la placa al colocar |
-| `holgura` | `ocupada` dilatada por la separación `sep` | Se usa para testear colisión |
+| `ocupada` | Real material: outer outline **minus** holes | Stamped onto the sheet when placing |
+| `holgura` | `ocupada` dilated by the spacing `sep` | Used to test collision |
 
-**Regla de colisión:**
-
-```
-placa_ocupada  =  unión de las `ocupada` de las piezas ya colocadas   (SIN dilatar)
-
-pieza entra  ⟺  pieza.holgura  ∩  placa_ocupada  =  ∅
-```
-
-Dilatar **solo la pieza que se mueve** y testear contra material **sin dilatar** hace que la
-separación se cuente exactamente una vez. Dilatar ambas daría `2 × sep` de separación real y
-desperdicio invisible: es el bug clásico de este enfoque.
-
-**Borde de placa:** parámetro independiente. `pieza.ocupada` debe caber dentro del rectángulo de
-placa **erosionado** por `borde`.
-
-**Rotación:** las máscaras se re-rasterizan desde el polígono exacto en cada ángulo. **No** se
-rota el bitmap (introduce artefactos acumulativos).
-
-### 5.2 Los agujeros salen sin código dedicado
-
-Las tres propiedades deseadas se derivan de la definición de §5.1:
-
-1. **El agujero es área libre** → su región nunca entra en `placa_ocupada`.
-2. **Se respeta la separación contra la pared del agujero** → el material del borde del agujero sí
-   está en `placa_ocupada`, así que la `holgura` de la pieza chica choca contra él.
-3. **Anidamiento recursivo** → una pieza dentro del agujero de una pieza que está dentro de otro
-   agujero funciona sin caso especial.
-
-Esta propiedad es la razón principal por la que el raster le gana al NFP en este proyecto: con NFP
-haría falta implementar *inner-fit polygons* por cada agujero.
-
-### 5.3 Búsqueda de posición
-
-Evaluar posición por posición es inviable (millones de candidatos por pieza). Se evalúan **todas
-las posiciones a la vez** mediante correlación por FFT:
+**Collision rule:**
 
 ```
-correlación( placa_ocupada , pieza.holgura )  →  solapamiento en CADA posición
+placa_ocupada  =  union of the `ocupada` of the parts already placed   (NOT dilated)
+
+part fits  ⟺  part.holgura  ∩  placa_ocupada  =  ∅
 ```
 
-Las posiciones con solapamiento `0` son exactamente las factibles.
+Dilating **only the part that moves** and testing against **undilated** material makes the spacing
+count exactly once. Dilating both would give `2 × sep` of real spacing and invisible waste: that
+is the classic bug of this approach.
 
-**Resolución:** 1 mm/px por defecto, configurable con `--resolucion`. Sobre una placa de
-1830 × 2600 son ~4,8 M de puntos. El error de discretización queda absorbido por el margen de
-separación y **siempre hacia el lado conservador**.
+**Sheet edge:** independent parameter. `part.ocupada` must fit inside the sheet rectangle
+**eroded** by `borde`.
 
-**Optimización:** se correlaciona solo sobre la **región activa** de la placa (área usada +
-tamaño de la pieza), no sobre la placa entera. Con la placa mayormente vacía, las correlaciones
-son pequeñas.
+**Rotation:** the masks are re-rasterised from the exact polygon at every angle. The bitmap is
+**not** rotated (that introduces cumulative artefacts).
 
-### 5.4 Puntaje de posición
+### 5.2 Holes come out without dedicated code
 
-Que la pieza entre no alcanza; hay que elegir bien entre las posiciones factibles:
+The three desired properties follow from the definition in §5.1:
+
+1. **The hole is free area** → its region never enters `placa_ocupada`.
+2. **The spacing against the hole's wall is respected** → the material at the hole's edge *is* in
+   `placa_ocupada`, so the small part's `holgura` collides with it.
+3. **Recursive nesting** → a part inside the hole of a part that is inside another hole works with
+   no special case.
+
+This property is the main reason raster beats NFP in this project: with NFP you would need to
+implement *inner-fit polygons* for every hole.
+
+### 5.3 Position search
+
+Evaluating position by position is not viable (millions of candidates per part). **All positions
+are evaluated at once** through FFT correlation:
 
 ```
-puntaje  =  w₁ · (abajo-izquierda)  +  w₂ · (contacto)
+correlation( placa_ocupada , part.holgura )  →  overlap at EVERY position
 ```
 
-- **abajo-izquierda** — empuja todo hacia una esquina; concentra el sobrante en un bloque grande.
-- **contacto** — mide cuánto perímetro de la pieza queda apoyado contra material ya colocado. Se
-  obtiene con una segunda correlación usando la `holgura` ensanchada una banda extra: donde esa
-  banda solapa mucho, la pieza está encajada.
+The positions with overlap `0` are exactly the feasible ones.
 
-**El término de contacto es el que produce el entrelazado** entre piezas curvas. Sin él, el
-bottom-left apila y deja huecos.
+**Resolution:** 1 mm/px by default, configurable with `--resolucion`. On a 1830 × 2600 sheet that
+is ~4.8 M points. The discretisation error is absorbed by the spacing margin and **always on the
+conservative side**.
 
-### 5.5 Orden, ángulos y multi-placa
+**Optimisation:** the correlation is computed only over the **active region** of the sheet (used
+area + size of the part), not over the whole sheet. With the sheet mostly empty, the correlations
+are small.
 
-- **Orden de inserción:** área descendente. Las piezas grandes definen la estructura; las chicas
-  rellenan intersticios y agujeros.
-- **Ángulos:** para cada pieza se prueban todos los ángulos permitidos por el material, y las
-  versiones espejadas si corresponde. Se elige el mejor `(ángulo, posición)`.
-- **Multi-placa:** se llena la placa 1 hasta que no entre nada más, se abre la 2, etc. Luego se
-  aplica el criterio de §3.8.
+### 5.4 Position score
 
-### 5.6 Niveles de esfuerzo
+A part fitting is not enough; you have to choose well among the feasible positions:
 
-Lo que compra el tiempo extra son reintentos con distinto orden de inserción, quedándose con el
-mejor resultado.
+```
+score  =  w₁ · (bottom-left)  +  w₂ · (contact)
+```
 
-| `--esfuerzo` | Comportamiento |
+- **bottom-left** — pushes everything towards one corner; concentrates the leftover into one large
+  block.
+- **contact** — measures how much of the part's perimeter ends up resting against already placed
+  material. It is obtained with a second correlation using the `holgura` widened by an extra band:
+  where that band overlaps a lot, the part is wedged in.
+
+**The contact term is what produces the interlocking** between curved parts. Without it,
+bottom-left stacks and leaves gaps.
+
+### 5.5 Order, angles and multi-sheet
+
+- **Insertion order:** descending area. The large parts define the structure; the small ones fill
+  interstices and holes.
+- **Angles:** for each part every angle allowed by the material is tried, plus the mirrored
+  versions where applicable. The best `(angle, position)` is chosen.
+- **Multi-sheet:** sheet 1 is filled until nothing else fits, then sheet 2 is opened, and so on.
+  Then the criterion from §3.8 is applied.
+
+### 5.6 Effort levels
+
+What the extra time buys is retries with a different insertion order, keeping the best result.
+
+| `--esfuerzo` | Behaviour |
 |---|---|
-| `rapido` | 1 pasada golosa, determinística |
-| `normal` *(default)* | ~10 reintentos con órdenes perturbados, se queda con el mejor |
-| `lento` | Búsqueda dirigida (recocido simulado) sobre orden + ángulos |
+| `rapido` | 1 greedy, deterministic pass |
+| `normal` *(default)* | ~10 retries with perturbed orders, keeps the best |
+| `lento` | Directed search (simulated annealing) over order + angles |
 
-**Los tiempos concretos de cada nivel se calibran con mediciones del banco de pruebas (§7.3), no
-se fijan por estimación.** La estimación inicial de referencia es ~15-30 s por pasada, pero
-depende fuertemente de la cantidad y tamaño de las piezas.
+**The concrete times of each level are calibrated with measurements from the benchmark (§7.3),
+they are not fixed by estimation.** The initial reference estimate is ~15-30 s per pass, but it
+depends heavily on the number and size of the parts.
 
-### 5.7 Verificación geométrica exacta
+### 5.7 Exact geometric verification
 
-Después de empacar, y **antes de escribir el archivo**, se verifica sobre los polígonos exactos
-(no sobre bitmaps):
+After packing, and **before writing the file**, the exact polygons are verified (not the bitmaps):
 
-- Ningún par de piezas colocadas se solapa.
-- Ninguna distancia entre piezas es menor que `sep`.
-- Ninguna pieza excede el área útil de su placa.
+- No pair of placed parts overlaps.
+- No distance between parts is smaller than `sep`.
+- No part exceeds the usable area of its sheet.
 
-Si alguna verificación falla, el programa **reporta el problema y falla**, en vez de escribir un
-DXF silenciosamente incorrecto.
+If any verification fails, the program **reports the problem and fails**, instead of silently
+writing an incorrect DXF.
 
-Esta verificación cumple tres funciones: red de seguridad en producción, oráculo de los tests
-(§7), y árbitro de la comparación entre motores el día que exista una implementación NFP.
+This verification serves three functions: safety net in production, oracle for the tests (§7), and
+referee for the comparison between engines the day an NFP implementation exists.
 
-### 5.8 Gestión de memoria
+### 5.8 Memory management
 
-Las máscaras se cachean por `(pieza, ángulo, espejado)`. Con muchos ángulos permitidos el caché
-crece linealmente; se almacenan bit-empaquetadas y se descartan por LRU si hace falta.
+The masks are cached by `(part, angle, mirrored)`. With many allowed angles the cache grows
+linearly; they are stored bit-packed and discarded by LRU if necessary.
 
 ---
 
-## 6. Entrada, salida y errores
+## 6. Input, output and errors
 
-### 6.1 Lectores
+### 6.1 Readers
 
-| Formato | Librería | Notas |
+| Format | Library | Notes |
 |---|---|---|
-| **DXF** | `ezdxf` | Explota bloques (`INSERT`). Lee unidades de `$INSUNITS` |
-| **AI** | propia (~200 líneas) | AI3/PostScript: operadores `m` `L` `C` `v` `y` `s` `f`. Color desde `K`/`G`. Unidades en puntos → mm (× 25,4/72) |
-| **3DM** | `rhino3dm` | Curvas Nurbs/Arc/Polyline. Color desde la capa. Proyecta a XY y valida planaridad |
+| **DXF** | `ezdxf` | Explodes blocks (`INSERT`). Reads units from `$INSUNITS` |
+| **AI** | own (~200 lines) | AI3/PostScript: operators `m` `L` `C` `v` `y` `s` `f`. Colour from `K`/`G`. Units in points → mm (× 25.4/72) |
+| **3DM** | `rhino3dm` | Nurbs/Arc/Polyline curves. Colour from the layer. Projects to XY and validates planarity |
 
-**Unidades: todo se normaliza a milímetros al leer.** Si un DXF no declara unidades, el programa
-**no adivina**: exige `--unidades mm|cm|in`. Una unidad mal inferida arruina una placa entera.
+**Units: everything is normalised to millimetres on reading.** If a DXF does not declare units,
+the program **does not guess**: it demands `--unidades mm|cm|in`. A wrongly inferred unit ruins a
+whole sheet.
 
-### 6.2 Salida
+### 6.2 Output
 
-**DXF:** un solo archivo, placas en fila horizontal separadas por un margen, cada una con su
-rectángulo de contorno en una capa `_PLACA`. Sobre cada placa, las entidades originales con la
-transformación rígida aplicada, con color y capa intactos.
+**DXF:** a single file, sheets in a horizontal row separated by a margin, each with its outline
+rectangle on a `_PLACA` layer. On each sheet, the original entities with the rigid transformation
+applied, colour and layer intact.
 
-**Preview PNG:** las placas renderizadas con su porcentaje de aprovechamiento.
+**PNG preview:** the sheets rendered with their utilisation percentage.
 
-**Resumen por consola:**
+**Console summary** (the program prints in Spanish):
 
 ```
 Placa 1/3   aprovechamiento 87,4%
@@ -397,35 +400,35 @@ Placa 3/3   aprovechamiento 41,9%   ← sobrante útil ~1830×1080
 60 piezas · 3 placas · 71,5% total · 4m 12s
 ```
 
-### 6.3 Manejo de errores
+### 6.3 Error handling
 
-Regla general: **avisar y seguir** cuando el problema es cosmético; **fallar fuerte** cuando puede
-arruinar material.
+General rule: **warn and carry on** when the problem is cosmetic; **fail hard** when it can ruin
+material.
 
-| Situación | Respuesta |
+| Situation | Response |
 |---|---|
-| Contornos partidos en tramos sueltos | Se encadenan por tolerancia. Caso normal |
-| Contorno que no cierra | **Error** con coordenadas del hueco y distancia faltante. Flag `--tol-cierre` |
-| Líneas duplicadas superpuestas | Se deduplican, con aviso y conteo |
-| `TEXT`, `DIMENSION`, `HATCH` | Se ignoran, con aviso y conteo |
-| Contorno auto-intersectado | **Error** con la ubicación |
-| Pieza más grande que el área útil | **Error** con identificación y medidas |
-| Contorno de área cero o degenerado | Se saltea, con aviso |
-| DXF sin unidades declaradas | **Error**: exige `--unidades` |
+| Outlines broken into loose segments | Chained by tolerance. Normal case |
+| Outline that does not close | **Error** with the coordinates of the gap and the missing distance. Flag `--tol-cierre` |
+| Duplicate overlapping lines | Deduplicated, with a warning and a count |
+| `TEXT`, `DIMENSION`, `HATCH` | Ignored, with a warning and a count |
+| Self-intersecting outline | **Error** with the location |
+| Part larger than the usable area | **Error** with identification and measurements |
+| Zero-area or degenerate outline | Skipped, with a warning |
+| DXF with no declared units | **Error**: demands `--unidades` |
 
-### 6.4 Configuración
+### 6.4 Configuration
 
 ```yaml
 # materials.yaml
 mdf18:
   placa: [1830, 2600]
-  tolerancia_veta: 180      # rotación libre
+  tolerancia_veta: 180      # free rotation
 multilam18:
   placa: [1220, 2440]
-  tolerancia_veta: 5        # sin corte cruzado
+  tolerancia_veta: 5        # no cross cutting
 ```
 
-### 6.5 Interfaz de línea de comandos
+### 6.5 Command line interface
 
 ```bash
 nest banqueta.dxf --material mdf18 --copias 5 \
@@ -433,107 +436,107 @@ nest banqueta.dxf --material mdf18 --copias 5 \
      --esfuerzo normal -o resultado.dxf
 ```
 
-| Flag | Default | Descripción |
+| Flag | Default | Description |
 |---|---|---|
-| `--material` | *(requerido)* | Clave del catálogo de materiales |
-| `--copias` | `1` | Multiplicador global del contenido del archivo |
-| `--sep` | `5` | Separación mínima entre piezas, en mm |
-| `--borde` | `10` | Margen contra el borde de la placa, en mm |
-| `--angulos` | `0,90,180,270` | Ángulos candidatos, filtrados por `tolerancia_veta` |
+| `--material` | *(required)* | Key from the material catalogue |
+| `--copias` | `1` | Global multiplier of the file's contents |
+| `--sep` | `5` | Minimum spacing between parts, in mm |
+| `--borde` | `10` | Margin against the sheet edge, in mm |
+| `--angulos` | `0,90,180,270` | Candidate angles, filtered by `tolerancia_veta` |
 | `--esfuerzo` | `normal` | `rapido` \| `normal` \| `lento` |
-| `--sin-espejo` | *(off)* | Deshabilita el espejado de piezas |
-| `--resolucion` | `1` | Resolución del raster, en mm/px |
-| `--unidades` | *(auto)* | `mm` \| `cm` \| `in`. Requerido si el archivo no las declara |
-| `--tol-cierre` | `0.1` | Tolerancia de encadenado de contornos, en mm |
-| `-o` | *(requerido)* | Archivo DXF de salida |
+| `--sin-espejo` | *(off)* | Disables mirroring of parts |
+| `--resolucion` | `1` | Raster resolution, in mm/px |
+| `--unidades` | *(auto)* | `mm` \| `cm` \| `in`. Required if the file does not declare them |
+| `--tol-cierre` | `0.1` | Outline chaining tolerance, in mm |
+| `-o` | *(required)* | Output DXF file |
 
 ---
 
 ## 7. Testing
 
-**El verificador geométrico exacto de §5.7 es el oráculo de toda la estrategia de tests.**
-Cualquier salida, de cualquier motor, con cualquier configuración, debe pasarlo.
+**The exact geometric verifier from §5.7 is the oracle of the whole test strategy.**
+Any output, from any engine, with any configuration, has to pass it.
 
-### 7.1 Tests unitarios
+### 7.1 Unit tests
 
-Cobertura de `geometry/`: `flatten` (error de cuerda acotado), `chaining`, `nesting_tree`
-(contención par/impar), `transform`.
+Coverage of `geometry/`: `flatten` (bounded chord error), `chaining`, `nesting_tree` (even/odd
+containment), `transform`.
 
-Con tests basados en propiedades:
-- El área de un polígono es invariante ante rotación y traslación.
-- Espejar dos veces es la identidad.
-- Encadenar un contorno ya cerrado no lo modifica.
-- Rotar una pieza `tolerancia_veta = 180` por cualquier ángulo permitido conserva su área ocupada.
+With property-based tests:
+- The area of a polygon is invariant under rotation and translation.
+- Mirroring twice is the identity.
+- Chaining an already closed outline does not modify it.
+- Rotating a `tolerancia_veta = 180` part by any allowed angle preserves its occupied area.
 
-### 7.2 Tests de integración
+### 7.2 Integration tests
 
-Pipeline completo sobre casos sintéticos con respuesta conocida. Ejemplo: cuatro cuadrados de
-100 mm en una placa de 220 mm con `sep = 10` y `borde = 0` → entran exactamente 4.
+Full pipeline over synthetic cases with a known answer. Example: four 100 mm squares on a 220 mm
+sheet with `sep = 10` and `borde = 0` → exactly 4 fit.
 
-### 7.3 Banco de pruebas
+### 7.3 Benchmark
 
-Corre sobre los archivos reales del proyecto (`.ai`, DXF exportado del `.cdr`, `.3dm`) y mide
-**% de aprovechamiento, cantidad de placas y segundos**.
+Runs over the project's real files (`.ai`, DXF exported from the `.cdr`, `.3dm`) and measures
+**% utilisation, number of sheets and seconds**.
 
-Cumple tres funciones:
-- Calibrar los niveles de esfuerzo de §5.6 con datos medidos.
-- Detectar regresiones de calidad.
-- Arbitrar la comparación raster vs NFP si se implementa el segundo motor.
+It serves three functions:
+- Calibrating the effort levels of §5.6 with measured data.
+- Detecting quality regressions.
+- Refereeing the raster vs NFP comparison if the second engine is implemented.
 
-### 7.4 Regresión
+### 7.4 Regression
 
-Con semilla fija, `--esfuerzo rapido` es determinístico. Cualquier cambio que mueva el
-aprovechamiento se hace visible.
+With a fixed seed, `--esfuerzo rapido` is deterministic. Any change that moves the utilisation
+becomes visible.
 
-### 7.5 Foco de TDD
+### 7.5 TDD focus
 
-`chaining` y `nesting_tree`. Es el código con más casos borde y el que produce los fallos que
-después se malinterpretan como "el nesting anda mal".
+`chaining` and `nesting_tree`. That is the code with the most edge cases and the one that produces
+the failures later misread as "the nesting is broken".
 
 ---
 
-## 8. Orden de construcción
+## 8. Build order
 
-| # | Hito | Justificación |
+| # | Milestone | Justification |
 |---|---|---|
-| **1** | Modelo + `geometry/` + **verificador exacto** | Nada es confiable hasta que exista el árbitro |
-| **2** | DXF lectura/escritura + empaquetado trivial (bounding box) + **banco de pruebas** | Pipeline completo end-to-end lo antes posible: ya hay DXF de salida con archivos reales, aunque nestee mal. Y ya se mide |
-| **3** | `raster_oracle`: máscaras, FFT, puntaje de contacto | El motor real. Entra detrás de la interfaz; el banco cuantifica la mejora contra el hito 2 |
-| **4** | Multi-placa, niveles de esfuerzo, CLI, preview | El producto |
-| **5** | Lectores `.ai` y `.3dm` | Independientes del motor; se pueden hacer en paralelo |
-| **6** | Calibración de esfuerzos con mediciones | Cierre con números |
+| **1** | Model + `geometry/` + **exact verifier** | Nothing is trustworthy until the referee exists |
+| **2** | DXF reading/writing + trivial packing (bounding box) + **benchmark** | Full end-to-end pipeline as early as possible: there is already an output DXF with real files, even if it nests badly. And it is already being measured |
+| **3** | `raster_oracle`: masks, FFT, contact score | The real engine. It goes in behind the interface; the benchmark quantifies the improvement over milestone 2 |
+| **4** | Multi-sheet, effort levels, CLI, preview | The product |
+| **5** | `.ai` and `.3dm` readers | Independent of the engine; they can be done in parallel |
+| **6** | Effort calibration with measurements | Closing with numbers |
 
-**El hito 2 va antes que el 3 deliberadamente:** tener el circuito completo funcionando con un
-nesting malo vale más que tener un nesting excelente sin poder abrir el archivo.
+**Milestone 2 goes before 3 deliberately:** having the whole circuit working with bad nesting is
+worth more than having excellent nesting you cannot open the file from.
 
 ---
 
-## 9. Dependencias
+## 9. Dependencies
 
-| Librería | Uso | Hito |
+| Library | Use | Milestone |
 |---|---|---|
-| `numpy` | Máscaras raster, álgebra | 1 |
-| `scipy` | FFT (`fftconvolve`), morfología (`binary_dilation`) | 3 |
-| `ezdxf` | Lectura y escritura DXF | 2 |
-| `shapely` | Verificación geométrica exacta, análisis de contención | 1 |
-| `Pillow` | Rasterizado de polígonos, preview PNG | 1 |
-| `rhino3dm` | Lectura `.3dm` | 5 |
-| `PyYAML` | Catálogo de materiales | 4 |
+| `numpy` | Raster masks, algebra | 1 |
+| `scipy` | FFT (`fftconvolve`), morphology (`binary_dilation`) | 3 |
+| `ezdxf` | DXF reading and writing | 2 |
+| `shapely` | Exact geometric verification, containment analysis | 1 |
+| `Pillow` | Polygon rasterising, PNG preview | 1 |
+| `rhino3dm` | `.3dm` reading | 5 |
+| `PyYAML` | Material catalogue | 4 |
 
-El lector `.ai` no requiere dependencias: es un parser propio de AI3/PostScript.
+The `.ai` reader requires no dependencies: it is an in-house AI3/PostScript parser.
 
-**Nota:** se usa `shapely` y no `pyclipper` para la verificación. `shapely` expone directamente las
-consultas que hacen falta (`intersects`, `distance`, `contains`), mientras que `pyclipper` es de
-nivel más bajo. `pyclipper` solo entraría si se implementa un motor NFP, por su operación
-`MinkowskiDiff`.
+**Note:** `shapely` is used and not `pyclipper` for the verification. `shapely` directly exposes
+the queries that are needed (`intersects`, `distance`, `contains`), whereas `pyclipper` is
+lower-level. `pyclipper` would only come in if an NFP engine is implemented, for its
+`MinkowskiDiff` operation.
 
 ---
 
-## 10. Riesgos conocidos
+## 10. Known risks
 
-| Riesgo | Mitigación |
+| Risk | Mitigation |
 |---|---|
-| Los DXF de Corel vienen sucios (contornos partidos, duplicados, entidades espurias) | `chaining` robusto con tolerancia + deduplicación + filtrado explícito con aviso. Es el foco de TDD |
-| El rendimiento de la búsqueda FFT no alcanza los tiempos objetivo | Correlación restringida a la región activa; resolución configurable; los niveles de esfuerzo se calibran con mediciones en vez de prometerse por anticipado |
-| El puntaje de contacto necesita ajuste de pesos | El banco de pruebas mide el impacto de cada combinación de pesos sobre archivos reales |
-| Las piezas anidadas dentro de agujeros se mueven al cortarse | Limitación declarada. La generación de puentes queda fuera del alcance de v1 |
+| Corel's DXF files come in dirty (broken outlines, duplicates, spurious entities) | Robust `chaining` with tolerance + deduplication + explicit filtering with a warning. It is the TDD focus |
+| The performance of the FFT search does not reach the target times | Correlation restricted to the active region; configurable resolution; the effort levels are calibrated with measurements instead of being promised in advance |
+| The contact score needs weight tuning | The benchmark measures the impact of each combination of weights over real files |
+| Parts nested inside holes move when cut | Declared limitation. Bridge generation is out of scope for v1 |

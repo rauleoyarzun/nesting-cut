@@ -1,44 +1,48 @@
-# Banco de pruebas
+# Benchmark
 
-Mide tres números sobre archivos reales: **cantidad de placas**, **% de aprovechamiento**
-y **segundos**. Son los que deciden si un cambio en el motor fue una mejora.
+*[Español](README.es.md)*
 
-## Uso
+Measures three numbers over real files: **number of sheets**, **% utilisation**
+and **seconds**. They are the ones that decide whether a change in the engine
+was an improvement.
+
+## Usage
 
 ```bash
-.venv/bin/python bench/make_sample.py  # genera bench/files/muestra.dxf
-.venv/bin/python bench/run_bench.py    # corre sobre todo bench/files/*.dxf
+.venv/bin/python bench/make_sample.py  # generates bench/files/muestra.dxf
+.venv/bin/python bench/run_bench.py    # runs over every bench/files/*.dxf
 ```
 
-Usá siempre `.venv/bin/python`: el `python`/`python3` del sistema no tiene
-`ezdxf` instalado.
+Always use `.venv/bin/python`: the system `python`/`python3` does not have
+`ezdxf` installed.
 
-El banco hoy solo lee archivos `.dxf` (`bench/files/*.dxf`); cualquier otro
-formato en esa carpeta se ignora.
+Today the benchmark only reads `.dxf` files (`bench/files/*.dxf`); any other
+format in that folder is ignored.
 
-Si un archivo de la carpeta falla (unidades sin declarar, contornos abiertos,
-piezas que no entran en la placa, DXF corrupto), la corrida no se aborta: esa
-fila se informa como `ERROR` con el motivo, y sigue midiendo el resto. El
-código de salida distingue esa situación (no cero) para que un script que
-llame al banco se entere de que faltó medir algo.
+If a file in the folder fails (units not declared, open outlines, parts that do
+not fit on the sheet, corrupt DXF), the run is not aborted: that row is reported
+as `ERROR` with the reason, and it keeps measuring the rest. The exit code
+distinguishes that situation (non-zero) so that a script calling the benchmark
+finds out that something went unmeasured.
 
-## Cargar los archivos reales del proyecto
+## Loading the project's real files
 
-Los archivos de la banqueta están en `.cdr`, `.ai` y `.3dm`. El `.cdr` **no se lee
-directamente** (formato binario cerrado, spec §2): hay que exportarlo.
+The bench files are in `.cdr`, `.ai` and `.3dm`. The `.cdr` **is not read
+directly** (closed binary format, spec §2): it has to be exported.
 
-**Desde CorelDRAW:** Archivo → Exportar → elegir `AutoCAD (DXF)` → guardar en
-`bench/files/`. Verificar que en el diálogo de exportación las unidades queden en
-**milímetros**; si Corel exporta sin declarar unidades, corré el banco con
-`--unidades mm` (mismas opciones que la CLI principal: `mm`, `cm`, `m`, `in`, `ft`).
+**From CorelDRAW:** File → Export → choose `AutoCAD (DXF)` → save into
+`bench/files/`. Check that the units in the export dialog are set to
+**millimetres**; if Corel exports without declaring units, run the benchmark
+with `--unidades mm` (same options as the main CLI: `mm`, `cm`, `m`, `in`,
+`ft`).
 
-**Desde Rhino:** Archivo → Exportar selección → `DXF`.
+**From Rhino:** File → Export selected → `DXF`.
 
-Los `.ai` y `.3dm` ya están copiados en `bench/files/` y, desde la Tarea 24,
-`run_one` los lee directo (por extensión, igual que la CLI): `.ai` con
-`read_ai`, `.3dm` con `read_3dm`, y cualquier otra extensión con `read_dxf`.
-El `main()` de `run_bench.py` (el reporte por consola) sigue barriendo solo
-`bench/files/*.dxf`; `bench/calibrate.py` es el que además suma `*.ai` a la
-corrida. El `banqueta.3dm` da 0 piezas (es el modelo 3D del ensamblaje
-armado, no un layout de corte plano -- ver el Task 23 report), así que no
-sirve para calibrar ni para medir aprovechamiento.
+The `.ai` and `.3dm` files are already copied into `bench/files/` and, since
+Task 24, `run_one` reads them directly (by extension, just like the CLI): `.ai`
+with `read_ai`, `.3dm` with `read_3dm`, and any other extension with
+`read_dxf`. The `main()` of `run_bench.py` (the console report) still sweeps
+only `bench/files/*.dxf`; `bench/calibrate.py` is the one that also adds `*.ai`
+to the run. The `banqueta.3dm` yields 0 parts (it is the 3D model of the
+assembled bench, not a flat cutting layout -- see the Task 23 report), so it is
+no good for calibrating or for measuring utilisation.

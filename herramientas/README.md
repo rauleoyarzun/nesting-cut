@@ -1,88 +1,88 @@
-# Herramientas de diagnóstico
+# Diagnostic tools
 
-Cosas que se corren a mano, no en la suite.
+*[Español](README.es.md)*
+
+Things you run by hand, not in the suite.
 
 ## `ventana_real.py`
 
-Maneja la ventana de escritorio de verdad desde afuera y revisa dos cosas que
-no se pueden ver de ninguna otra forma.
+Drives the real desktop window from the outside and checks two things that
+cannot be seen any other way.
 
 ```bash
-.venv/bin/python herramientas/ventana_real.py            # las dos revisiones
+.venv/bin/python herramientas/ventana_real.py            # both checks
 .venv/bin/python herramientas/ventana_real.py layout
 .venv/bin/python herramientas/ventana_real.py cierre
 ```
 
-Abre una ventana, necesita una pantalla y tarda unos diez segundos. Sale con
-1 si encuentra algún problema, y los lista en castellano.
+It opens a window, it needs a screen and it takes about ten seconds. It exits
+with 1 if it finds any problem, and lists them in Spanish.
 
-### Por qué existe
+### Why it exists
 
-Esta interfaz tiene una clase de defecto que no se ve leyendo el código ni
-corriendo la página en un navegador. Vive en el hilo principal de Cocoa: es
-donde WKWebView dibuja, y donde pywebview ejecuta los handlers que necesitan
-devolver un valor. Tres bugs reales salieron de acá, y los tres habían pasado
-antes por revisión de código y por el navegador:
+This interface has a class of defect that you cannot see by reading the code or
+by running the page in a browser. It lives in Cocoa's main thread: that is
+where WKWebView draws, and where pywebview runs the handlers that need to
+return a value. Three real bugs came out of here, and all three had already
+been through code review and through the browser:
 
-- **La barra de acción se estiraba a toda la altura.** Sin `grid-row`
-  explícito, la fila que le toca a cada hijo depende de cuántos hermanos estén
-  ocultos, y la pantalla de materiales oculta justo al del medio. Queda tapada
-  y no se ve; al volver, WKWebView no re-ubica y la pantalla principal queda en
-  0 px hasta que un resize fuerza el recálculo.
-- **Cerrar con un acomodo sin guardar colgaba el programa para siempre.** El
-  handler de `closing` corre en el hilo principal, y el diálogo que abría
-  encola su dibujo en ese mismo hilo y después lo espera.
-- **La revisión ampliada estiraba la columna de la grilla** en vez de
-  scrollear.
+- **The action bar stretched to the full height.** Without an explicit
+  `grid-row`, the row each child lands on depends on how many siblings are
+  hidden, and the materials screen hides exactly the middle one. It ends up
+  covered and invisible; on the way back, WKWebView does not relocate it and
+  the main screen stays at 0 px until a resize forces the recalculation.
+- **Closing with an unsaved layout hung the program forever.** The `closing`
+  handler runs on the main thread, and the dialog it opened queued its drawing
+  on that same thread and then waited for it.
+- **The enlarged review stretched the grid column** instead of scrolling.
 
-### Cuándo agarrarla
+### When to reach for it
 
-Cuando algo se ve o se comporta distinto en la ventana que en el navegador,
-cuando aparece un cuelgue al cerrar o al abrir un diálogo, o después de tocar
-`desktop.py`, el layout de `app.css` o el cambio entre pantallas.
+When something looks or behaves differently in the window than in the browser,
+when a hang appears on closing or on opening a dialog, or after touching
+`desktop.py`, the layout in `app.css` or the switch between screens.
 
-### Cómo revisa el cierre
+### How it checks the close
 
-El diálogo de verdad esperaría a una persona, así que lo reemplaza por uno que
-imita su forma exacta —`AppHelper.callAfter` para dibujar, más un semáforo para
-esperar la respuesta— y lo contesta solo. Esa forma es justamente la que
-colgaba. El cierre se dispara con `AppHelper.callAfter`, o sea en el hilo
-principal: llamarlo desde el hilo del guion no reproduciría nada, porque el
-bug es precisamente que el handler corre en el principal.
+The real dialog would wait for a person, so it replaces it with one that
+imitates its exact shape —`AppHelper.callAfter` to draw, plus a semaphore to
+wait for the answer— and answers it itself. That shape is precisely the one
+that used to hang. The close is triggered with `AppHelper.callAfter`, that is,
+on the main thread: calling it from the script's thread would reproduce
+nothing, because the bug is exactly that the handler runs on the main one.
 
-La revisión de cierre es sólo para macOS; en otra plataforma se saltea y lo
-dice.
+The close check is macOS only; on another platform it is skipped and says so.
 
-### Su propio criterio está probado
+### Its own judgement is tested
 
-Una herramienta de diagnóstico que dejó de detectar cosas se ve igual que una
-que no encuentra problemas. La parte con criterio (`problemas_de_medida`) es
-aritmética pura y vive en `tests/test_herramienta_ventana_real.py`, con los
-números que midió en la ventana real antes y después de cada arreglo.
+A diagnostic tool that has stopped detecting things looks just like one that
+finds no problems. The part that makes the judgement (`problemas_de_medida`) is
+pure arithmetic and lives in `tests/test_herramienta_ventana_real.py`, with the
+numbers it measured on the real window before and after each fix.
 
 ## `icono.py`
 
-Dibuja el ícono del programa y genera todo lo que se hace con él.
+Draws the program's icon and generates everything made from it.
 
 ```bash
-.venv/bin/python herramientas/icono.py            # regenera todos los archivos
-.venv/bin/python herramientas/icono.py comparar   # lo muestra sobre varios fondos
+.venv/bin/python herramientas/icono.py            # regenerates every file
+.venv/bin/python herramientas/icono.py comparar   # shows it over several backgrounds
 ```
 
-Deja `packaging/icono.ico` (Windows), `packaging/icono.icns` (macOS),
-`src/nesting_app/web/icono.png` (la pestaña del navegador) y
-`docs/imagenes/icono.png` (el maestro a 1024).
+It leaves `packaging/icono.ico` (Windows), `packaging/icono.icns` (macOS),
+`src/nesting_app/web/icono.png` (the browser tab) and
+`docs/imagenes/icono.png` (the 1024 master).
 
-El ícono se dibuja con código y no se guarda sólo como binario: un `.ico` no
-se puede corregir ni entender mirándolo, y éste tiene tres colores y una
-composición que alguna vez van a querer ajustarse.
+The icon is drawn with code and not just stored as a binary: an `.ico` cannot
+be corrected or understood by looking at it, and this one has three colours and
+a composition that somebody is going to want to adjust some day.
 
-**Son dos dibujos, no uno.** A 16 y 32 px las cinco piezas de la versión
-grande quedan en bloques de dos o tres píxeles separados por ranuras de menos
-de uno: puré. Para esos tamaños hay una composición de tres piezas, con la
-misma idea y la misma paleta. Cada tamaño del `.ico` va **dibujado**, no
-reescalado desde el grande, que es la única forma de que los chicos usen la
-versión simplificada.
+**They are two drawings, not one.** At 16 and 32 px the five parts of the large
+version turn into blocks of two or three pixels separated by grooves narrower
+than one: mush. For those sizes there is a three-part composition, with the
+same idea and the same palette. Every size in the `.ico` is **drawn**, not
+rescaled from the large one, which is the only way for the small ones to use
+the simplified version.
 
-`icono.icns` necesita `iconutil`, que es de macOS; en otra plataforma se
-saltea diciéndolo.
+`icono.icns` needs `iconutil`, which is macOS only; on another platform it is
+skipped and says so.

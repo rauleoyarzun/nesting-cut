@@ -216,7 +216,7 @@ runner de GitHub, corre la suite ahí y deja el `.zip` para bajar.
 ```
 
 Placas, porcentaje de aprovechamiento y segundos sobre archivos reales. Ver
-[`bench/README.md`](bench/README.md).
+[`bench/README.es.md`](bench/README.es.md).
 
 ### Regenerar el ícono
 
@@ -225,7 +225,7 @@ Placas, porcentaje de aprovechamiento y segundos sobre archivos reales. Ver
 ```
 
 Se dibuja con código, no se guarda sólo como binario. Deja el `.ico`, el
-`.icns` y el favicon. Ver [`herramientas/README.md`](herramientas/README.md).
+`.icns` y el favicon. Ver [`herramientas/README.es.md`](herramientas/README.es.md).
 
 ### Diagnosticar la ventana
 
@@ -236,7 +236,7 @@ Se dibuja con código, no se guarda sólo como binario. Deja el `.ico`, el
 Hay defectos de esta interfaz que no se ven leyendo el código ni corriendo la
 página en un navegador: viven en el hilo principal del sistema de ventanas. Esta
 herramienta maneja la ventana de verdad desde afuera y los detecta. Ver
-[`herramientas/README.md`](herramientas/README.md).
+[`herramientas/README.es.md`](herramientas/README.es.md).
 
 ---
 

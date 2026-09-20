@@ -1,222 +1,228 @@
-# Interfaz gráfica para el sistema de nesting
+# Graphical interface for the nesting system
 
-Fecha: 2026-09-19
-Estado: aprobado
+*[Español](2026-09-19-interfaz-grafica-design.es.md)*
 
-## 1. Qué se construye
+Date: 2026-09-19
+Status: approved
 
-Una interfaz gráfica sobre el motor que ya existe, que se distribuye como
-programa de escritorio para Windows y Mac, y que el día que se quiera publicar
-en la web se despliega **sin rehacer la interfaz**.
+## 1. What is being built
 
-El alcance de esta primera versión es **lo que ya hace la CLI, bien
-presentado**. No suma capacidades al motor salvo las dos que la interfaz
-necesita para no mentir (avance y cancelación).
+A graphical interface on top of the engine that already exists, distributed as a
+desktop program for Windows and Mac, and which on the day it is to be published
+on the web gets deployed **without redoing the interface**.
 
-### Fuera de alcance, a propósito
+The scope of this first version is **what the CLI already does, well
+presented**. It adds no capabilities to the engine except the two the interface
+needs in order not to lie (progress and cancellation).
 
-- **Cantidades por pieza.** Hoy `--copias` repite el archivo entero. Poder
-  pedir 4 de una pieza y 2 de otra es la función que más se extraña en la vida
-  real, pero toca el motor además de la interfaz y queda para después.
-- **Acomodar a mano.** Arrastrar una pieza y que el motor respete dónde quedó.
-  Es lo que hace eCut y exige verificación de colisiones en vivo.
-- **Instalador (.msi / setup.exe).** Se suma después sin tocar el programa.
-- **Tests automáticos de la interfaz.** Lista de verificación manual en esta
-  primera vuelta; montar Playwright ahora sería más infraestructura que
-  producto.
-- **La versión web en sí.** Esta spec la deja alcanzable, no la construye.
+### Out of scope, on purpose
 
-## 2. Las decisiones, y por qué
+- **Quantities per part.** Today `--copias` repeats the whole file. Being able
+  to ask for 4 of one part and 2 of another is the feature most missed in real
+  life, but it touches the engine as well as the interface and is left for
+  later.
+- **Laying out by hand.** Dragging a part and having the engine respect where it
+  ended up. That is what eCut does and it demands live collision checking.
+- **Installer (.msi / setup.exe).** Added later without touching the program.
+- **Automated tests of the interface.** A manual checklist on this first pass;
+  setting up Playwright now would be more infrastructure than product.
+- **The web version itself.** This spec leaves it reachable, it does not build
+  it.
 
-### 2.1 El motor se queda en Python. Lo que se comparte es la interfaz.
+## 2. The decisions, and why
 
-`numpy`, `scipy`, `shapely` y `rhino3dm` son bibliotecas compiladas. Correr el
-motor en el navegador no es viable. Por lo tanto lo que viaja entre escritorio
-y web no es el motor: es la interfaz, y sólo si está hecha en HTML/CSS/JS
-hablándole a una API HTTP.
+### 2.1 The engine stays in Python. What gets shared is the interface.
 
-Una interfaz nativa (Qt, wxPython) daría un mejor programa de escritorio y
-**cerraría el camino web por completo**. Se descarta por eso, no por otra
-cosa.
+`numpy`, `scipy`, `shapely` and `rhino3dm` are compiled libraries. Running the
+engine in the browser is not viable. Therefore what travels between desktop and
+web is not the engine: it is the interface, and only if it is made in
+HTML/CSS/JS talking to an HTTP API.
 
-### 2.2 La API es por trabajos, no pedido-respuesta.
+A native interface (Qt, wxPython) would make a better desktop program and would
+**close the web path completely**. It is discarded for that reason, not for any
+other.
 
-Medido sobre `files/robot.ai`: `rapido` 34 s, `lento` 3 min 54 s,
-`lento` con 8 ángulos 9 min 5 s. Eso no entra en un request HTTP.
+### 2.2 The API is job-based, not request-response.
 
-En escritorio con un solo usuario se podría resolver con un hilo y listo. Se
-elige igual la forma "mandá el trabajo, preguntá cómo va, tomá el resultado"
-porque es la que necesita la web, y retrofitearla después es reescribir. Hoy
-no cuesta nada.
+Measured over `files/robot.ai`: `rapido` 34 s, `lento` 3 min 54 s, `lento` with
+8 angles 9 min 5 s. That does not fit in an HTTP request.
 
-### 2.3 Ventana nativa con webview, no el navegador del sistema.
+On the desktop with a single user it could be solved with a thread and be done
+with it. The "send the job, ask how it is going, take the result" shape is
+chosen anyway because it is the one the web needs, and retrofitting it later
+means rewriting. Today it costs nothing.
 
-Se evaluó levantar el servidor y abrir Chrome en `localhost`: cero
-dependencias nuevas e idéntico en las dos plataformas.
+### 2.3 Native window with webview, not the system browser.
 
-Se descarta porque pierde **los diálogos nativos de archivo**. En un navegador
-sólo se puede subir contenido y bajar a Descargas; no hay "Guardar como". Para
-una herramienta de corte, donde el DXF va a una carpeta de trabajo junto al
-resto del proyecto, esa diferencia se siente en cada uso. Además la barra de
-direcciones delata que no es un programa, y si se cierra la pestaña el
-servidor queda corriendo invisible.
+Starting the server and opening Chrome on `localhost` was considered: zero new
+dependencies and identical on both platforms.
 
-Se evaluó Tauri (ejecutables mucho más chicos, actualización automática) y se
-descarta por ahora: suma Rust y una cadena de compilación entera a un proyecto
-que hoy es Python puro, y el Python empaquetado hay que armarlo igual.
+It is discarded because it loses **the native file dialogs**. In a browser you
+can only upload content and download to Downloads; there is no "Save as". For a
+cutting tool, where the DXF goes to a working folder alongside the rest of the
+project, that difference is felt on every use. Besides, the address bar gives
+away that it is not a program, and if the tab is closed the server stays running
+invisibly.
 
-### 2.4 Dirección visual: D · Moderno.
+Tauri was considered (much smaller executables, automatic updates) and is
+discarded for now: it adds Rust and a whole build chain to a project that today
+is pure Python, and the packaged Python has to be built anyway.
 
-Elegida entre cuatro maquetadas en
+### 2.4 Visual direction: D · Modern.
+
+Chosen among four mocked up in
 <https://claude.ai/artifact/SmUpS9U8sNKfRSuesnbEEs>.
 
-Es la más accesible para alguien que no viene de CAD, y la única de las cuatro
-que el día que se publique en la web no va a parecer una app de escritorio
-metida en un navegador.
+It is the most approachable for somebody who does not come from CAD, and the
+only one of the four that on the day it is published on the web will not look
+like a desktop app shoved into a browser.
 
 **Tokens:**
 
 | | |
 |---|---|
-| Fondo | `#F4F6F8` |
+| Background | `#F4F6F8` |
 | Panel | `#FFFFFF` |
-| Fondo del dibujo | `#EDF0F4` |
-| Texto | `#111827` |
-| Texto secundario | `#606B7B` |
-| Bordes | `#E2E6EC`, 1 px |
-| Acento | `#047857` |
-| Texto sobre acento | `#FFFFFF` |
-| Radio | 10 px (botones 8 px) |
-| Alto de control | 44 px |
-| Sombra de panel | `0 1px 2px rgba(17,24,39,.06), 0 4px 12px rgba(17,24,39,.05)` |
-| Tipografía | Plus Jakarta Sans |
-| Placa / piezas | relleno `#FFFFFF` / `#E7EDF3`, trazo `#A9B4C2` / `#3F5468` |
+| Drawing background | `#EDF0F4` |
+| Text | `#111827` |
+| Secondary text | `#606B7B` |
+| Borders | `#E2E6EC`, 1 px |
+| Accent | `#047857` |
+| Text on accent | `#FFFFFF` |
+| Radius | 10 px (buttons 8 px) |
+| Control height | 44 px |
+| Panel shadow | `0 1px 2px rgba(17,24,39,.06), 0 4px 12px rgba(17,24,39,.05)` |
+| Typeface | Plus Jakarta Sans |
+| Sheet / parts | fill `#FFFFFF` / `#E7EDF3`, stroke `#A9B4C2` / `#3F5468` |
 
-El acento es `#047857` y no `#059669` porque el segundo da 3,4:1 contra blanco
-y no alcanza para texto chico.
+The accent is `#047857` and not `#059669` because the second gives 3.4:1
+against white and is not enough for small text.
 
-**Cifras tabulares.** Toda medida en pantalla lleva
-`font-variant-numeric: tabular-nums`. La interfaz es una grilla de medidas que
-se comparan entre sí, y en cifras proporcionales `1830` y `1220` no alinean.
-Plus Jakarta Sans las trae, así que no hace falta cambiar de familia.
+**Tabular figures.** Every measurement on screen carries
+`font-variant-numeric: tabular-nums`. The interface is a grid of measurements
+compared against each other, and in proportional figures `1830` and `1220` do
+not line up. Plus Jakarta Sans includes them, so there is no need to change
+family.
 
-### 2.5 Empaquetado: carpeta comprimida, no archivo único.
+### 2.5 Packaging: compressed folder, not single file.
 
-PyInstaller en modo carpeta, distribuida como zip. El modo de archivo único se
-autodescomprime **en cada arranque**, y con 300 MB son varios segundos cada
-vez que se abre el programa.
+PyInstaller in folder mode, distributed as a zip. Single-file mode unpacks
+itself **on every start**, and with 300 MB that is several seconds every time
+the program is opened.
 
-El `.exe` de Windows **no se puede compilar desde Mac**: PyInstaller no cruza
-plataformas. Lo arma GitHub Actions.
+The Windows `.exe` **cannot be compiled from Mac**: PyInstaller does not cross
+platforms. GitHub Actions builds it.
 
-## 3. Arquitectura
+## 3. Architecture
 
 ```
-src/nesting/          el motor de hoy. Un solo cambio: el callback de avance.
-src/nesting/cli.py    sigue funcionando igual. No es un camino que se abandona.
-src/nesting/params.py los parámetros de una corrida, con su validación
-src/nesting_app/      nuevo
-    api.py            las rutas HTTP
-    jobs.py           el registro de trabajos y el hilo que los corre
-    materials_store.py  el catálogo editable en la carpeta del usuario
-    archivos.py       la puerta de plataforma: escritorio contra web
-    rutas.py          dónde están los datos, congelado o no
-    desktop.py        levanta el servidor y abre la ventana
+src/nesting/          today's engine. A single change: the progress callback.
+src/nesting/cli.py    keeps working the same. It is not a path being abandoned.
+src/nesting/params.py the parameters of a run, with their validation
+src/nesting_app/      new
+    api.py            the HTTP routes
+    jobs.py           the job registry and the thread that runs them
+    materials_store.py  the catalogue, editable, in the user's folder
+    archivos.py       the platform door: desktop versus web
+    rutas.py          where the data is, frozen or not
+    desktop.py        starts the server and opens the window
     web/              index.html, app.js, app.css
 ```
 
-**`nesting_app` conoce a `nesting`, nunca al revés.** El motor no sabe que
-existe una interfaz, igual que hoy no sabe que existe una CLI.
+**`nesting_app` knows `nesting`, never the other way round.** The engine does
+not know an interface exists, just as today it does not know a CLI exists.
 
-Bibliotecas nuevas: `fastapi`, `uvicorn`, `pywebview`.
+New libraries: `fastapi`, `uvicorn`, `pywebview`.
 
-## 4. La API
+## 4. The API
 
 ```
-POST   /api/archivos            sube un archivo (web) → {fuente_id}
-POST   /api/archivos/local      registra una ruta local (escritorio) → {fuente_id}
-POST   /api/analizar            {fuente_id} → piezas, descartes, unidades
-POST   /api/trabajos            {fuente_id, parámetros} → {id}
-GET    /api/trabajos/{id}       estado, avance, avisos, resultado
+POST   /api/archivos            uploads a file (web) → {fuente_id}
+POST   /api/archivos/local      registers a local path (desktop) → {fuente_id}
+POST   /api/analizar            {fuente_id} → parts, discards, units
+POST   /api/trabajos            {fuente_id, parameters} → {id}
+GET    /api/trabajos/{id}       status, progress, warnings, result
 POST   /api/trabajos/{id}/cancelar
 GET    /api/trabajos/{id}/salida.dxf
 GET    /api/trabajos/{id}/preview.png
 GET    /api/trabajos/{id}/diagnostico.png
-GET    /api/materiales          y POST, PUT, DELETE
+GET    /api/materiales          plus POST, PUT, DELETE
 POST   /api/materiales/restaurar
 ```
 
-### 4.1 Estados de un trabajo
+### 4.1 States of a job
 
 `pendiente` → `corriendo` → `listo` | `cancelado` | `error`
+(pending → running → done | cancelled | error)
 
-### 4.2 El avance se mide en piezas, dentro de un intento
+### 4.2 Progress is measured in parts, within an attempt
 
-Cuántas placas van a hacer falta **no se sabe de antemano**: el motor las
-descubre mientras trabaja. "Placa 2 de 3" sería inventado.
+How many sheets will be needed **is not known in advance**: the engine discovers
+them as it works. "Sheet 2 of 3" would be made up.
 
-Cuántas piezas hay sí se sabe desde el principio. Pero `pack()` corre varias
-pasadas completas y se queda con la mejor —1 en `rapido`, 3 en `normal`, 12 en
-`lento`, según `EFFORT_RESTARTS`— y **cada pasada reinicia el conteo**. Un
-porcentaje que retrocede es peor que no tener ninguno.
+How many parts there are *is* known from the start. But `pack()` runs several
+complete passes and keeps the best —1 in `rapido`, 3 in `normal`, 12 in `lento`,
+according to `EFFORT_RESTARTS`— and **each pass restarts the count**. A
+percentage that goes backwards is worse than having none.
 
-El avance honesto lleva las dos cosas, y la cantidad de intentos se sabe desde
-el arranque porque sale de `EFFORT_RESTARTS[esfuerzo]`:
+Honest progress carries both things, and the number of attempts is known from
+the start because it comes from `EFFORT_RESTARTS[esfuerzo]`:
 
 > *intento 2 de 3 · ubicadas 61 de 93 · placa 1*
+> (attempt 2 of 3 · 61 of 93 placed · sheet 1)
 
-La barra se llena con `piezas_ubicadas / piezas_totales` y se reinicia visible
-en cada intento, que es lo que de verdad está pasando.
+The bar fills with `parts_placed / total_parts` and visibly restarts on each
+attempt, which is what is really happening.
 
-Después de los intentos hay un paso más, `_compact_last_sheet`, que se informa
-como *"compactando la última placa"* sin barra: es una sola pasada corta y
-fingir un porcentaje ahí sería inventar otra vez.
+After the attempts there is one more step, `_compact_last_sheet`, reported as
+*"compactando la última placa"* (compacting the last sheet) with no bar: it is a
+single short pass and faking a percentage there would be making things up again.
 
-### 4.3 Cancelar es cooperativo
+### 4.3 Cancelling is cooperative
 
-Se levanta una bandera y el motor sale limpio en el próximo punto de corte,
-que es el mismo callback del avance. No se mata el hilo.
+A flag is raised and the engine exits cleanly at the next cut point, which is
+the same progress callback. The thread is not killed.
 
-### 4.4 La puerta de plataforma
+### 4.4 The platform door
 
-| | Escritorio | Web |
+| | Desktop | Web |
 |---|---|---|
-| Abrir | diálogo nativo, devuelve una ruta | `<input type=file>`, sube |
-| Guardar | "Guardar como" nativo | descarga |
+| Open | native dialog, returns a path | `<input type=file>`, uploads |
+| Save | native "Save as" | download |
 
-Los dos caminos terminan en un `fuente_id` que el resto del sistema usa sin
-preguntar de dónde salió. **Es el único lugar del código que sabe dónde está
-corriendo.**
+Both paths end up in a `fuente_id` that the rest of the system uses without
+asking where it came from. **It is the only place in the code that knows where
+it is running.**
 
-### 4.5 Un trabajo a la vez
+### 4.5 One job at a time
 
-En escritorio corre un solo hilo trabajador. Un trabajo mandado mientras otro
-corre queda en `pendiente`; la interfaz además deshabilita "Acomodar" mientras
-hay uno en curso, así que en la práctica la cola no se usa — pero la API la
-respeta igual, porque en la web sí se va a usar.
+On the desktop a single worker thread runs. A job sent while another is running
+stays `pendiente`; the interface also disables "Acomodar" while one is in
+progress, so in practice the queue is not used — but the API respects it anyway,
+because on the web it will be.
 
-Para la web se cambia el hilo único por una cola con varios procesos **sin
-tocar la API**, que es el punto de haberla diseñado así.
+For the web the single thread is swapped for a queue with several processes
+**without touching the API**, which is the point of having designed it this way.
 
-### 4.6 Archivos temporales
+### 4.6 Temporary files
 
-Cada `fuente_id` y cada trabajo tienen su carpeta bajo el directorio temporal
-del sistema. Se borran al cerrar el programa, y al arrancar se limpia lo que
-haya quedado de una corrida anterior que terminó mal.
+Every `fuente_id` and every job has its folder under the system's temporary
+directory. They are deleted when the program closes, and on startup whatever was
+left over from a previous run that ended badly is cleaned up.
 
-Un DXF de salida vive ahí hasta que el usuario aprieta "Guardar DXF", que lo
-copia al destino que eligió. **Cerrar el programa sin guardar pierde el
-resultado**, y la interfaz avisa antes de cerrar si hay uno sin guardar.
+An output DXF lives there until the user presses "Guardar DXF", which copies it
+to the destination they chose. **Closing the program without saving loses the
+result**, and the interface warns before closing if there is an unsaved one.
 
-## 5. Las pantallas
+## 5. The screens
 
-Ventana de 1100 × 720, redimensionable, mínimo 960 × 640.
+A 1100 × 720 window, resizable, minimum 960 × 640.
 
-### 5.1 Principal
+### 5.1 Main
 
-Una sola ventana, **no un asistente por pasos**: el trabajo real es iterativo
-—correr, mirar, cambiar la separación, volver a correr— y un asistente obliga
-a recorrerlo entero para tocar un número.
+A single window, **not a step-by-step wizard**: the real work is iterative —run,
+look, change the spacing, run again— and a wizard forces you through the whole
+thing to touch one number.
 
 ```
 ┌─────────────────────────────┬──────────────────────────────────┐
@@ -236,131 +242,134 @@ a recorrerlo entero para tocar un número.
 └────────────────────────────────────────────────────────────────┘
 ```
 
-Arriba, las cinco opciones que se tocan. Plegadas en "Opciones avanzadas", las
-siete que no: ángulos, espejo, unidades, tolerancia de cierre, resolución,
-catálogo de materiales alternativo.
+At the top, the five options you actually touch. Folded into "Opciones
+avanzadas" (advanced options), the seven you do not: angles, mirroring, units,
+closing tolerance, resolution, alternative material catalogue.
 
-**El archivo se analiza apenas se elige.** Antes de tocar un parámetro ya dice
-"93 piezas · 3 descartes", y ese "3 descartes" es un link que cambia el panel
-derecho a la imagen de revisión. `/api/analizar` corre en ~1 s.
+**The file is analysed as soon as it is chosen.** Before you touch a parameter
+it already says "93 piezas · 3 descartes" (93 parts · 3 discards), and that
+"3 descartes" is a link that switches the right panel to the review image.
+`/api/analizar` runs in ~1 s.
 
-**El panel derecho tiene dos solapas**, Previsualización y Revisión. Al
-principio sólo está Revisión, porque todavía no se acomodó nada.
+**The right panel has two tabs**, Previsualización and Revisión (preview and
+review). At first only Revisión is there, because nothing has been laid out yet.
 
-**Durante la corrida**, la barra inferior muestra el avance y un botón de
-cancelar en lugar del resultado.
+**During the run**, the bottom bar shows the progress and a cancel button
+instead of the result.
 
-**"Guardar DXF" es explícito.** El archivo se arma en una carpeta de trabajo y
-no va a ningún lado hasta que se aprieta guardar. Nada aparece solo en
-Descargas ni al lado del archivo de entrada.
+**"Guardar DXF" is explicit.** The file is built in a working folder and goes
+nowhere until save is pressed. Nothing appears on its own in Downloads or next
+to the input file.
 
-### 5.2 Materiales
+### 5.2 Materials
 
-Se llega desde el desplegable de material ("Administrar materiales…") y desde
-la barra superior. Tabla con nombre, ancho, alto y veta; agregar, editar,
-borrar; y un panel de formulario al costado.
+You get there from the material dropdown ("Administrar materiales…") and from
+the top bar. A table with name, width, height and grain; add, edit, delete; and
+a form panel to the side.
 
-La veta **no se muestra como un número entre 0 y 180**, porque nadie sabe qué
-significa 5:
+The grain is **not shown as a number between 0 and 180**, because nobody knows
+what 5 means:
 
-- **La veta no importa** — la pieza gira libre *(MDF)* → `tolerancia_veta: 180`
-- **Respetar la veta** — sólo 0 y 180 grados *(multilaminado, fenólico)* → `5`
+- **La veta no importa** (grain does not matter) — the part rotates freely
+  *(MDF)* → `tolerancia_veta: 180`
+- **Respetar la veta** (respect the grain) — 0 and 180 degrees only *(plywood,
+  phenolic)* → `5`
 
-Se guardan en la carpeta de datos del usuario:
+They are saved in the user's data folder:
 
 - Windows: `%APPDATA%\nesting\materials.yaml`
 - macOS: `~/Library/Application Support/nesting/materials.yaml`
 
-La primera vez se copia ahí el catálogo que trae el programa. Queda un botón
-para restaurar ese original.
+The first time, the catalogue that ships with the program is copied there. A
+button remains for restoring that original.
 
-### 5.3 Las unidades dejan de ser un error
+### 5.3 Units stop being an error
 
-Hoy, un archivo que no declara unidades corta la corrida con
-`UnknownUnitsError` y un mensaje que manda a usar `--unidades`. En una
-interfaz eso no puede ser un error: es una pregunta. Aparece un cartel con los
-cinco botones (mm, cm, m, in, ft) y se sigue.
+Today, a file that does not declare units aborts the run with
+`UnknownUnitsError` and a message telling you to use `--unidades`. In an
+interface that cannot be an error: it is a question. A panel appears with the
+five buttons (mm, cm, m, in, ft) and things carry on.
 
-## 6. Empaquetado y distribución
+## 6. Packaging and distribution
 
-- **PyInstaller en modo carpeta**, distribuida en un zip.
-- **GitHub Actions** con `windows-latest` y `macos-latest`, disparado por tag.
-- **El puerto se pide libre al sistema** (`port 0`), nunca uno fijo.
-- **El servidor escucha sólo en `127.0.0.1`** y exige un token que la ventana
-  ya trae en la URL. Sin eso, cualquier página abierta en el navegador del
-  usuario podría mandarle trabajos al programa.
-- **WebView2 se verifica al arrancar.** Si falta, un cartel con el link de
-  descarga. Sin eso la ventana abre en blanco y no hay forma de adivinar qué
-  pasó. Windows 11 lo trae siempre; Windows 10 casi siempre.
-- Un `.exe` sin firmar dispara la advertencia de SmartScreen. Se acepta en
-  esta versión; firmarlo cuesta plata y trámite.
-- Peso medido (macOS arm64, PyInstaller 6.22.3): 106 MB en disco
-  (`dist/Nesting/`), 56 MB comprimido (`dist/Nesting-darwin-arm64.zip`).
-  Bastante menos que la estimación original de 250-400 MB / 100-150 MB,
-  que asumía un binario universal2 (x86_64 + arm64); este es arm64 puro.
-  Falta medir el peso en Windows, que lleva su propio runtime y DLLs.
+- **PyInstaller in folder mode**, distributed in a zip.
+- **GitHub Actions** with `windows-latest` and `macos-latest`, triggered by tag.
+- **The port is requested free from the system** (`port 0`), never a fixed one.
+- **The server listens only on `127.0.0.1`** and demands a token that the window
+  already carries in the URL. Without that, any page open in the user's browser
+  could send jobs to the program.
+- **WebView2 is checked at startup.** If it is missing, a panel with the
+  download link. Without that the window opens blank and there is no way to
+  guess what happened. Windows 11 always ships it; Windows 10 almost always.
+- An unsigned `.exe` triggers the SmartScreen warning. Accepted in this version;
+  signing it costs money and paperwork.
+- Measured size (macOS arm64, PyInstaller 6.22.3): 106 MB on disk
+  (`dist/Nesting/`), 56 MB compressed (`dist/Nesting-darwin-arm64.zip`). Quite a
+  bit less than the original estimate of 250-400 MB / 100-150 MB, which assumed
+  a universal2 binary (x86_64 + arm64); this one is pure arm64. The size on
+  Windows, which carries its own runtime and DLLs, is still to be measured.
 
-## 7. Errores
+## 7. Errors
 
-| Situación | En la ventana |
+| Situation | In the window |
 |---|---|
-| Unidades sin declarar | la pregunta con los cinco botones (5.3) |
-| Contorno abierto | cartel con el hueco en mm y dónde está, y el campo de tolerancia de cierre a un click |
-| Pieza más grande que la placa | nombra la pieza, su medida y la del área útil |
-| Verificación fallida (código 2) | en rojo, con **no se escribió ningún archivo** y la lista de problemas |
-| Parámetro inválido | debajo del campo que lo tiene mal |
-| Catálogo de materiales corrupto | se nombra el error y se ofrece restaurar el original |
+| Units not declared | the question with the five buttons (5.3) |
+| Open outline | a panel with the gap in mm and where it is, and the closing tolerance field one click away |
+| Part larger than the sheet | names the part, its measurement and that of the usable area |
+| Verification failed (exit code 2) | in red, with **no file was written** and the list of problems |
+| Invalid parameter | below the field that has it wrong |
+| Corrupt material catalogue | the error is named and restoring the original is offered |
 
-**`ChainingInvariantError` no es un error del usuario, es un bug del
-programa.** Hoy revienta a propósito, sin atajar, porque significa que el
-encadenador perdió geometría. En la ventana no puede disfrazarse de "revisá tu
-dibujo": dice que el problema es del programa y da un detalle copiable. Lo
-mismo para cualquier excepción inesperada, que además va a
-`<carpeta de datos>/log.txt`.
+**`ChainingInvariantError` is not a user error, it is a bug in the program.**
+Today it blows up on purpose, uncaught, because it means the chainer lost
+geometry. In the window it cannot be disguised as "check your drawing": it says
+the problem is the program's and gives a copyable detail. The same goes for any
+unexpected exception, which additionally goes to `<data folder>/log.txt`.
 
-## 8. Cambios al código que ya existe
+## 8. Changes to the code that already exists
 
-1. **`pack()` recibe un callback de avance opcional**, que se llama al ubicar
-   cada pieza con `(piezas_ubicadas, piezas_totales, placa_en_curso)` y cuyo
-   valor de retorno pide abandonar. Es el único cambio al motor. La CLI no lo
-   usa y su comportamiento no cambia.
-2. **`_validate_numeric_args` sale de `cli.py` a `params.py`**, para que la
-   CLI y la API validen con el mismo código y no con dos copias que se
-   despegan.
-3. **`DEFAULT_MATERIALS_PATH` deja de calcularse como
-   `Path(__file__).parents[3]`**, que dentro de un ejecutable congelado no da.
-   Pasa por `rutas.py`, que distingue congelado de no congelado.
+1. **`pack()` takes an optional progress callback**, called when each part is
+   placed with `(parts_placed, total_parts, current_sheet)` and whose return
+   value asks it to give up. It is the only change to the engine. The CLI does
+   not use it and its behaviour does not change.
+2. **`_validate_numeric_args` moves out of `cli.py` into `params.py`**, so that
+   the CLI and the API validate with the same code and not with two copies that
+   drift apart.
+3. **`DEFAULT_MATERIALS_PATH` stops being computed as
+   `Path(__file__).parents[3]`**, which does not work inside a frozen
+   executable. It goes through `rutas.py`, which distinguishes frozen from not
+   frozen.
 
-Ninguno de los tres cambia el comportamiento observable de la CLI.
+None of the three changes the observable behaviour of the CLI.
 
 ## 9. Tests
 
-**Los 495 tests del motor no se tocan.** Es la prueba de que el corte entre
-motor e interfaz está bien puesto: si hubiera que cambiar un test del motor
-para meter una interfaz, el corte estaría mal.
+**The engine's 495 tests are not touched.** That is the proof that the cut
+between engine and interface is in the right place: if an engine test had to
+change in order to add an interface, the cut would be wrong.
 
-Se suman:
+Added:
 
-- **La API**, con el cliente de prueba de FastAPI: el ciclo completo de un
-  trabajo, cancelar a mitad de una corrida, parámetros inválidos rechazados en
-  el borde, `/api/analizar`, y que un `fuente_id` inexistente no reviente.
-- **El catálogo de materiales**: guardar y releer, un archivo corrupto,
-  restaurar el original, y la resolución de rutas congelado y no congelado.
-- **Los parámetros**, movidos de `cli.py` y ahora compartidos.
-- **Una prueba sobre el ejecutable congelado.** El programa acepta
-  `--autotest`: levanta el servidor, pide `/api/materiales`, y sale con cero.
-  Lo corre GitHub Actions después de compilar.
+- **The API**, with FastAPI's test client: the full cycle of a job, cancelling
+  mid-run, invalid parameters rejected at the boundary, `/api/analizar`, and a
+  non-existent `fuente_id` not blowing up.
+- **The material catalogue**: saving and re-reading, a corrupt file, restoring
+  the original, and path resolution frozen and not frozen.
+- **The parameters**, moved out of `cli.py` and now shared.
+- **A test over the frozen executable.** The program accepts `--autotest`: it
+  starts the server, requests `/api/materiales`, and exits with zero. GitHub
+  Actions runs it after building.
 
-Esa última ataja la clase de error que más duele: rutas que no resuelven, un
-módulo que PyInstaller no encontró, `materials.yaml` que no está donde el
-código lo busca. **Esos bugs no aparecen nunca en los tests normales**,
-aparecen cuando el usuario abre el programa. Ya sabemos que
-`DEFAULT_MATERIALS_PATH` es uno de ellos.
+That last one catches the class of error that hurts most: paths that do not
+resolve, a module PyInstaller did not find, a `materials.yaml` that is not where
+the code looks for it. **Those bugs never show up in the normal tests**, they
+show up when the user opens the program. We already know
+`DEFAULT_MATERIALS_PATH` is one of them.
 
-## 10. Lo que esta spec deja listo para la web
+## 10. What this spec leaves ready for the web
 
-El día que se quiera publicar, el trabajo que queda es: desplegar el servidor,
-sumar usuarios y aislamiento, cambiar el hilo único por una cola de procesos,
-y aguantar el costo de CPU (cada trabajo ocupa un núcleo durante minutos).
+The day it is to be published, the work left is: deploy the server, add users
+and isolation, swap the single thread for a process queue, and absorb the CPU
+cost (each job occupies a core for minutes).
 
-**Nada de eso toca la interfaz.**
+**None of that touches the interface.**
