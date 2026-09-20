@@ -81,6 +81,69 @@ def test_analizar_devuelve_los_descartes_dibujables(tmp_path, deposito):
     assert "12.000 mm" in analisis.descartes[0]["detalle"]
 
 
+def test_analizar_deja_la_revision_dibujada(tmp_path, deposito):
+    """El pedido original del usuario: saber CUÁLES son los que se
+    descartaron. Mientras esa imagen sólo la escribía `acomodar`, había que
+    esperar hasta nueve minutos para verla -- y para ese entonces la decisión
+    de corregir el archivo original ya no servía de nada."""
+    doc = ezdxf.new("R2010", setup=True)
+    doc.units = 4
+    msp = doc.modelspace()
+    msp.add_lwpolyline([(0, 0), (200, 0), (200, 200), (0, 200)], close=True)
+    msp.add_line((400, 400), (412, 400))
+    ruta = tmp_path / "sucio.dxf"
+    doc.saveas(ruta)
+    fuente = deposito.registrar_local(ruta)
+
+    corredor.analizar(fuente, unidades=None, tol_cierre=0.1)
+
+    imagen = fuente.carpeta / corredor.NOMBRE_DIAGNOSTICO
+    assert imagen.is_file()
+    assert imagen.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", "no es un PNG"
+
+
+def test_analizar_de_nuevo_redibuja_la_revision(tmp_path, deposito):
+    """La tolerancia de cierre es un control de la pantalla: cambiarla cambia
+    qué se descarta. Si la imagen quedara de la corrida anterior, el usuario
+    estaría mirando los descartes de una tolerancia que ya no es la suya."""
+    doc = ezdxf.new("R2010", setup=True)
+    doc.units = 4
+    msp = doc.modelspace()
+    msp.add_lwpolyline([(0, 0), (200, 0), (200, 200), (0, 200)], close=True)
+    ruta = tmp_path / "limpio.dxf"
+    doc.saveas(ruta)
+    fuente = deposito.registrar_local(ruta)
+    imagen = fuente.carpeta / corredor.NOMBRE_DIAGNOSTICO
+
+    corredor.analizar(fuente, unidades=None, tol_cierre=0.1)
+    primera = imagen.stat().st_mtime_ns
+    imagen.write_bytes(b"basura")
+
+    corredor.analizar(fuente, unidades=None, tol_cierre=0.5)
+
+    assert imagen.read_bytes() != b"basura", "la revisión quedó de la vez anterior"
+    assert primera  # el primer análisis sí la había escrito
+
+
+def test_si_no_se_puede_dibujar_la_revision_el_analisis_igual_contesta(
+    tmp_path, deposito, monkeypatch
+):
+    """Las cuentas del análisis son la respuesta; la imagen es una ayuda.
+    Perder las dos porque no se pudo escribir un PNG sería peor que
+    quedarse sin la imagen, así que el fallo se cuenta como aviso."""
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+
+    def explota(*args, **kwargs):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(corredor, "write_diagnostic", explota)
+
+    analisis = corredor.analizar(fuente, unidades=None, tol_cierre=0.1)
+
+    assert analisis.piezas == 1
+    assert any("no se pudo dibujar la revisión" in a for a in analisis.avisos)
+
+
 def test_analizar_un_archivo_sin_unidades_se_queja_de_forma_reconocible(tmp_path, deposito):
     """La interfaz atrapa justo este error para mostrar la pregunta con los
     cinco botones, así que tiene que poder distinguirlo de cualquier otro."""

@@ -18,7 +18,7 @@ from nesting_app.jobs import (
 from nesting.params import NestParams
 
 PARAMS = NestParams(material="mdf18")
-FUENTE = Fuente(id="f1", ruta=None, nombre="robot.ai")
+FUENTE = Fuente(id="f1", ruta=None, nombre="robot.ai", carpeta=None)
 
 
 def resultado_falso(carpeta):

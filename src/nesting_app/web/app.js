@@ -263,21 +263,32 @@ let urlImagenActual = null;
 // toca el lienzo, que ya le pertenece a un pedido más nuevo.
 let pedidoImagen = 0;
 
+// La revisión existe en dos momentos y son dos dibujos distintos. El del
+// análisis está al segundo de elegir el archivo, que es cuando sirve para
+// decidir si vale la pena acomodar. El del acomodo conoce el material, así
+// que marca además los rectángulos del tamaño exacto de la placa. Mientras
+// haya trabajo gana el del trabajo, que es el más completo.
+function rutaDeImagen(nombre) {
+  if (estado.trabajoId) return `/api/trabajos/${estado.trabajoId}/${nombre}`;
+  if (nombre === "diagnostico.png" && estado.fuenteId) {
+    return `/api/archivos/${estado.fuenteId}/${nombre}`;
+  }
+  return null;
+}
+
 async function mostrarImagen(nombre) {
-  if (!estado.trabajoId) {
-    // Las dos imágenes las dibuja el trabajo, así que antes de acomodar no
-    // existe ninguna. Sin este texto el lienzo queda gris y vacío: el
-    // usuario aprieta "· 2 descartes" -- el link que está justo para ver
-    // cuáles son -- y no pasa absolutamente nada visible.
-    $("lienzo").textContent =
-      nombre === "diagnostico.png"
-        ? "La revisión se dibuja junto con el acomodo. Apretá Acomodar y volvé a esta solapa para ver qué se descartó."
-        : "Todavía no hay nada acomodado.";
+  const ruta = rutaDeImagen(nombre);
+  if (!ruta) {
+    // La previsualización es el resultado de un acomodo: antes de que haya
+    // uno no existe. Sin este texto el lienzo queda gris y mudo.
+    $("lienzo").textContent = estado.fuenteId
+      ? "Todavía no hay nada acomodado."
+      : "Elegí un archivo para empezar.";
     return;
   }
   const miPedido = ++pedidoImagen;
   try {
-    const blob = await (await api(`/api/trabajos/${estado.trabajoId}/${nombre}`)).blob();
+    const blob = await (await api(ruta)).blob();
     const url = URL.createObjectURL(blob);
     if (miPedido !== pedidoImagen) {
       URL.revokeObjectURL(url);
@@ -294,8 +305,9 @@ async function mostrarImagen(nombre) {
     if (miPedido !== pedidoImagen) return;
     if (error.estado === 409) {
       // No es un bug: el archivo todavía no existe (por ejemplo la
-      // previsualización antes de acomodar). Por eso no usa el cartel de
-      // error, sólo deja el lienzo en un estado legible.
+      // previsualización antes de acomodar, o la revisión de una fuente
+      // que no llegó a analizarse). Por eso no usa el cartel de error,
+      // sólo deja el lienzo en un estado legible.
       $("lienzo").textContent = "Todavía no hay imagen para mostrar.";
       return;
     }

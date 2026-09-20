@@ -177,17 +177,40 @@ def test_el_campo_de_angulos_tiene_donde_mostrar_su_error(html):
     assert 'data-error-de="angulos"' in html
 
 
+def test_la_revision_se_puede_ver_antes_de_acomodar(js):
+    """Es para lo que el usuario pidió esta imagen: saber CUÁLES son los dos
+    que se descartaron, en el segundo que tarda el análisis, y no después de
+    comprometerse a un acomodo de nueve minutos. Mientras la única ruta era
+    la del trabajo, apretar "· 2 descartes" no mostraba nada."""
+    inicio = js.index("function rutaDeImagen(")
+    cuerpo = js[inicio:js.index("\n}", inicio)]
+    assert "/api/archivos/${estado.fuenteId}/${nombre}" in cuerpo, (
+        "la revisión volvió a depender de que exista un trabajo"
+    )
+
+
+def test_la_revision_del_trabajo_le_gana_a_la_del_analisis(js):
+    """Son dos dibujos distintos: el del acomodo conoce el material, así que
+    marca además los rectángulos del tamaño exacto de la placa. Si el orden
+    se invierte, después de acomodar se sigue viendo la versión incompleta."""
+    inicio = js.index("function rutaDeImagen(")
+    cuerpo = js[inicio:js.index("\n}", inicio)]
+    assert cuerpo.index("/api/trabajos/") < cuerpo.index("/api/archivos/"), (
+        "la ruta del análisis se consulta antes que la del trabajo"
+    )
+
+
 def test_el_lienzo_explica_por_que_esta_vacio(js):
-    """Antes de acomodar no existe ninguna de las dos imágenes, así que
-    `mostrarImagen` salía sin hacer nada y el lienzo quedaba gris y mudo. El
-    caso que importa: el usuario aprieta "· 2 descartes" -- el link que está
-    justo para ver cuáles son -- y no pasa nada visible."""
+    """La previsualización es el resultado de un acomodo, así que antes del
+    primero no existe. Sin texto el lienzo queda gris y mudo, y el usuario no
+    tiene forma de distinguir "no hay nada todavía" de "se colgó"."""
     inicio = js.index("async function mostrarImagen(")
-    cuerpo = js[inicio:js.index("const mostrarRevision", inicio)]
-    sin_trabajo = cuerpo[cuerpo.index("if (!estado.trabajoId)"):]
-    sin_trabajo = sin_trabajo[:sin_trabajo.index("const miPedido")]
-    assert "Acomodar" in sin_trabajo, (
-        "el lienzo vuelve a quedarse en blanco cuando todavía no hay trabajo"
+    cuerpo = js[inicio:js.index("const miPedido", inicio)]
+    assert "Todavía no hay nada acomodado" in cuerpo, (
+        "el lienzo vuelve a quedarse en blanco cuando no hay ninguna imagen"
+    )
+    assert "Elegí un archivo" in cuerpo, (
+        "sin archivo elegido el lienzo tampoco dice nada"
     )
 
 

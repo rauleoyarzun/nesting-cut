@@ -41,6 +41,14 @@ class Fuente:
     ruta: Path
     nombre: str
     """Cómo se llama para el usuario, que no siempre es `ruta.name`."""
+    carpeta: Path
+    """Dónde dejar lo que se produzca a partir de este archivo.
+
+    Una subida ya vive acá adentro; una ruta local no se copia, pero igual
+    necesita un lugar propio -- el análisis deja su imagen de revisión, que
+    el usuario mira antes de decidir si acomoda. Que las dos puertas lo
+    tengan es lo que sigue dejando al resto del programa sin preguntar de
+    dónde vino el archivo."""
 
 
 def _verificar_extension(nombre: str) -> None:
@@ -117,6 +125,9 @@ class Deposito:
         self._fuentes.clear()
 
     def _registrar(self, ruta: Path, nombre: str, fuente_id: str | None = None) -> Fuente:
-        fuente = Fuente(id=fuente_id or uuid.uuid4().hex, ruta=ruta, nombre=nombre)
+        fuente_id = fuente_id or uuid.uuid4().hex
+        carpeta = self.carpeta / fuente_id
+        carpeta.mkdir(parents=True, exist_ok=True)
+        fuente = Fuente(id=fuente_id, ruta=ruta, nombre=nombre, carpeta=carpeta)
         self._fuentes[fuente.id] = fuente
         return fuente

@@ -183,3 +183,68 @@ def test_una_ruta_de_api_sigue_respondiendo_despues_de_montar_la_interfaz(client
     regresión en el orden del montaje lo rompa acá."""
     assert cliente.get("/").status_code == 200
     assert cliente.get("/api/materiales").status_code == 200
+
+
+def test_la_revision_esta_disponible_apenas_se_analiza(cliente, tmp_path):
+    """El pedido original: ver cuáles se descartaron sin tener que esperar el
+    acomodo. La imagen se sirve desde la fuente, no desde un trabajo."""
+    fuente_id = cliente.post(
+        "/api/archivos/local", json={"ruta": str(dxf(tmp_path))}
+    ).json()["id"]
+    cliente.post("/api/analizar", json={"fuente_id": fuente_id, "tol_cierre": 0.1})
+
+    respuesta = cliente.get(f"/api/archivos/{fuente_id}/diagnostico.png")
+
+    assert respuesta.status_code == 200
+    assert respuesta.headers["content-type"] == "image/png"
+    assert respuesta.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_pedir_la_revision_antes_de_analizar_no_es_un_error(cliente, tmp_path):
+    """409 y no 404: el archivo está registrado, lo que falta es el análisis.
+    La pantalla distingue ese caso y lo explica en el lienzo en vez de abrir
+    un cartel de error."""
+    fuente_id = cliente.post(
+        "/api/archivos/local", json={"ruta": str(dxf(tmp_path))}
+    ).json()["id"]
+
+    respuesta = cliente.get(f"/api/archivos/{fuente_id}/diagnostico.png")
+
+    assert respuesta.status_code == 409
+    assert "entrada.dxf" in respuesta.json()["detail"]
+
+
+def test_la_revision_de_una_fuente_que_no_existe_da_404(cliente):
+    respuesta = cliente.get("/api/archivos/no-existe/diagnostico.png")
+
+    assert respuesta.status_code == 404
+
+
+@pytest.mark.parametrize("nombre", [
+    "salida.dxf", "preview.png", "app.js", "materials.yaml", "..%2F..%2Fapp.js",
+])
+def test_por_esta_ruta_no_sale_ningun_otro_archivo(cliente, tmp_path, nombre):
+    """`nombre` se compara contra un único valor exacto. Esta ruta vive en la
+    capa que en la versión web queda expuesta a internet."""
+    fuente_id = cliente.post(
+        "/api/archivos/local", json={"ruta": str(dxf(tmp_path))}
+    ).json()["id"]
+    cliente.post("/api/analizar", json={"fuente_id": fuente_id, "tol_cierre": 0.1})
+
+    respuesta = cliente.get(f"/api/archivos/{fuente_id}/{nombre}")
+
+    assert respuesta.status_code == 404
+
+
+def test_la_revision_tambien_pide_el_token(tmp_path, monkeypatch):
+    """Es una ruta nueva bajo /api/, y el middleware las cubre a todas por
+    prefijo justamente para que agregar una no sea un agujero."""
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+    registro = Registro(tmp_path / "trabajos")
+    app = crear_app(TOKEN, Deposito(tmp_path / "fuentes"), registro)
+    try:
+        with TestClient(app) as sin_token:
+            respuesta = sin_token.get("/api/archivos/lo-que-sea/diagnostico.png")
+        assert respuesta.status_code == 401
+    finally:
+        registro.cerrar()

@@ -745,3 +745,24 @@ Task 14: completa (commits 14cbf8e..4a797f1). Empaquetado para Mac.
   la placa. Es honesto pero confunde.
   LECCIÓN: los cuatro bugs de app.js de las revisiones anteriores salieron de LEER el código; estos seis
   salieron de CORRERLO. Son clases distintas de defecto y ninguna de las dos sustituye a la otra.
+
+=== LA REVISIÓN, ANTES DE ACOMODAR (pedido del usuario) ===
+  `write_diagnostic` sólo necesita las piezas y los descartes, y `analizar()` ya calculaba las dos: la
+  imagen se escribía únicamente en `acomodar()` por dónde estaba puesta la llamada, no por dependencias.
+  Ahora `analizar()` también la deja, en `fuente.carpeta`, y se ve al segundo de elegir el archivo -- que
+  es cuando sirve, porque es cuando el usuario todavía puede volver al original y corregirlo.
+  SEAM: `Fuente` gana `carpeta`. Una subida ya vivía en una carpeta propia; una ruta local no se copia y
+  no tenía ninguna. Dárselas a las dos es lo que deja al resto del programa sin preguntar de dónde vino el
+  archivo, que es la regla entera de archivos.py.
+  LAS DOS IMÁGENES NO SON LA MISMA: la del acomodo conoce el material, así que marca además los
+  rectángulos del tamaño exacto de la placa (medido: 1594 px de alto contra 1568 para el mismo archivo).
+  `rutaDeImagen()` prefiere la del trabajo cuando hay trabajo. Hay un test que fija ese orden, porque
+  invertirlo deja al usuario mirando la versión incompleta justo después de acomodar.
+  El fallo al escribir el PNG NO levanta: el análisis ya tiene su respuesta y perderla por un disco lleno
+  sería peor que quedarse sin la imagen. Se cuenta como aviso y la ruta contesta 409.
+  Ruta nueva GET /api/archivos/{fuente_id}/{nombre}, con `nombre` comparado contra un único valor exacto.
+  Tests de que no sale ningún otro archivo por ahí y de que el middleware del token la cubre: es la capa
+  que en la versión web queda expuesta a internet.
+  SIGUE ANOTADO: "94 piezas" no se recalcula al cambiar de material. Pasar el material a /api/analizar lo
+  arreglaría y de paso haría que la revisión previa marcara también el contorno de placa, pero acopla el
+  análisis a la selección de material (habría que reanalizar en cada cambio). No se hizo.

@@ -290,6 +290,31 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
             "unidades": analisis.unidades,
         }
 
+    @app.get("/api/archivos/{fuente_id}/{nombre}")
+    def bajar_del_analisis(fuente_id: str, nombre: str) -> FileResponse:
+        """La revisión del análisis, que existe sin haber acomodado nada.
+
+        `nombre` se compara contra un único valor exacto, así que no hay
+        forma de que un `..` elija otro archivo; y `fuente_id` no se usa
+        para armar una ruta, sino para buscar en el registro del depósito.
+        """
+        if nombre != corredor.NOMBRE_DIAGNOSTICO:
+            raise HTTPException(status_code=404, detail=f"no existe {nombre!r}")
+        try:
+            fuente = deposito.obtener(fuente_id)
+        except FuenteDesconocidaError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        archivo = fuente.carpeta / nombre
+        if not archivo.is_file():
+            # 409 y no 404: el archivo está registrado, lo que falta es el
+            # análisis. La pantalla distingue ese caso y lo explica en el
+            # lienzo en vez de abrir un cartel de error.
+            raise HTTPException(
+                status_code=409,
+                detail=f"todavía no se analizó {fuente.nombre}",
+            )
+        return FileResponse(archivo, media_type="image/png", filename=nombre)
+
     # --- trabajos -----------------------------------------------------------
 
     def _avance_a_dict(avance) -> dict | None:

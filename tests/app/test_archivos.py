@@ -159,3 +159,42 @@ def test_un_byte_nulo_tampoco_pasa_por_la_puerta_de_escritorio(deposito, tmp_pat
     assert "null byte" not in str(capturado.value), (
         "se escapó la excepción cruda de Python, en inglés"
     )
+
+
+def test_toda_fuente_tiene_su_carpeta_propia(deposito, tmp_path):
+    """El análisis deja ahí la imagen de revisión, y una ruta local no se
+    copia a ningún lado: sin una carpeta propia, el camino de escritorio --
+    el único que el usuario corre -- se quedaba sin dónde dejarla."""
+    origen = tmp_path / "robot.ai"
+    origen.write_text("%!PS-Adobe", encoding="utf-8")
+
+    local = deposito.registrar_local(origen)
+    subida = deposito.registrar_subida("robot.ai", b"%!PS-Adobe")
+
+    for fuente in (local, subida):
+        assert fuente.carpeta.is_dir()
+        assert deposito.carpeta in fuente.carpeta.parents or fuente.carpeta.parent == deposito.carpeta
+        assert fuente.carpeta.name == fuente.id
+
+
+def test_dos_fuentes_no_comparten_carpeta(deposito, tmp_path):
+    """Dos archivos que se llaman igual no pueden pisarse la revisión: la
+    imagen del segundo mostraría los descartes del primero."""
+    origen = tmp_path / "robot.ai"
+    origen.write_text("%!PS-Adobe", encoding="utf-8")
+
+    a = deposito.registrar_local(origen)
+    b = deposito.registrar_local(origen)
+
+    assert a.carpeta != b.carpeta
+
+
+def test_limpiar_se_lleva_tambien_las_carpetas_de_las_fuentes(deposito, tmp_path):
+    origen = tmp_path / "robot.ai"
+    origen.write_text("%!PS-Adobe", encoding="utf-8")
+    fuente = deposito.registrar_local(origen)
+
+    deposito.limpiar()
+
+    assert not fuente.carpeta.exists()
+    assert origen.is_file(), "limpiar borró el archivo del usuario, que no es suyo"

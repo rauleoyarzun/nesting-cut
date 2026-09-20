@@ -134,13 +134,34 @@ def _a_dict(descarte: Discard) -> dict:
 
 
 def analizar(fuente: Fuente, unidades: str | None, tol_cierre: float) -> Analisis:
-    """Lee el archivo y cuenta qué hay, sin acomodar nada. Tarda ~1 segundo."""
+    """Lee el archivo y cuenta qué hay, sin acomodar nada. Tarda ~1 segundo.
+
+    Deja además la imagen de revisión en `fuente.carpeta`. Es el mismo dibujo
+    que produce `acomodar`, pero disponible antes de comprometerse a un
+    acomodo que puede tardar nueve minutos: la pregunta "¿cuáles son los dos
+    que descartó?" se contesta en el segundo que tarda el análisis, que es
+    cuando el usuario todavía puede volver al archivo original y corregirlo.
+
+    La del acomodo no es redundante: aquélla conoce el material, así que
+    marca además los rectángulos del tamaño exacto de la placa. Ésta no sabe
+    sobre qué placa se va a cortar y no puede marcarlos.
+    """
     drawing = _leer(fuente, unidades)
     try:
         piezas, avisos, descartes = prepare_parts(drawing, chain_tol=tol_cierre)
     except Exception as error:
         _traducir_para_interfaz(error)
         raise
+    try:
+        write_diagnostic(fuente.carpeta / NOMBRE_DIAGNOSTICO, piezas, descartes)
+    except OSError as error:
+        # No se levanta: el análisis ya tiene su respuesta y perderla por no
+        # poder escribir un PNG sería peor que quedarse sin la imagen. La
+        # ruta que la sirve contesta 409 y la pantalla lo dice.
+        avisos.append(
+            f"no se pudo dibujar la revisión ({error}); el resto del análisis "
+            "es válido."
+        )
     return Analisis(
         piezas=len(piezas),
         avisos=list(avisos),
