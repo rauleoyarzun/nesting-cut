@@ -10,8 +10,8 @@ puntuales — ver la nota de alcance más abajo) sobre los archivos de
 | Archivo | Piezas (1 copia) | Origen |
 |---|---|---|
 | `muestra.dxf` | 12 (4 asientos + 8 patas cóncavas) | Sintético, generado por `bench/make_sample.py` — pensado a propósito con curvas y concavidades para estresar el término de contacto |
-| `banqueta final raulo.ai` | 40 | Export real desde CorelDRAW (AI3) del proyecto de una banqueta |
-| `banqueta raulo.3dm` | 0 | Modelo 3D del ensamblaje armado (Task 23), no un layout de corte plano. No entra en `bench/calibrate.py` (su glob es `*.dxf` + `*.ai`) y no sirve para calibrar. |
+| `banqueta.ai` | 40 | Export real desde CorelDRAW (AI3) del proyecto de una banqueta |
+| `banqueta.3dm` | 0 | Modelo 3D del ensamblaje armado (Task 23), no un layout de corte plano. No entra en `bench/calibrate.py` (su glob es `*.dxf` + `*.ai`) y no sirve para calibrar. |
 
 ## Nota de método: por qué hizo falta forzar desborde de placa
 
@@ -34,7 +34,7 @@ primera. Con eso:
 
 - `muestra.dxf`: 12 piezas ocupan 13.56% de una placa mdf18 (1830×2600 mm) →
   hacen falta **8 copias** para pasar el 100% (108.5%).
-- `banqueta final raulo.ai`: 40 piezas ocupan 25.34% → hacen falta **5
+- `banqueta.ai`: 40 piezas ocupan 25.34% → hacen falta **5
   copias** para pasar el 100% (126.7%).
 
 Todo lo medido en este documento usa `--copias 8` para `muestra.dxf` y
@@ -96,7 +96,7 @@ con más presupuesto de tiempo puede repetir esto mismo end-to-end con
 | 1.0 (default) | 62.93% | 175.6 |
 | 4.0 | 60.99% | 179.8 |
 
-### `banqueta final raulo.ai`, `--copias 5` (200 piezas, 3 placas en ambos casos)
+### `banqueta.ai`, `--copias 5` (200 piezas, 3 placas en ambos casos)
 
 | contacto | aprov. 1ª placa | segundos |
 |---|---|---|
@@ -162,7 +162,7 @@ sensible a la calidad del acomodo pero sí válido para el costo): 160.9 s
 contra 33.0 s a 1.0 mm/px en la misma configuración — **4.9× más lento**,
 consistente con la grilla más fina.
 
-### `banqueta final raulo.ai`, `--copias 5` (200 piezas, 3 placas en ambos casos)
+### `banqueta.ai`, `--copias 5` (200 piezas, 3 placas en ambos casos)
 
 | mm/px | aprov. 1ª placa | segundos |
 |---|---|---|
@@ -227,8 +227,8 @@ Mismos `--copias` que el barrido principal de cada archivo (8 para
 |---|---|---|---|---|
 | `muestra.dxf` | shelf (bounding box) | 3 | 56.14% | 36.15% |
 | `muestra.dxf` | raster | 2 | 62.93% | 54.23% |
-| `banqueta final raulo.ai` | shelf (bounding box) | 3 | 54.87% | 42.24% |
-| `banqueta final raulo.ai` | raster | 3 | 60.25% | 42.24% |
+| `banqueta.ai` | shelf (bounding box) | 3 | 54.87% | 42.24% |
+| `banqueta.ai` | raster | 3 | 60.25% | 42.24% |
 
 **Ganancia del motor raster:**
 
@@ -236,7 +236,7 @@ Mismos `--copias` que el barrido principal de cada archivo (8 para
   menos** (2 contra 3) — por eso el aprovechamiento *total* también sube
   18.08 puntos ahí (54.23% contra 36.15%), aunque esa métrica en general no
   sirva para comparar configuraciones a igualdad de placas.
-- `banqueta final raulo.ai`: +5.38 puntos en la primera placa. Acá ambos
+- `banqueta.ai`: +5.38 puntos en la primera placa. Acá ambos
   motores necesitaron 3 placas, así que el aprovechamiento total queda
   idéntico (42.24%) por construcción — es exactamente el caso que
   `first_sheet_utilization` existe para no perder de vista.

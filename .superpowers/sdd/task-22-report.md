@@ -43,14 +43,14 @@ $ .venv/bin/pytest
 
 No hubo desviaciones respecto del código del brief: se copió literal (parser, `cmyk_to_rgb`, despacho en `cli.py`).
 
-## Step 6 — Prueba sobre el archivo real (`bench/files/banqueta final raulo.ai`)
+## Step 6 — Prueba sobre el archivo real (`bench/files/banqueta.ai`)
 
 El archivo ya estaba en `bench/files/` (no hizo falta copiarlo desde `~/Downloads`). Es un AI3 real, 174 KB, exportado por "CorelDRAW 2020 (64-Bit)" según su propio comentario `%%Creator`.
 
 ### Corrida tal cual la pide el brief
 
 ```
-$ .venv/bin/nest "bench/files/banqueta final raulo.ai" --material mdf18 --esfuerzo rapido \
+$ .venv/bin/nest "bench/files/banqueta.ai" --material mdf18 --esfuerzo rapido \
     --preview /tmp/banqueta.png -o /tmp/banqueta.dxf
 error: la pieza 9 no entra en una placa vacia: mide al menos 900.0 x 2600.0 mm en su mejor
 orientacion, y el area util de la placa mdf18 es 1810.0 x 2580.0 mm (margen 10.0 mm).
@@ -136,7 +136,7 @@ El hallazgo de arriba quedó resuelto. Se implementó el filtro sugerido en `src
 ### Verificación end-to-end con el archivo real
 
 ```
-.venv/bin/nest "bench/files/banqueta final raulo.ai" --material mdf18 --esfuerzo rapido --preview /tmp/banqueta_ai.png -o /tmp/banqueta_ai.dxf
+.venv/bin/nest "bench/files/banqueta.ai" --material mdf18 --esfuerzo rapido --preview /tmp/banqueta_ai.png -o /tmp/banqueta_ai.dxf
 ```
 
 Salida completa (exit code 0):

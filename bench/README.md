@@ -39,6 +39,6 @@ Los `.ai` y `.3dm` ya están copiados en `bench/files/` y, desde la Tarea 24,
 `read_ai`, `.3dm` con `read_3dm`, y cualquier otra extensión con `read_dxf`.
 El `main()` de `run_bench.py` (el reporte por consola) sigue barriendo solo
 `bench/files/*.dxf`; `bench/calibrate.py` es el que además suma `*.ai` a la
-corrida. El `banqueta raulo.3dm` da 0 piezas (es el modelo 3D del ensamblaje
+corrida. El `banqueta.3dm` da 0 piezas (es el modelo 3D del ensamblaje
 armado, no un layout de corte plano -- ver el Task 23 report), así que no
 sirve para calibrar ni para medir aprovechamiento.

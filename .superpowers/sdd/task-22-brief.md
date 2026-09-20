@@ -349,8 +349,8 @@ Esperado: `16 passed`.
 - [ ] **Step 6: Probar sobre el archivo real del proyecto**
 
 ```bash
-cp "/Users/raulo/Downloads/banqueta final raulo.ai" bench/files/
-.venv/bin/nest "bench/files/banqueta final raulo.ai" --material mdf18 --preview /tmp/banqueta.png -o /tmp/banqueta.dxf
+cp "<descargas>/banqueta.ai" bench/files/
+.venv/bin/nest "bench/files/banqueta.ai" --material mdf18 --preview /tmp/banqueta.png -o /tmp/banqueta.dxf
 ```
 
 Esperado: el archivo se lee y se nestea. **Abrir `/tmp/banqueta.png` y confirmar que las piezas se reconocen como piezas** (asientos redondos, patas), no como fragmentos sueltos.

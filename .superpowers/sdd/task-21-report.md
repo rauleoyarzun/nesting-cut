@@ -76,7 +76,7 @@ entrada prolijo.
 $ .venv/bin/pytest tests/test_cli_full.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 12 items
 
@@ -275,6 +275,6 @@ relacionado con estos cambios; el conteo exacto se confirmó con
 `--junitxml`.)
 
 Archivos modificados:
-- `/Users/raulo/cut-placement/src/nesting/cli.py`
-- `/Users/raulo/cut-placement/src/nesting/io/preview.py`
-- `/Users/raulo/cut-placement/tests/test_cli_full.py`
+- `<repo>/src/nesting/cli.py`
+- `<repo>/src/nesting/io/preview.py`
+- `<repo>/tests/test_cli_full.py`

@@ -15,13 +15,13 @@
 $ .venv/bin/pytest tests/io/test_dxf_reader.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 _________________ ERROR collecting tests/io/test_dxf_reader.py _________________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/io/test_dxf_reader.py'.
+ImportError while importing test module '<repo>/tests/io/test_dxf_reader.py'.
 Traceback:
 tests/io/test_dxf_reader.py:4: in <module>
     from nesting.io.dxf_reader import UnknownUnitsError, read_dxf
@@ -40,7 +40,7 @@ Falla exactamente como anticipaba el brief.
 $ .venv/bin/pytest tests/io/test_dxf_reader.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 16 items
 

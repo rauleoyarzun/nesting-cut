@@ -58,7 +58,7 @@ El brief fue escrito sin la librería instalada. Comprobé la versión real (`rh
 
 ## Bug real encontrado y corregido al probar contra el archivo del proyecto
 
-Al testear contra `bench/files/banqueta raulo.3dm` encontré que el chequeo de tolerancia de cuerda en `_subdivide` comparaba el punto muestreado y el punto medio de la cuerda **solo en X,Y**, ignorando Z durante la decisión de subdividir (tal cual estaba escrito en el brief). Esto es un problema real, no cosmético: para una curva que en verdad vive en otro plano (p. ej. un círculo completo parado en el plano XZ, con Y constante), la proyección a XY degenera en un segmento de ida y vuelta sobre una sola línea. Para ese círculo particular, la comparación en 2D coincide *exactamente* en los puntos de cuarto de vuelta (`cos(π/2) = promedio(cos(0), cos(π))`), así que el algoritmo se detenía después de un solo nivel de subdivisión, sin haber muestreado nunca los puntos donde la curva realmente se despega en Z. El resultado: la curva se aceptaba en silencio como "plana" y se aplastaba en una polilínea degenerada de 3 puntos (ida y vuelta), sin ningún aviso — justo el caso que `_require_planar` existe para evitar.
+Al testear contra `bench/files/banqueta.3dm` encontré que el chequeo de tolerancia de cuerda en `_subdivide` comparaba el punto muestreado y el punto medio de la cuerda **solo en X,Y**, ignorando Z durante la decisión de subdividir (tal cual estaba escrito en el brief). Esto es un problema real, no cosmético: para una curva que en verdad vive en otro plano (p. ej. un círculo completo parado en el plano XZ, con Y constante), la proyección a XY degenera en un segmento de ida y vuelta sobre una sola línea. Para ese círculo particular, la comparación en 2D coincide *exactamente* en los puntos de cuarto de vuelta (`cos(π/2) = promedio(cos(0), cos(π))`), así que el algoritmo se detenía después de un solo nivel de subdivisión, sin haber muestreado nunca los puntos donde la curva realmente se despega en Z. El resultado: la curva se aceptaba en silencio como "plana" y se aplastaba en una polilínea degenerada de 3 puntos (ida y vuelta), sin ningún aviso — justo el caso que `_require_planar` existe para evitar.
 
 **Corrección:** el chequeo de `_subdivide` ahora compara el punto muestreado contra el punto medio de la cuerda en **3D** (X, Y, Z), no solo en XY. Esto no cambia el comportamiento para curvas ya planas (donde la distancia 2D y 3D coinciden), pero fuerza la subdivisión necesaria para exponer la desviación en Z de una curva que en verdad vive en otro plano, de modo que `_require_planar` la detecte y la rechace con aviso, como corresponde.
 
@@ -66,18 +66,18 @@ Agregué un test de regresión (`test_a_circle_standing_in_the_xz_plane_is_rejec
 
 Verifiqué que la corrección no afecta ninguno de los 12 tests originales del brief (todos usan geometría ya plana en Z=0, donde la distancia 2D y 3D son idénticas) ni ningún otro test de la suite (398/398 en verde después del cambio).
 
-## Prueba sobre el archivo real: `bench/files/banqueta raulo.3dm`
+## Prueba sobre el archivo real: `bench/files/banqueta.3dm`
 
 Comando ejecutado (Step 6 del brief, con `--esfuerzo rapido` agregado):
 
 ```
-.venv/bin/nest "bench/files/banqueta raulo.3dm" --material mdf18 --esfuerzo rapido --preview /tmp/banqueta3dm.png -o /tmp/banqueta3dm.dxf
+.venv/bin/nest "bench/files/banqueta.3dm" --material mdf18 --esfuerzo rapido --preview /tmp/banqueta3dm.png -o /tmp/banqueta3dm.dxf
 ```
 
 **Resultado: 0 piezas reconocidas.**
 
 ```
-error: no se encontro ninguna pieza en bench/files/banqueta raulo.3dm
+error: no se encontro ninguna pieza en bench/files/banqueta.3dm
 aviso: se ignoraron 5 objetos que no son curvas
 aviso: se ignoraron 54 curvas que no son planas en XY
 ```
@@ -112,5 +112,5 @@ No se generó porque no hay piezas. Si se quiere ver algo de este archivo, el pa
 
 - El lector `.3dm` está implementado, probado (13/13) y integrado en la CLI.
 - Se descubrió y corrigió, gracias a la prueba obligatoria contra el archivo real, un bug genuino de muestreo adaptativo (tolerancia de cuerda en 2D en vez de 3D) que dejaba pasar curvas no-planas en silencio.
-- El archivo real del proyecto (`banqueta raulo.3dm`) da 0 piezas, y esto es el comportamiento correcto: el archivo es un modelo 3D de ensamblaje, no un layout de corte plano como el `.ai` de referencia. No hay curvas de corte planas en XY en ese archivo para nestear.
+- El archivo real del proyecto (`banqueta.3dm`) da 0 piezas, y esto es el comportamiento correcto: el archivo es un modelo 3D de ensamblaje, no un layout de corte plano como el `.ai` de referencia. No hay curvas de corte planas en XY en ese archivo para nestear.
 - Suite completa: 398/398 en verde (385 preexistentes + 13 nuevos).

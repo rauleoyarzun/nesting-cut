@@ -33,7 +33,7 @@ RESOLUTION_CANDIDATES = (0.5, 1.0, 2.0, 3.0)
 EFFORT_LEVELS = ("rapido", "normal", "lento")
 
 # Extensiones que este barrido sabe leer y que sirven para calibrar. El
-# `.3dm` del proyecto (`banqueta raulo.3dm`) es el modelo 3D del ensamblaje
+# `.3dm` del proyecto (`banqueta.3dm`) es el modelo 3D del ensamblaje
 # armado, no un layout de corte plano: da 0 piezas (ver el Task 23 report),
 # asi que deliberadamente no entra en este glob -- incluirlo no rompe nada
 # (un archivo de 0 piezas mide 0% e infla para abajo el promedio en lugar de

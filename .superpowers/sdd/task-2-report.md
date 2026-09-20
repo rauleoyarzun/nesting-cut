@@ -34,18 +34,18 @@ Task 2 has been completed successfully following the TDD cycle. All geometric pr
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 ________________ ERROR collecting tests/model/test_entities.py _________________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/model/test_entities.py'.
+ImportError while importing test module '<repo>/tests/model/test_entities.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
     return _bootstrap._gcd_import(name[level=0], package='')
-/Users/raulo/cut-placement/tests/model/test_entities.py:5: in <module>
+<repo>/tests/model/test_entities.py:5: in <module>
     from nesting.model.entities import (
 E   ModuleNotFoundError: No module named 'nesting.model'
 =========================== short test summary info ============================
@@ -56,7 +56,7 @@ ERROR tests/model/test_entities.py - ModuleNotFoundError: No module named 'nesti
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 6 items
 
@@ -69,7 +69,7 @@ tests/model/test_entities.py ......                                      [100%]
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 testpaths: tests
 collected 8 items

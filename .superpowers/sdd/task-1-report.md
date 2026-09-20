@@ -38,7 +38,7 @@
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 2 items
 

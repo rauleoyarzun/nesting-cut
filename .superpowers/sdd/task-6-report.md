@@ -14,13 +14,13 @@
 $ .venv/bin/pytest tests/geometry/test_nesting_tree.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 _____________ ERROR collecting tests/geometry/test_nesting_tree.py _____________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/geometry/test_nesting_tree.py'.
+ImportError while importing test module '<repo>/tests/geometry/test_nesting_tree.py'.
 ...
 E   ModuleNotFoundError: No module named 'nesting.geometry.nesting_tree'
 =========================== short test summary info ============================
@@ -92,7 +92,7 @@ No se modificó ninguna firma pública, ni la regla de profundidad, ni el criter
 $ .venv/bin/pytest tests/geometry/test_nesting_tree.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 11 items
 
@@ -210,7 +210,7 @@ a la definición de `OverlappingContourError`.
 $ .venv/bin/pytest tests/geometry/test_nesting_tree.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 16 items
 
@@ -227,7 +227,7 @@ tests/geometry/test_nesting_tree.py ................                     [100%]
 $ .venv/bin/pytest -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 88 items
 

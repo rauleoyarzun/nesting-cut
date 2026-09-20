@@ -18,13 +18,13 @@ Todo el código, docstrings y nombres de símbolos quedaron en inglés; no hay m
 $ .venv/bin/pytest tests/engine/test_shelf_oracle.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 ______________ ERROR collecting tests/engine/test_shelf_oracle.py ______________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/engine/test_shelf_oracle.py'.
+ImportError while importing test module '<repo>/tests/engine/test_shelf_oracle.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
@@ -47,7 +47,7 @@ Coincide con lo esperado por el brief (`ModuleNotFoundError: No module named 'ne
 $ .venv/bin/pytest tests/engine/test_shelf_oracle.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 13 items
 
@@ -116,7 +116,7 @@ Tal como describía el reporte original, `place` "recalcula el slot internamente
 $ .venv/bin/pytest tests/engine/test_shelf_oracle.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 18 items
 

@@ -85,7 +85,7 @@ Se crearon 9 tests en `tests/app/test_rutas.py`:
 
 Verificación especial:
 - Los tests `tests/model/test_material.py:73` y `tests/model/test_material.py:192` que usan `DEFAULT_MATERIALS_PATH` siguen pasando
-- `DEFAULT_MATERIALS_PATH` sigue resolviendo a `/Users/raulo/Projects/cut-placement/materials.yaml` (exactamente igual que antes)
+- `DEFAULT_MATERIALS_PATH` sigue resolviendo a `<repo>/materials.yaml` (exactamente igual que antes)
 
 ## Commit realizado
 

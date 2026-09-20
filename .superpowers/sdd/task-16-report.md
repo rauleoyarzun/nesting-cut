@@ -16,13 +16,13 @@ Comando: `.venv/bin/pytest tests/engine/raster/test_search.py -v`
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 _____________ ERROR collecting tests/engine/raster/test_search.py ______________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/engine/raster/test_search.py'.
+ImportError while importing test module '<repo>/tests/engine/raster/test_search.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
@@ -50,7 +50,7 @@ Comando: `.venv/bin/pytest tests/engine/raster/test_search.py -v`
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 13 items
 

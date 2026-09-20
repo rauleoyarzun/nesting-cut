@@ -14,13 +14,13 @@ $ .venv/bin/pytest tests/geometry/test_flatten.py -v
 
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 _______________ ERROR collecting tests/geometry/test_flatten.py ________________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/geometry/test_flatten.py'.
+ImportError while importing test module '<repo>/tests/geometry/test_flatten.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
@@ -41,7 +41,7 @@ $ .venv/bin/pytest tests/geometry/test_flatten.py -v
 
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 14 items
 
@@ -118,7 +118,7 @@ $ .venv/bin/pytest tests/geometry/test_flatten.py -v
 
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 23 items
 
@@ -134,7 +134,7 @@ $ .venv/bin/pytest tests/geometry/ -v
 
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 38 items
 

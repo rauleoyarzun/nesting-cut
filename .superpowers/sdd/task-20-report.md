@@ -15,13 +15,13 @@ Ambos paquetes (`src/nesting/io/`, `tests/io/`) ya tenían `__init__.py`, así q
 $ .venv/bin/pytest tests/io/test_preview.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 __________________ ERROR collecting tests/io/test_preview.py ___________________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/io/test_preview.py'.
+ImportError while importing test module '<repo>/tests/io/test_preview.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
@@ -44,7 +44,7 @@ Falla como se esperaba (`ModuleNotFoundError`).
 $ .venv/bin/pytest tests/io/test_preview.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 7 items
 
@@ -52,7 +52,7 @@ tests/io/test_preview.py .......                                         [100%]
 
 =============================== warnings summary ===============================
 tests/io/test_preview.py::test_a_part_is_actually_drawn
-  /Users/raulo/cut-placement/tests/io/test_preview.py:52: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+  <repo>/tests/io/test_preview.py:52: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
     reds = sum(1 for pixel in image.getdata() if pixel == (255, 0, 0))
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
@@ -72,7 +72,7 @@ $ .venv/bin/pytest
 ......................................................                   [100%]
 =============================== warnings summary ===============================
 tests/io/test_preview.py::test_a_part_is_actually_drawn
-  /Users/raulo/cut-placement/tests/io/test_preview.py:52: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+  <repo>/tests/io/test_preview.py:52: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
     reds = sum(1 for pixel in image.getdata() if pixel == (255, 0, 0))
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

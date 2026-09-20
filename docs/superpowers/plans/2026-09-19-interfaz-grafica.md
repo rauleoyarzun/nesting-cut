@@ -5106,7 +5106,7 @@ Run: `.venv/bin/python -m pytest -q -p no:warnings`
 Expected: PASS
 
 Run: `.venv/bin/nest-app`
-Expected: se abre una ventana. Verificar a mano, con `files/robot_raaulo.ai`:
+Expected: se abre una ventana. Verificar a mano, con `files/robot.ai`:
 1. Elegir el archivo abre el diálogo nativo del sistema.
 2. Aparece "93 piezas · 3 descartes".
 3. El link de descartes muestra la imagen de revisión con los círculos.

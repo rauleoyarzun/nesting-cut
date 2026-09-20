@@ -307,7 +307,7 @@ exit code: 1
 ### Archivo real del usuario
 
 ```
-.venv/bin/nest "bench/files/banqueta final raulo.ai" --material mdf18 \
+.venv/bin/nest "bench/files/banqueta.ai" --material mdf18 \
   --copias 2 --esfuerzo rapido --preview /tmp/v.png -o /tmp/v.dxf
 ```
 ```

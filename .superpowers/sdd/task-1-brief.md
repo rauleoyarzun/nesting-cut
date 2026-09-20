@@ -14,7 +14,7 @@
 - [ ] **Step 1: Crear el venv e instalar dependencias**
 
 ```bash
-cd /Users/raulo/cut-placement
+cd <repo>
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install numpy scipy shapely ezdxf Pillow PyYAML pytest

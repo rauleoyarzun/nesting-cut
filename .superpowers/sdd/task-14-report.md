@@ -7,8 +7,8 @@
 - `bench/README.md` — instrucciones de uso y de carga de los archivos reales.
 - `tests/test_bench.py` — 5 tests sobre el generador y el corredor.
 - `bench/files/muestra.dxf` — muestra generada por `make_sample.py` (Step 6).
-- `bench/files/banqueta final raulo.ai` — copiado desde `~/Downloads/` (paso extra).
-- `bench/files/banqueta raulo.3dm` — copiado desde `~/Downloads/` (paso extra).
+- `bench/files/banqueta.ai` — copiado desde `~/Downloads/` (paso extra).
+- `bench/files/banqueta.3dm` — copiado desde `~/Downloads/` (paso extra).
 
 Todos los archivos siguen el contenido exacto del brief (`task-14-brief.md`, Steps 1-4),
 sin modificaciones: las interfaces consumidas (`read_dxf`, `prepare_parts`, `pack`,
@@ -17,7 +17,7 @@ sin modificaciones: las interfaces consumidas (`read_dxf`, `prepare_parts`, `pac
 por lectura directa antes de escribir. `PackResult` no tiene campo `unplaced` y el
 brief tampoco lo usa, así que no hubo que tocar nada por esa salvedad.
 
-## `banqueta final raulo.cdr`
+## `banqueta.cdr`
 
 No se copió: es formato binario cerrado de Corel y no se puede leer ni mover a un
 lugar donde el banco lo procesaría por error (el banco solo mira `*.dxf`, así que
@@ -26,7 +26,7 @@ CorelDRAW, como indica `bench/README.md`.
 
 ## Paso extra: `.ai` y `.3dm` en `bench/files/`
 
-Copiados tal cual desde `/Users/raulo/Downloads/`. Se confirmó que `run_bench.py` los
+Copiados tal cual desde `<descargas>/`. Se confirmó que `run_bench.py` los
 ignora (usa `FILES_DIR.glob("*.dxf")`) corriendo el banco con ambos archivos ya
 presentes: la tabla de salida no cambió, sin errores ni advertencias.
 
@@ -37,7 +37,7 @@ Comando: `.venv/bin/pytest tests/test_bench.py -v`
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 5 items
 
@@ -82,7 +82,7 @@ Comando: `.venv/bin/pytest`
 ```
 ========================= test session starts =========================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 236 items
 
@@ -106,9 +106,9 @@ Ninguna en el código de `bench/` ni en los tests: se copiaron literalmente los
 bloques de código del brief. Las únicas adiciones fuera del brief son las pedidas
 aparte por el usuario:
 
-1. Copia de `banqueta final raulo.ai` y `banqueta raulo.3dm` a `bench/files/`
+1. Copia de `banqueta.ai` y `banqueta.3dm` a `bench/files/`
    (sus lectores llegan en tasks posteriores; no afectan la corrida actual).
-2. `banqueta final raulo.cdr` no se copió ni se procesó, por ser formato binario
+2. `banqueta.cdr` no se copió ni se procesó, por ser formato binario
    cerrado — requiere exportación manual a DXF, tal como documenta
    `bench/README.md`.
 3. Se omitió el Step 8 (commit de git) por instrucción explícita.

@@ -357,8 +357,8 @@ Esperado: `12 passed`.
 - [ ] **Step 6: Probar sobre el archivo real del proyecto**
 
 ```bash
-cp "/Users/raulo/Downloads/banqueta raulo.3dm" bench/files/
-.venv/bin/nest "bench/files/banqueta raulo.3dm" --material mdf18 --preview /tmp/banqueta3dm.png -o /tmp/banqueta3dm.dxf
+cp "<descargas>/banqueta.3dm" bench/files/
+.venv/bin/nest "bench/files/banqueta.3dm" --material mdf18 --preview /tmp/banqueta3dm.png -o /tmp/banqueta3dm.dxf
 ```
 
 Esperado: se lee y se nestea. Los avisos de objetos no-curva o no-planos son normales en un modelo 3D real — lo importante es que las **curvas de corte** salgan bien. Confirmar en el PNG.

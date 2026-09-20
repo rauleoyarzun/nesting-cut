@@ -17,13 +17,13 @@ Se siguió el ciclo TDD del brief: tests primero, corrida en rojo, implementaci�
 $ .venv/bin/pytest tests/test_pipeline.py tests/engine/test_packer.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 2 errors
 
 ==================================== ERRORS ====================================
 ___________________ ERROR collecting tests/test_pipeline.py ____________________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/test_pipeline.py'.
+ImportError while importing test module '<repo>/tests/test_pipeline.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
@@ -32,7 +32,7 @@ tests/test_pipeline.py:5: in <module>
     from nesting.pipeline import OpenContourError, prepare_parts
 E   ModuleNotFoundError: No module named 'nesting.pipeline'
 _________________ ERROR collecting tests/engine/test_packer.py _________________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/engine/test_packer.py'.
+ImportError while importing test module '<repo>/tests/engine/test_packer.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
@@ -98,7 +98,7 @@ Causa raíz: `flatten` acota el **error de cuerda** (sagita), no el área encerr
 $ .venv/bin/pytest tests/test_pipeline.py tests/engine/test_packer.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 23 items
 

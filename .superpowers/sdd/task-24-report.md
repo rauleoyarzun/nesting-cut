@@ -55,7 +55,7 @@ los primeros números):
 - `muestra.dxf` (`--copias 8`, 96 piezas, 2 placas): 63.9% (`contact=0.0`) →
   62.9% (`1.0`, el default) → 61.0% (`4.0`). Monótono, y en la dirección
   contraria a la que se esperaba.
-- `banqueta final raulo.ai` (`--copias 5`, 200 piezas, 3 placas): 0.0 y 1.0
+- `banqueta.ai` (`--copias 5`, 200 piezas, 3 placas): 0.0 y 1.0
   dieron el mismo número exacto (60.25%).
 
 Tomado solo, esto dice "bajar el peso a 0". Pero antes de aceptarlo corrí
@@ -80,7 +80,7 @@ Medido en las mismas condiciones (mismos archivos, mismas copias,
 
 - `muestra.dxf`: 1.0→2.0 mm/px no costó nada (62.9% idéntico), 4.8× más
   rápido. 1.0→3.0 perdió 2.9 puntos.
-- `banqueta final raulo.ai`: 1.0→2.0 perdió 0.76 puntos, 4.5× más rápido.
+- `banqueta.ai`: 1.0→2.0 perdió 0.76 puntos, 4.5× más rápido.
 - 0.5 mm/px: no se llegó a medir el aprovechamiento a la densidad de copias
   usada arriba (hubiera sido impracticable en el tiempo de esta sesión); se
   midió el costo en tiempo aparte (a menos copias) y salió ~4.9× más lento
@@ -113,7 +113,7 @@ Mismas copias que el barrido principal de cada archivo:
 | archivo | shelf: placas / 1ª placa | raster: placas / 1ª placa |
 |---|---|---|
 | `muestra.dxf` | 3 / 56.14% | 2 / 62.93% |
-| `banqueta final raulo.ai` | 3 / 54.87% | 3 / 60.25% |
+| `banqueta.ai` | 3 / 54.87% | 3 / 60.25% |
 
 El raster gana en los dos: +6.79 puntos y una placa menos en el archivo
 sintético, +5.38 puntos (misma cantidad de placas) en el real.

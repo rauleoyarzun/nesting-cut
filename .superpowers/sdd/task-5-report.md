@@ -14,13 +14,13 @@
 $ .venv/bin/pytest tests/geometry/test_chaining.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 _______________ ERROR collecting tests/geometry/test_chaining.py _______________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/geometry/test_chaining.py'.
+ImportError while importing test module '<repo>/tests/geometry/test_chaining.py'.
 Traceback:
 tests/geometry/test_chaining.py:3: in <module>
     from nesting.geometry.chaining import chain_contours
@@ -49,7 +49,7 @@ E   assert 0 == 1
 $ .venv/bin/pytest tests/geometry/test_chaining.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 12 items
 

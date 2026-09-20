@@ -15,13 +15,13 @@ Ambos siguen el código exacto del brief (`.superpowers/sdd/task-9-brief.md`), c
 $ .venv/bin/pytest tests/io/test_dxf_writer.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 _________________ ERROR collecting tests/io/test_dxf_writer.py _________________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/io/test_dxf_writer.py'.
+ImportError while importing test module '<repo>/tests/io/test_dxf_writer.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
@@ -92,7 +92,7 @@ de los demás tests (placas 0/1/2, placas 0/1 lado a lado) no cambia.
 $ .venv/bin/pytest tests/io/test_dxf_writer.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 9 items
 
@@ -130,5 +130,5 @@ brief. El proyecto no usa git.
 
 ## Archivos relevantes
 
-- `/Users/raulo/cut-placement/src/nesting/io/dxf_writer.py`
-- `/Users/raulo/cut-placement/tests/io/test_dxf_writer.py`
+- `<repo>/src/nesting/io/dxf_writer.py`
+- `<repo>/tests/io/test_dxf_writer.py`

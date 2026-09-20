@@ -136,7 +136,7 @@ def test_non_curve_objects_are_skipped_with_a_warning(tmp_path):
 
 
 def test_a_circle_standing_in_the_xz_plane_is_rejected_as_non_planar(tmp_path):
-    """Regression test for a real bug found on `bench/files/banqueta raulo.3dm`.
+    """Regression test for a real bug found on `bench/files/banqueta.3dm`.
 
     A full circle lying in the XZ plane (Y constant, X and Z both varying)
     projects onto a degenerate back-and-forth *line* in XY once Y is dropped.

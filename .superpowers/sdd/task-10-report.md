@@ -79,10 +79,10 @@ tests/test_smoke.py ..                                                   [100%]
 
 ### DEFAULT_MATERIALS_PATH
 ```
-Path: /Users/raulo/cut-placement/materials.yaml
+Path: <repo>/materials.yaml
 Calculated via: Path(__file__).resolve().parents[3] / "materials.yaml"
-  __file__ = /Users/raulo/cut-placement/src/nesting/model/material.py
-  parents[3] = /Users/raulo/cut-placement
+  __file__ = <repo>/src/nesting/model/material.py
+  parents[3] = <repo>
 Exists: True ✓
 ```
 
@@ -175,6 +175,6 @@ Ninguna. Se siguió exactamente el código y estructura especificados.
 
 ### Archivos modificados
 
-- `/Users/raulo/cut-placement/src/nesting/model/material.py`
-- `/Users/raulo/cut-placement/materials.yaml`
-- `/Users/raulo/cut-placement/tests/model/test_material.py`
+- `<repo>/src/nesting/model/material.py`
+- `<repo>/materials.yaml`
+- `<repo>/tests/model/test_material.py`

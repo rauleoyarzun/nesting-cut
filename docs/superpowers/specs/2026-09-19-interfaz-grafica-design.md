@@ -41,7 +41,7 @@ cosa.
 
 ### 2.2 La API es por trabajos, no pedido-respuesta.
 
-Medido sobre `files/robot_raaulo.ai`: `rapido` 34 s, `lento` 3 min 54 s,
+Medido sobre `files/robot.ai`: `rapido` 34 s, `lento` 3 min 54 s,
 `lento` con 8 ángulos 9 min 5 s. Eso no entra en un request HTTP.
 
 En escritorio con un solo usuario se podría resolver con un hilo y listo. Se
@@ -221,7 +221,7 @@ a recorrerlo entero para tocar un número.
 ```
 ┌─────────────────────────────┬──────────────────────────────────┐
 │  Archivo                    │                                  │
-│  robot_raaulo.ai   Cambiar  │                                  │
+│  robot.ai   Cambiar  │                                  │
 │  93 piezas · 3 descartes ›  │        el dibujo, grande         │
 │                             │                                  │
 │  Material        [mdf18  ▾] │  ( Previsualización | Revisión ) │

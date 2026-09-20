@@ -343,7 +343,7 @@ Task 21: completa — CLI completa con --esfuerzo, --preview y sobrante util. Su
 
 === HITO 4 COMPLETO === El producto esta usable de punta a punta. 362 tests.
 Task 22: completa — lector de archivos .ai (AI3/PostScript). 23 tests. Suite: 385 passed.
-  EL ARCHIVO REAL DEL USUARIO ANDA DE PUNTA A PUNTA. bench/files/banqueta final raulo.ai, export genuino de
+  EL ARCHIVO REAL DEL USUARIO ANDA DE PUNTA A PUNTA. bench/files/banqueta.ai, export genuino de
   CorelDRAW 2020: 40 piezas reconocidas, 1 placa, 25.3%, sobrante util 1830x1308 mm, codigo de salida 0, 52 s.
   NINGUN contorno abierto con la tolerancia por defecto (0.1 mm) — buena señal sobre la calidad del export.
   PROBLEMA REAL DEL FLUJO DEL USUARIO, encontrado y resuelto: CorelDRAW exporta el BORDE DE LA MESA DE TRABAJO
@@ -424,12 +424,12 @@ REVISION FINAL DE TODO EL PROYECTO (la que mira el conjunto, no tarea por tarea)
 Menores documentados y no arreglados a proposito, con su justificacion, en el informe de la revision final.
 
 === MUDANZA (2026-09-18) ===
-El proyecto se movio de /Users/raulo/cut-placement a /Users/raulo/Projects/cut-placement.
+El proyecto se movio de <home>/cut-placement a <home>/Projects/cut-placement.
 (El usuario escribio "Porjects"; use "Projects", que es el que existe y tiene sus otros proyectos.)
 El venv NO se movio: tenia rutas absolutas grabadas en los shebangs de .venv/bin/* y en el .pth de la
 instalacion editable. Se reconstruyo de cero en el destino.
 Se descartaron, por regenerables: .venv, .pytest_cache, .coverage, __pycache__ y los .egg-info.
-Verificado en la ubicacion nueva: 423 tests en verde; la CLI sobre banqueta final raulo.ai da el mismo
+Verificado en la ubicacion nueva: 423 tests en verde; la CLI sobre banqueta.ai da el mismo
 resultado (80 piezas, 1 placa, 50.7%); el banco da los mismos numeros (raster 1 placa 54.2% contra shelf
 2 placas 27.1%); y DEFAULT_MATERIALS_PATH resuelve bien porque se calcula relativo al paquete.
 
@@ -454,7 +454,7 @@ sigue vivo despues (dxf_writer le saca los colores originales), asi que ensuciar
 que produjo el lector. Hay test.
 
 El diagnostico se escribe ANTES del acomodo. Dos motivos: si es lo unico que se pide el comando sale en ~1s
-(medido: 1.1s contra 34s del acomodo completo sobre robot_raaulo.ai), y si la ruta del PNG esta mal el usuario
+(medido: 1.1s contra 34s del acomodo completo sobre robot.ai), y si la ruta del PNG esta mal el usuario
 se entera ya y no despues de medio minuto tirado. Como todavia no se escribio nada mas, fallar ahi no puede
 ocultar un archivo que si salio -- que era el defecto I2 de --preview.
 
@@ -486,8 +486,8 @@ DOS TESTS MIOS ESTABAN MAL, no el codigo:
     bien que la pida).
 
 MEDIDO sobre los archivos reales del usuario:
-  robot_raaulo.ai : 3 descartes, 3 marcados. 1.1s.
-  robot_raaulo.3dm: 9 descartes, 6 marcados (las 3 cotas de Rhino no tienen contorno en XY que marcar). 1.0s.
+  robot.ai : 3 descartes, 3 marcados. 1.1s.
+  robot.3dm: 9 descartes, 6 marcados (las 3 cotas de Rhino no tienen contorno en XY que marcar). 1.0s.
 DIAGNOSTICO DE LOS ARCHIVOS DEL USUARIO (lo que el pregunto):
   - Las 2 "duplicadas" del .ai y 2 de los 4 "tramos sueltos" del .3dm SON LA MISMA COSA: dos lineas de 12 mm
     en y=2673.79 (x 8648-8660 y x 8837-8849), el lado de arriba de dos rectangulitos de 12x25 mm, dibujado dos

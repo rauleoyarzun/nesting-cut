@@ -103,7 +103,7 @@ cut-placement/
 - [ ] **Step 1: Crear el venv e instalar dependencias**
 
 ```bash
-cd /Users/raulo/cut-placement
+cd <repo>
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install numpy scipy shapely ezdxf Pillow PyYAML pytest
@@ -7264,8 +7264,8 @@ Esperado: `16 passed`.
 - [ ] **Step 6: Probar sobre el archivo real del proyecto**
 
 ```bash
-cp "/Users/raulo/Downloads/banqueta final raulo.ai" bench/files/
-.venv/bin/nest "bench/files/banqueta final raulo.ai" --material mdf18 --preview /tmp/banqueta.png -o /tmp/banqueta.dxf
+cp "<descargas>/banqueta.ai" bench/files/
+.venv/bin/nest "bench/files/banqueta.ai" --material mdf18 --preview /tmp/banqueta.png -o /tmp/banqueta.dxf
 ```
 
 Esperado: el archivo se lee y se nestea. **Abrir `/tmp/banqueta.png` y confirmar que las piezas se reconocen como piezas** (asientos redondos, patas), no como fragmentos sueltos.
@@ -7640,8 +7640,8 @@ Esperado: `12 passed`.
 - [ ] **Step 6: Probar sobre el archivo real del proyecto**
 
 ```bash
-cp "/Users/raulo/Downloads/banqueta raulo.3dm" bench/files/
-.venv/bin/nest "bench/files/banqueta raulo.3dm" --material mdf18 --preview /tmp/banqueta3dm.png -o /tmp/banqueta3dm.dxf
+cp "<descargas>/banqueta.3dm" bench/files/
+.venv/bin/nest "bench/files/banqueta.3dm" --material mdf18 --preview /tmp/banqueta3dm.png -o /tmp/banqueta3dm.dxf
 ```
 
 Esperado: se lee y se nestea. Los avisos de objetos no-curva o no-planos son normales en un modelo 3D real — lo importante es que las **curvas de corte** salgan bien. Confirmar en el PNG.

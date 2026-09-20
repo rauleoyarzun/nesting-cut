@@ -14,13 +14,13 @@
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 ______________ ERROR collecting tests/geometry/test_transform.py _______________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/geometry/test_transform.py'.
+ImportError while importing test module '<repo>/tests/geometry/test_transform.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 /opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
@@ -39,7 +39,7 @@ ERROR tests/geometry/test_transform.py - ModuleNotFoundError: No module named 'n
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 15 items
 

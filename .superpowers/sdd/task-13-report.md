@@ -18,13 +18,13 @@
 $ .venv/bin/pytest tests/test_cli.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 0 items / 1 error
 
 ==================================== ERRORS ====================================
 ______________________ ERROR collecting tests/test_cli.py ______________________
-ImportError while importing test module '/Users/raulo/cut-placement/tests/test_cli.py'.
+ImportError while importing test module '<repo>/tests/test_cli.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
 .../importlib/__init__.py:88: in import_module
@@ -61,7 +61,7 @@ Corrida final, después del fix:
 $ .venv/bin/pytest tests/test_cli.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/raulo/cut-placement
+rootdir: <repo>
 configfile: pyproject.toml
 collected 12 items
 
