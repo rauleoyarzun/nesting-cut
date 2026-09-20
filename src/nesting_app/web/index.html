@@ -78,11 +78,12 @@
       <div class="campo">
         <label class="etiqueta" for="angulos">Ángulos</label>
         <div class="control"><input id="angulos" type="text" value="0,90,180,270"></div>
+        <p class="error-campo oculto" data-error-de="angulos"></p>
       </div>
       <div class="campo">
         <label class="etiqueta" for="tol-cierre">Tolerancia de cierre</label>
         <div class="control con-unidad">
-          <input id="tol-cierre" type="number" min="0.001" step="0.01" value="0.1" class="medida">
+          <input id="tol-cierre" type="number" min="0.001" step="any" value="0.1" class="medida">
           <span class="unidad">mm</span>
         </div>
         <p class="error-campo oculto" data-error-de="tol_cierre"></p>
@@ -90,7 +91,7 @@
       <div class="campo">
         <label class="etiqueta" for="resolucion">Resolución</label>
         <div class="control con-unidad">
-          <input id="resolucion" type="number" min="0.1" step="0.5" value="2" class="medida">
+          <input id="resolucion" type="number" min="0.1" step="any" value="2" class="medida">
           <span class="unidad">mm/px</span>
         </div>
         <p class="error-campo oculto" data-error-de="resolucion"></p>

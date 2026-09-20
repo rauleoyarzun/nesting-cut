@@ -713,3 +713,35 @@ Task 14: completa (commits 14cbf8e..4a797f1). Empaquetado para Mac.
     coautoría de esta sesión. Verifiqué que NO debilitaron tests: las aserciones borradas contaban entidades
     Line y la representación cambió a Polyline, así que cambiar esas cuentas era obligatorio; las de reemplazo
     verifican vértices y coordenadas, y los tres commits suman 7 tests sin borrar ninguno.
+
+=== RECORRIDA DEL FLUJO EN UN NAVEGADOR DE VERDAD (post-entrega) === 6 defectos, todos en la capa web.
+  Método: servidor local + navegador embebido, con `window.pywebview.api` falsificado para ejercer las ramas
+  de escritorio (las únicas que corre el usuario). Es la primera vez que este código se EJECUTA: los tests
+  leen los archivos como texto y ninguno abre una página. Los seis salieron en una sola pasada.
+  1. REPORTADO POR EL USUARIO: guardar el DXF no apagaba la bandera de "sin guardar". Elegir otro archivo
+     avisaba que ibas a perder un acomodo que ya estaba escrito en la carpeta del usuario, y cerrar la
+     ventana después de guardar también preguntaba. `terminado` decía "hay un resultado", no "hay un
+     resultado en riesgo", y nadie llamaba marcar_sin_guardar(false) después de escribir. Ahora los dos
+     caminos de guardado pasan por marcarGuardado().
+  2. LAYOUT: `body { min-height: 100vh }` deja crecer la fila `1fr` de la grilla hasta el contenido. Medido:
+     733 px de body en una ventana de 558. Lo que se va abajo del borde es la barra de acción entera --
+     Acomodar, la barra de avance y Guardar DXF. Con el panel de opciones abierto en una ventana de 1100x720
+     (la real) el usuario perdía de vista el avance de un trabajo de 9 minutos. `height` fija la cáscara y
+     el panel scrollea solo, que para eso ya tenía overflow-y: auto.
+  3. El link "· N descartes" -- que existe exactamente para ver CUÁLES se descartaron -- llevaba a un panel
+     gris vacío. `mostrarImagen()` salía sin hacer nada porque las dos imágenes las dibuja el trabajo y
+     todavía no hay ninguno. Ahora el lienzo dice por qué está vacío. NO resuelto: que el diagnóstico se
+     pueda ver ANTES de acomodar, que es lo que el usuario pidió originalmente.
+  4. Un typo en "Ángulos" abría un cartel de error CON TÍTULO Y SIN TEXTO: "9o" -> NaN -> JSON.stringify lo
+     manda como null -> 422 de pydantic, que trae una LISTA, y el mensaje se armaba con
+     `typeof detalle === "string" ? detalle : ""`. Dos arreglos: textoDeDetalle() para que ningún cartel
+     salga vacío nunca, y validación de ángulos en la pantalla con el cartel debajo del campo.
+  5. `tol-cierre` (min=0.001 step=0.01 value=0.1) y `resolucion` (min=0.1 step=0.5 value=2) nacían INVÁLIDOS:
+     step se cuenta desde min, no desde cero. El navegador los marcaba mal antes de que el usuario tocara
+     nada, con mensaje en inglés. step="any".
+  6. Las casillas salían en el azul del sistema. accent-color: var(--acento).
+  ANOTADO, NO ARREGLADO: "94 piezas" no se recalcula al cambiar de material, así que puede contradecir el
+  "de 93" de la barra de avance cuando el material nuevo hace que un rectángulo coincida con el tamaño de
+  la placa. Es honesto pero confunde.
+  LECCIÓN: los cuatro bugs de app.js de las revisiones anteriores salieron de LEER el código; estos seis
+  salieron de CORRERLO. Son clases distintas de defecto y ninguna de las dos sustituye a la otra.

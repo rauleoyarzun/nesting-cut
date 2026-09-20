@@ -19,11 +19,18 @@
 
 * { box-sizing: border-box; }
 
+/* `height` y no `min-height`: con min-height la fila `1fr` crece hasta
+   donde llegue el contenido, el body se hace más alto que la ventana y lo
+   que se va abajo es la barra de acción -- o sea Acomodar, la barra de
+   avance y Guardar DXF. Medido: 733 px de body en una ventana de 558. Con
+   `height` la cáscara queda fija y el que scrollea es el panel de
+   opciones, que para eso tiene `overflow-y: auto`. */
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  accent-color: var(--acento);
   font-family: var(--fuente);
   color: var(--texto);
   background: var(--fondo);

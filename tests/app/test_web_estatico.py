@@ -108,6 +108,44 @@ def test_no_hay_emojis_en_la_interfaz(html):
     assert not sospechosos, f"hay símbolos que no son texto: {sospechosos}"
 
 
+def test_la_cascara_no_crece_mas_que_la_ventana(css):
+    """Con `min-height: 100vh` la fila `1fr` de la grilla crece hasta donde
+    llegue el contenido: el body se hace más alto que la ventana y lo que se
+    va abajo del borde es la barra de acción entera -- Acomodar, la barra de
+    avance y Guardar DXF. Medido en una ventana de 558 px: el body daba 733.
+
+    `height` fija la cáscara y deja que scrollee el panel de opciones, que
+    para eso tiene `overflow-y: auto`."""
+    cuerpo = css[css.index("\nbody {"):css.index("}", css.index("\nbody {"))]
+    assert "height: 100vh" in cuerpo and "min-height: 100vh" not in cuerpo, (
+        "el body volvió a min-height: la barra de acción se va abajo del "
+        "borde de la ventana en cuanto el panel de opciones crece"
+    )
+    assert "min-height: 0" in css, (
+        "sin min-height: 0 en el hijo de la grilla, fijar la altura del body "
+        "no alcanza: el hijo tampoco baja de su contenido"
+    )
+
+
+@pytest.mark.parametrize("campo", ["tol-cierre", "resolucion"])
+def test_los_numeros_no_nacen_invalidos(html, campo):
+    """`step` se cuenta desde `min`, no desde cero. Con min=0.001 y step=0.01
+    el valor por defecto 0.1 no cae en la grilla, así que el navegador marca
+    el campo como inválido antes de que el usuario toque nada -- y al usar
+    las flechas salta a 0.101. Lo mismo resolución: min=0.1, step=0.5, y el
+    2 por defecto no es un paso válido.
+
+    Son medidas que se escriben, no que se incrementan de a una: `any`."""
+    linea = next(l for l in html.splitlines() if f'id="{campo}"' in l)
+    assert 'step="any"' in linea, f"{campo} tiene un step que invalida su propio valor por defecto: {linea.strip()}"
+
+
+def test_las_casillas_usan_el_acento_de_la_paleta(css):
+    """Sin `accent-color` la casilla y los radios salen en el azul del
+    sistema, que no es ningún color de la dirección D."""
+    assert "accent-color: var(--acento)" in css
+
+
 def test_el_css_se_carga_desde_el_html(html):
     assert 'href="app.css"' in html
 

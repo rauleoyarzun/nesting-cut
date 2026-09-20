@@ -136,6 +136,103 @@ def test_registrar_limpia_el_trabajo_anterior(js):
     )
 
 
+def test_un_cartel_de_error_nunca_sale_vacio(js):
+    """Un 422 de pydantic trae una lista de campos, no un texto. Mientras el
+    mensaje se armaba con `typeof detalle === "string" ? detalle : ""`, un
+    typo en Ángulos abría un cartel con título y sin una sola palabra
+    adentro -- el usuario no tenía forma de saber qué corregir."""
+    assert 'typeof detalle === "string" ? detalle : ""' not in js, (
+        "volvió el armado que tira el detalle no-texto a la basura"
+    )
+    inicio = js.index("function textoDeDetalle(")
+    cuerpo = js[inicio:js.index("\n}", inicio)]
+    assert "Array.isArray(detalle)" in cuerpo, (
+        "textoDeDetalle no contempla la lista de errores de pydantic, que es "
+        "justo la forma que tiene un 422"
+    )
+    assert re.search(r"new Error\(\s*textoDeDetalle\(detalle\)\s*\|\|", js), (
+        "el mensaje del error no pasa por textoDeDetalle, o no tiene respaldo "
+        "para cuando el cuerpo no trae nada"
+    )
+
+
+def test_los_angulos_se_validan_antes_de_mandarlos(js):
+    """Es el único parámetro de texto libre. Un "9o" daba NaN, JSON.stringify
+    lo mandaba como null y el servidor contestaba con el 422 crudo. Se corta
+    en la pantalla, con el mismo cartel debajo del campo que los demás."""
+    inicio = js.index('$("btn-acomodar").onclick')
+    cuerpo = js[inicio:js.index('$("btn-cancelar").onclick')]
+    assert "angulosValidos()" in cuerpo, (
+        "acomodar ya no chequea los ángulos: un typo vuelve a viajar como "
+        "null al servidor"
+    )
+    assert re.search(r'marcarCampo\(\s*\n?\s*"angulos"', cuerpo), (
+        "el error de ángulos no se muestra debajo del campo"
+    )
+
+
+def test_el_campo_de_angulos_tiene_donde_mostrar_su_error(html):
+    """`marcarCampo` busca `[data-error-de=...]`; si no está, cae al cartel
+    modal, que para un typo en un campo es desproporcionado."""
+    assert 'data-error-de="angulos"' in html
+
+
+def test_el_lienzo_explica_por_que_esta_vacio(js):
+    """Antes de acomodar no existe ninguna de las dos imágenes, así que
+    `mostrarImagen` salía sin hacer nada y el lienzo quedaba gris y mudo. El
+    caso que importa: el usuario aprieta "· 2 descartes" -- el link que está
+    justo para ver cuáles son -- y no pasa nada visible."""
+    inicio = js.index("async function mostrarImagen(")
+    cuerpo = js[inicio:js.index("const mostrarRevision", inicio)]
+    sin_trabajo = cuerpo[cuerpo.index("if (!estado.trabajoId)"):]
+    sin_trabajo = sin_trabajo[:sin_trabajo.index("const miPedido")]
+    assert "Acomodar" in sin_trabajo, (
+        "el lienzo vuelve a quedarse en blanco cuando todavía no hay trabajo"
+    )
+
+
+def test_guardar_el_dxf_deja_de_considerarlo_en_riesgo(js):
+    """El bug que reportó el usuario: guardaba el DXF, elegía otro archivo y
+    el programa le avisaba que iba a perder el acomodo -- que ya estaba
+    escrito en su carpeta. El mismo descuido hacía que cerrar la ventana
+    después de guardar también preguntara.
+
+    La causa: los dos caminos de guardado escribían el archivo y nadie
+    apagaba la bandera. Este test fija que los dos pasen por el mismo lugar
+    y que ese lugar apague las dos alarmas (la de elegir otro archivo y la
+    que mira el puente de escritorio al cerrar)."""
+    inicio = js.index("function marcarGuardado(")
+    cuerpo = js[inicio:js.index("\n}", inicio)]
+    assert "estado.guardado = true" in cuerpo
+    assert "marcar_sin_guardar(false)" in cuerpo, (
+        "marcarGuardado() no le avisa al puente: cerrar la ventana después "
+        "de guardar va a seguir preguntando por un archivo que ya está en "
+        "disco"
+    )
+
+    guardar = js[js.index('$("btn-guardar").onclick'):]
+    assert guardar.count("marcarGuardado()") == 2, (
+        "los dos caminos de guardado (diálogo nativo y descarga del "
+        "navegador) tienen que marcar el acomodo a salvo; hay "
+        f"{guardar.count('marcarGuardado()')}"
+    )
+
+
+def test_el_cartel_de_perder_el_acomodo_solo_sale_si_no_se_guardo(js):
+    """`terminado` dice que hay un resultado, no que esté en riesgo. Si la
+    condición mira sólo eso, el cartel sale igual después de guardar."""
+    inicio = js.index("async function registrar(")
+    cuerpo = js[inicio:js.index("async function analizar(")]
+    assert re.search(r"if\s*\(\s*estado\.terminado\s*&&\s*!estado\.guardado\s*\)", cuerpo), (
+        "la condición del confirm() no mira estado.guardado: el usuario que "
+        "ya guardó va a ver igual el cartel de que va a perder el trabajo"
+    )
+    assert "estado.guardado = false" in cuerpo, (
+        "registrar() no limpia estado.guardado: el archivo nuevo arranca "
+        "considerándose guardado y su acomodo se puede perder en silencio"
+    )
+
+
 def test_registrar_deja_el_boton_guardar_deshabilitado(js):
     """Aunque `trabajoId` se limpie, si el botón Guardar no se deshabilita
     de forma explícita puede quedar habilitado por un estado anterior (por

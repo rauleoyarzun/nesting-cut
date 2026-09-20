@@ -20,10 +20,27 @@ const estado = {
   trabajoId: null,
   sondeo: null,
   terminado: false,
+  guardado: false,
   descartes: 0,
 };
 
 // --- el cliente HTTP --------------------------------------------------------
+
+// Un 422 de pydantic no trae un texto: trae la lista de campos que no
+// validaron. Armando el mensaje con `typeof detalle === "string" ? ... : ""`
+// eso quedaba en cadena vacía y el cartel salía con título y sin una sola
+// palabra adentro. Pasó de verdad: un typo en "Ángulos" mandaba
+// `[null, null]` y el usuario veía una caja en blanco.
+function textoDeDetalle(detalle) {
+  if (typeof detalle === "string") return detalle;
+  if (Array.isArray(detalle)) {
+    return detalle
+      .map((e) => [(e.loc || []).slice(1).join(" › "), e.msg].filter(Boolean).join(": "))
+      .join("\n");
+  }
+  if (detalle && typeof detalle === "object") return JSON.stringify(detalle);
+  return "";
+}
 
 async function api(ruta, opciones = {}) {
   const respuesta = await fetch(ruta, {
@@ -35,7 +52,7 @@ async function api(ruta, opciones = {}) {
     try {
       detalle = (await respuesta.json()).detail;
     } catch (_) { /* el cuerpo no era JSON; queda el statusText */ }
-    const error = new Error(typeof detalle === "string" ? detalle : "");
+    const error = new Error(textoDeDetalle(detalle) || respuesta.statusText);
     error.estado = respuesta.status;
     error.detalle = detalle;
     throw error;
@@ -141,11 +158,16 @@ async function registrar(fuente) {
   // acomodás A, elegís B, la solapa Revisión sigue pidiendo el diagnóstico
   // de A, el resultado sigue mostrando las placas de A, y Guardar sigue
   // habilitado y baja el DXF de A ofreciéndolo como "B_acomodado.dxf".
-  if (estado.terminado) {
+  if (estado.terminado && !estado.guardado) {
     // Hay un acomodo que todavía no se guardó a ningún lado (el mismo caso
     // que `marcar_sin_guardar` le avisa al puente de escritorio para el
     // cierre de la ventana): perderlo en silencio por elegir otro archivo
     // es tan grave como perderlo al cerrar, así que se pregunta antes.
+    //
+    // `guardado` es lo que separa "hay un resultado" de "hay un resultado
+    // que se va a perder". Sin esa distinción el cartel salía igual después
+    // de guardar: el DXF ya estaba en la carpeta del usuario y el programa
+    // le seguía avisando que lo iba a perder.
     const seguir = confirm(
       "El acomodo anterior todavía no se guardó y se va a perder si elegís " +
         "otro archivo. ¿Continuar de todos modos?"
@@ -165,6 +187,7 @@ async function registrar(fuente) {
   estado.trabajoId = null;
   estado.sondeo = null;
   estado.terminado = false;
+  estado.guardado = false;
   estado.descartes = 0;
   if (EN_ESCRITORIO) window.pywebview?.api?.marcar_sin_guardar(false);
 
@@ -241,7 +264,17 @@ let urlImagenActual = null;
 let pedidoImagen = 0;
 
 async function mostrarImagen(nombre) {
-  if (!estado.trabajoId) return;
+  if (!estado.trabajoId) {
+    // Las dos imágenes las dibuja el trabajo, así que antes de acomodar no
+    // existe ninguna. Sin este texto el lienzo queda gris y vacío: el
+    // usuario aprieta "· 2 descartes" -- el link que está justo para ver
+    // cuáles son -- y no pasa absolutamente nada visible.
+    $("lienzo").textContent =
+      nombre === "diagnostico.png"
+        ? "La revisión se dibuja junto con el acomodo. Apretá Acomodar y volvé a esta solapa para ver qué se descartó."
+        : "Todavía no hay nada acomodado.";
+    return;
+  }
   const miPedido = ++pedidoImagen;
   try {
     const blob = await (await api(`/api/trabajos/${estado.trabajoId}/${nombre}`)).blob();
@@ -292,13 +325,30 @@ function parametros() {
     sep: Number($("sep").value),
     borde: Number($("borde").value),
     copias: Number($("copias").value),
-    angulos: $("angulos").value.split(",").map(Number),
+    angulos: angulosDelCampo(),
     espejo: $("espejo").checked,
     unidades: estado.unidades,
     tol_cierre: Number($("tol-cierre").value),
     resolucion: Number($("resolucion").value),
     esfuerzo: $("esfuerzo").value,
   };
+}
+
+// Los ángulos son el único parámetro que se tipea como texto libre. Un
+// "9o" en vez de "90" daba `NaN`, `JSON.stringify` lo mandaba como `null`,
+// y el servidor devolvía el 422 crudo de pydantic. Se corta acá, con el
+// mismo cartel debajo del campo que usan los demás parámetros.
+function angulosDelCampo() {
+  return $("angulos")
+    .value.split(",")
+    .map((t) => t.trim())
+    .filter((t) => t !== "")
+    .map(Number);
+}
+
+function angulosValidos() {
+  const lista = angulosDelCampo();
+  return lista.length > 0 && lista.every(Number.isFinite);
 }
 
 function corriendo(si) {
@@ -315,6 +365,12 @@ $("btn-acomodar").onclick = async () => {
     return mostrarError("Falta el archivo", "Elegí un archivo antes de acomodar.");
   }
   limpiarErroresDeCampo();
+  if (!angulosValidos()) {
+    return marcarCampo(
+      "angulos",
+      "poné números separados por comas, por ejemplo 0,90,180,270"
+    );
+  }
   estado.terminado = false;
   mostrarAvisos([]);
   try {
@@ -397,6 +453,7 @@ function textoDeAvance(a) {
 
 function terminar(t) {
   estado.terminado = true;
+  estado.guardado = false;
   $("btn-guardar").disabled = false;
   if (EN_ESCRITORIO) {
     // El DXF vive en una carpeta temporal hasta que el usuario lo guarda.
@@ -415,6 +472,16 @@ function terminar(t) {
 
 // --- guardar ----------------------------------------------------------------
 
+// Un solo lugar donde el programa pasa a considerar el acomodo a salvo, para
+// que los dos caminos de guardado (diálogo nativo y descarga del navegador)
+// no puedan quedar desalineados. Lo llaman recién cuando el archivo está
+// escrito: si el usuario cancela el "Guardar como", no se llama.
+function marcarGuardado() {
+  if (!estado.guardado) $("resultado").insertAdjacentHTML("beforeend", " · guardado");
+  estado.guardado = true;
+  if (EN_ESCRITORIO) window.pywebview?.api?.marcar_sin_guardar(false);
+}
+
 $("btn-guardar").onclick = async () => {
   const url = `/api/trabajos/${estado.trabajoId}/salida.dxf`;
   const sugerido = (estado.nombreArchivo || "salida").replace(/\.[^.]+$/, "") + "_acomodado.dxf";
@@ -428,7 +495,7 @@ $("btn-guardar").onclick = async () => {
       if (!destino) return;
       const datos = new Uint8Array(await (await api(url)).arrayBuffer());
       await window.pywebview.api.guardar(destino, Array.from(datos));
-      $("resultado").insertAdjacentHTML("beforeend", ` · guardado`);
+      marcarGuardado();
     } catch (error) {
       mostrarError("No se pudo guardar", error.message);
     }
@@ -445,6 +512,7 @@ $("btn-guardar").onclick = async () => {
     a.href = urlBlob;
     a.download = sugerido;
     a.click();
+    marcarGuardado();
   } catch (error) {
     mostrarError("No se pudo guardar", error.message);
   } finally {
