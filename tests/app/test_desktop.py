@@ -391,3 +391,112 @@ def test_si_el_dialogo_falla_la_ventana_igual_cierra(capsys):
     assert "no hay pantalla" in capsys.readouterr().err, (
         "el fallo se tragó sin dejar rastro"
     )
+
+
+# --- que el servidor sólo le conteste a su propia ventana -------------------
+
+
+def _pedir(app, ruta="/", cabeceras=None, tipo="http"):
+    """Corre un pedido ASGI contra `app` y devuelve (estado, cuerpo)."""
+    import asyncio
+
+    scope = {
+        "type": tipo, "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "GET", "path": ruta, "raw_path": ruta.encode(),
+        "query_string": b"", "root_path": "", "scheme": "http",
+        "headers": [(k.lower().encode(), v.encode())
+                    for k, v in (cabeceras or {}).items()],
+        "client": ("127.0.0.1", 50000), "server": ("127.0.0.1", 8000),
+    }
+    recibidos = []
+
+    async def send(mensaje):
+        recibidos.append(mensaje)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    asyncio.run(app(scope, receive, send))
+    estado = next((m.get("status") for m in recibidos if "status" in m), None)
+    cuerpo = b"".join(m.get("body", b"") for m in recibidos)
+    return estado, cuerpo, recibidos
+
+
+async def _interior(scope, receive, send):
+    """Lo que hay detrás de la cerradura. Si contesta, es que pasó."""
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"el token secreto"})
+
+
+@pytest.mark.parametrize("host", [
+    "127.0.0.1:53000", "127.0.0.1", "localhost:53000", "LOCALHOST:53000",
+    "[::1]:53000",
+])
+def test_la_ventana_de_verdad_entra(host):
+    app = desktop._SoloDesdeEstaVentana(_interior)
+    estado, cuerpo, _ = _pedir(app, cabeceras={"Host": host})
+    assert estado == 200, host
+    assert b"secreto" in cuerpo
+
+
+@pytest.mark.parametrize("host", [
+    "evil.attacker.com",
+    "evil.attacker.com:53000",
+    "localtest.me:53000",          # un dominio que de verdad resuelve a 127.0.0.1
+    "127.0.0.1.evil.com",          # el prefijo no alcanza
+    "evil.com:53000@127.0.0.1",
+    "",
+])
+def test_un_pedido_rebindeado_rebota(host):
+    """El ataque completo, reproducido antes de escribir esta defensa: una
+    página cualquiera que el usuario visite pone el TTL de su DNS en cero y
+    rebindea su dominio a 127.0.0.1. Para el navegador sigue siendo el mismo
+    origen, así que la deja leer las respuestas -- y `GET /` devuelve el token
+    en un `<meta>` sin pedir nada a cambio, porque es como arranca la
+    interfaz. Con ese token se encadena `POST /api/archivos/local`, que acepta
+    cualquier ruta del disco, y sale el dibujo del usuario.
+
+    Lo que lo corta es el `Host`: después del rebinding el navegador sigue
+    mandando el dominio del atacante. Y no lo puede falsificar, porque `Host`
+    es una cabecera prohibida para el JavaScript.
+    """
+    app = desktop._SoloDesdeEstaVentana(_interior)
+    estado, cuerpo, _ = _pedir(app, cabeceras={"Host": host})
+    assert estado == 403, host
+    assert b"secreto" not in cuerpo, "se filtró el contenido protegido"
+
+
+def test_un_origen_ajeno_rebota_aunque_el_host_este_bien():
+    """Segunda cerradura, por si alguna vez se llega con el Host correcto
+    desde otra página."""
+    app = desktop._SoloDesdeEstaVentana(_interior)
+    estado, _, _ = _pedir(app, cabeceras={
+        "Host": "127.0.0.1:53000", "Origin": "https://evil.attacker.com"})
+    assert estado == 403
+
+
+def test_el_origen_propio_pasa():
+    app = desktop._SoloDesdeEstaVentana(_interior)
+    estado, _, _ = _pedir(app, cabeceras={
+        "Host": "127.0.0.1:53000", "Origin": "http://127.0.0.1:53000"})
+    assert estado == 200
+
+
+def test_un_websocket_rebindeado_se_cierra():
+    """El scope de websocket no pasa por el mismo camino de respuesta, así
+    que se cubre aparte: cerrar, no contestar 403."""
+    app = desktop._SoloDesdeEstaVentana(_interior)
+    _, _, mensajes = _pedir(app, cabeceras={"Host": "evil.attacker.com"},
+                            tipo="websocket")
+    assert mensajes == [{"type": "websocket.close", "code": 1008}]
+
+
+def test_la_cerradura_esta_por_afuera_de_la_que_entrega_el_token():
+    """El orden importa y no es intercambiable: la página que trae el token
+    es justamente lo que el atacante quiere leer, así que tiene que quedar
+    DETRÁS de la cerradura."""
+    fuente = Path(desktop.__file__).read_text(encoding="utf-8")
+    armado = next(l for l in fuente.splitlines() if "app = _SoloDesdeEstaVentana" in l)
+    assert "_ConToken" in armado, (
+        "el chequeo de Host dejó de envolver a lo que sirve el token"
+    )

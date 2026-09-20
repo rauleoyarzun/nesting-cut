@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 import uvicorn
+from starlette.datastructures import Headers
 
 from nesting_app import rutas
 from nesting_app.api import crear_app
@@ -48,6 +49,93 @@ def falta_webview2() -> bool:
         except OSError:
             continue
     return True
+
+
+HOSTS_LOCALES = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+"""Los nombres con los que esta ventana se llama a sí misma."""
+
+
+class _SoloDesdeEstaVentana:
+    """Rechaza todo pedido cuyo `Host` no sea este servidor.
+
+    Sin esto el programa le abre una puerta a cualquier página web que el
+    usuario visite mientras lo tiene abierto. El ataque se llama DNS
+    rebinding y no necesita nada raro:
+
+    1. El usuario entra a una página cualquiera del atacante.
+    2. El dominio de esa página resuelve primero al servidor del atacante y,
+       segundos después, a 127.0.0.1 -- el atacante controla su propio DNS y
+       pone el TTL en cero.
+    3. Para el navegador la página SIGUE SIENDO el mismo origen, así que le
+       deja leer las respuestas. Pero los paquetes ahora van a esta ventana.
+    4. La página pide `GET /`, que devuelve el token en un `<meta>` sin pedir
+       nada a cambio -- tiene que ser así, es como arranca la interfaz.
+    5. Con el token encadena `POST /api/archivos/local` (que acepta CUALQUIER
+       ruta del disco), `POST /api/analizar` y `GET diagnostico.png`, y se
+       lleva el dibujo del usuario.
+
+    Está reproducido de punta a punta: mandando todo con
+    `Host: evil.attacker.com` se robaba el token y salía un PNG de 37 KB con
+    un dibujo privado adentro.
+
+    Lo que corta el ataque es justamente el `Host`: después del rebinding el
+    navegador sigue mandando el dominio del atacante, porque para él la
+    página no cambió de origen. Un pedido legítimo de la ventana dice
+    127.0.0.1; uno rebindeado dice evil.attacker.com. No hay forma de que el
+    atacante lo falsifique desde una página: `Host` es una cabecera prohibida
+    para el JavaScript.
+
+    Vive acá y no en `api.py` a propósito. Que el único host válido sea el
+    local es verdad para la ventana de escritorio y FALSO para la versión web,
+    que algún día va a estar detrás de un dominio de verdad. `api.py` es la
+    capa compartida; esta regla es de esta capa.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] in ("http", "websocket") and not self._permitido(scope):
+            await self._rechazar(scope, send)
+            return
+        await self.app(scope, receive, send)
+
+    @staticmethod
+    def _host_de(valor: bytes | None) -> str | None:
+        """El nombre sin el puerto. `None` si no vino la cabecera."""
+        if valor is None:
+            return None
+        texto = valor.decode("latin-1").strip().lower()
+        if texto.startswith("["):                      # IPv6: [::1]:8080
+            return texto.split("]")[0] + "]"
+        return texto.rsplit(":", 1)[0] if ":" in texto else texto
+
+    def _permitido(self, scope) -> bool:
+        cabeceras = Headers(scope=scope)
+        host = self._host_de(cabeceras.get("host", "").encode() or None)
+        if host not in HOSTS_LOCALES:
+            return False
+        # Segunda cerradura: si el pedido declara un origen, tiene que ser el
+        # nuestro. Un `fetch` de la propia página manda `Origin` en los POST;
+        # uno de otra página declararía el suyo.
+        origen = cabeceras.get("origin")
+        if origen:
+            sin_esquema = origen.split("://", 1)[-1]
+            if self._host_de(sin_esquema.encode()) not in HOSTS_LOCALES:
+                return False
+        return True
+
+    @staticmethod
+    async def _rechazar(scope, send) -> None:
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        cuerpo = b"este servidor solo atiende a la ventana del programa"
+        await send({"type": "http.response.start", "status": 403, "headers": [
+            (b"content-type", b"text/plain; charset=utf-8"),
+            (b"content-length", str(len(cuerpo)).encode()),
+        ]})
+        await send({"type": "http.response.body", "body": cuerpo})
 
 
 class _ConToken:
@@ -273,7 +361,10 @@ def servidor(deposito: Deposito, registro: Registro) -> tuple[str, int, str]:
     global _servidor, _hilo
 
     token = secrets.token_urlsafe(32)
-    app = _ConToken(crear_app(token, deposito, registro), token)
+    # El chequeo de `Host` va AFUERA de `_ConToken`: la página que entrega el
+    # token es justamente lo que el atacante quiere leer, así que tiene que
+    # quedar detrás de la cerradura, no delante.
+    app = _SoloDesdeEstaVentana(_ConToken(crear_app(token, deposito, registro), token))
     config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")
     _servidor = uvicorn.Server(config)
     _hilo = threading.Thread(target=_servidor.run, daemon=True)
