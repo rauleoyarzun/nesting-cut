@@ -1,9 +1,14 @@
 # Nesting
 
-**Acomoda piezas en placas para que sobre la menor cantidad de material posible.**
+**Acomoda piezas en placas usando la menor cantidad de material posible, para que
+lo que sobra quede libre y entero.**
 
 Le das un archivo vectorial con las piezas a cortar, elegís sobre qué placa vas a
 cortarlas, y te devuelve un DXF listo para la fresadora.
+
+No se trata sólo de gastar menos: lo que queda libre en la última placa es un
+recorte que vas a volver a usar. Cuanto más abajo entren las piezas, más grande y
+más entera queda esa franja.
 
 [![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-informational.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-informational.svg)](https://www.python.org/)
@@ -21,6 +26,7 @@ Abrís el archivo, elegís el material y apretás **Acomodar**.
 | **Sale** | un `.dxf` con todo acomodado, más una previsualización en PNG |
 | **Decide** | cuántas placas, dónde va cada pieza y con qué rotación |
 | **Respeta** | la separación entre piezas, el margen contra el borde y la veta del material |
+| **Busca** | usar la menor cantidad de placas y, en la última, dejar libre la franja más grande posible |
 
 Además te muestra **qué descartó y por qué**, marcado sobre tu propio dibujo: los
 tramos sueltos, las curvas que no apoyan en el plano, los contornos que no cierran.
@@ -57,35 +63,38 @@ para correrlo sobre un servidor sin pantalla.
 
 ## La pantalla
 
-```
-┌─────────────────────────────────────────────────────────┐
-│ Nesting                                    [Materiales] │
-├──────────────────────┬──────────────────────────────────┤
-│  Archivo             │  Previsualización │ Revisión     │
-│  ▸ robot.ai          │                                  │
-│    94 piezas         │                                  │
-│    · 2 descartes     │        [ el dibujo ]             │
-│                      │                                  │
-│  Material  ▾         │                                  │
-│  Separación  5 mm    │                                  │
-│  Borde      10 mm    │        − 150% +  Ajustar         │
-│  Copias      1       │                                  │
-│  Esfuerzo  ▾         │                                  │
-│                      │                                  │
-│  › Opciones avanzadas│                                  │
-├──────────────────────┴──────────────────────────────────┤
-│ [Acomodar]  1 placa · 47.7% · sobrante 715 mm  [Guardar]│
-└─────────────────────────────────────────────────────────┘
-```
+![La pantalla principal: el archivo elegido, los parámetros y el acomodo terminado](docs/imagenes/pantalla.png)
 
-**Previsualización** muestra cómo quedó el acomodo. **Revisión** marca lo que se
-descartó, con una lupa por cada descarte y el motivo escrito al lado. Las dos se
-pueden ampliar: rueda del mouse para acercarte donde tengas el cursor, arrastrar
-para moverte, doble click para alternar entre 100% y ajustada.
+Un acomodo de verdad: 94 piezas de un `.ai` sobre una placa de MDF de
+1830 × 2600. Entraron todas en **una sola placa**, ocupando el 47.7% de la
+superficie, y —esto es lo que importa— la franja de **715 mm** que se ve libre
+arriba queda entera para el próximo trabajo.
+
+El resultado dice tres cosas: **cuántas placas** hicieron falta, **qué
+porcentaje** de esa superficie quedó ocupado por piezas, y el **sobrante** —los
+milímetros de franja libre en la última placa, medidos desde donde termina la
+pieza más alta hasta el borde—. Ese último número es el que te dice qué recorte
+te llevás.
 
 Mientras corre, la barra de abajo dice en qué va (`Intento 2 de 3 · ubicadas 47
 de 93 · placa 1`) y podés **cancelar** en cualquier momento. Cancelar no deja un
 resultado a medias: el DXF no llega a escribirse.
+
+### Revisión: qué se descartó y por qué
+
+![La solapa Revisión: los descartes marcados sobre el dibujo original, con una lupa y el motivo de cada uno](docs/imagenes/revision.png)
+
+Los descartes marcados **sobre tu propio dibujo**, con un círculo de color en el
+lugar exacto, una lupa por cada uno y el motivo escrito al lado: dos tramos
+sueltos que no encierran área y un rectángulo que resultó ser del tamaño exacto
+de la placa. Abajo, cuántos hubo de cada clase.
+
+Esto aparece **al segundo de abrir el archivo**, sin acomodar nada. Es cuando
+sirve: todavía estás a tiempo de volver al original y corregirlo.
+
+Las dos imágenes se pueden ampliar: rueda del mouse para acercarte donde tengas
+el cursor, arrastrar para moverte, doble click para alternar entre 100% y
+ajustada.
 
 ---
 
