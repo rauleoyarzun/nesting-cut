@@ -34,6 +34,15 @@ ACENTO_CLARO = (16, 163, 114)
 TEXTO = (17, 24, 39)        # --texto
 LIENZO = (237, 240, 244)    # --lienzo
 BORDE = (226, 230, 236)
+BORDE_ICONO = (198, 206, 216)
+"""Un gris más marcado que `--borde`, sólo para el ícono.
+
+`--borde` está pensado para separar dos superficies claras DENTRO de la
+pantalla, donde alcanza con insinuar. Un ícono no tiene contexto: se apoya
+sobre la barra de tareas de cualquiera, y sobre una clara el borde de la
+paleta desaparecía y quedaban las formas verdes flotando, sin la baldosa.
+Es el único lugar donde el ícono se aparta de los tokens, y se aparta por
+una razón que en la pantalla no existe."""
 
 E = 8
 """Se dibuja a 8x y se baja con LANCZOS: Pillow no antialiasea polígonos, y
@@ -77,7 +86,7 @@ def dibujar(lado: int) -> Image.Image:
     d = ImageDraw.Draw(im)
     d.rounded_rectangle([0, 0, L - 1, L - 1], radius=int(L * .22), fill=LIENZO)
     d.rounded_rectangle([0, 0, L - 1, L - 1], radius=int(L * .22),
-                        outline=BORDE, width=max(1, int(L * .012)))
+                        outline=BORDE_ICONO, width=max(1, int(L * .018)))
     for puntos, color in composicion(lado):
         d.polygon([(x * L, y * L) for x, y in puntos], fill=color)
     return im.resize((lado, lado), Image.LANCZOS)
