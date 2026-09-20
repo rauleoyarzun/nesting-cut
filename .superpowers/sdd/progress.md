@@ -826,3 +826,20 @@ Task 14: completa (commits 14cbf8e..4a797f1). Empaquetado para Mac.
                      que `ventana.destroy()` desde un hilo que no es el principal cierra de verdad.
   Este es el tercer bug seguido que sólo aparece en el hilo principal de Cocoa. El arnés dejó de ser un
   truco de una vez: es la única forma de ver esta clase de defecto.
+
+=== EL ARNÉS DE LA VENTANA REAL PASÓ AL REPO: herramientas/ventana_real.py ===
+  Tres bugs seguidos que sólo existen en el hilo principal de Cocoa (la barra de acción estirada, el
+  cuelgue al cerrar, la columna de grilla estirada por la revisión ampliada) dejaron claro que no era un
+  truco de una vez. Revisa layout y cierre, sale con 1 si encuentra algo, y lista los problemas en
+  castellano. No corre en la suite: abre una ventana y necesita pantalla. No entra al paquete: el .spec
+  sólo empaqueta materials.yaml y src/nesting_app/web.
+  SU PROPIO CRITERIO ESTÁ PROBADO. Una herramienta de diagnóstico que dejó de detectar cosas se ve
+  EXACTAMENTE IGUAL que una que no encuentra problemas -- es el modo de falla más caro que puede tener.
+  `problemas_de_medida()` es aritmética pura, separada de la ventana, y sus tests usan los números que la
+  herramienta midió de verdad antes y después de cada arreglo (principal en 0 con el pie en 816; body de
+  733 en una ventana de 558; ancho de 2168). Verificado por mutación: sacar cualquiera de las tres
+  comprobaciones, o aflojar el umbral de la barra, hace fallar los tests.
+  EL CASO QUE HABÍA QUE ACERTAR: con materiales abierta la pantalla principal mide 0 de alto y ESO ESTÁ
+  BIEN, está oculta. El bug es medir 0 estando visible. Sin esa distinción la herramienta daría una falsa
+  alarma en cada corrida, y una herramienta que siempre se queja se deja de mirar. Tiene su test.
+  La revisión de cierre es sólo macOS y se saltea diciéndolo, en vez de dar un falso verde.
