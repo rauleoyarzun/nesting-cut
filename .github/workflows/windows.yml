@@ -7,6 +7,12 @@
 #
 # Ojo con los minutos: en un repositorio privado los runners de Windows
 # cuentan doble. Por eso no corre en cada push a cualquier rama.
+#
+# Las versiones de las acciones se fijan por su mayor (@v7), que es un tag
+# flotante: recibe los parches sin que haya que tocar nada acá, y no salta
+# solo a un mayor nuevo que podría cambiar el comportamiento. Se subieron
+# desde v4/v5 porque GitHub dejó de dar soporte a Node.js 20 y forzaba las
+# acciones viejas a correr sobre Node.js 24, avisando en cada corrida.
 
 name: Windows
 
@@ -20,9 +26,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -43,7 +49,7 @@ jobs:
 
       - name: Guardar el paquete
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Nesting-windows
           path: dist/*.zip
