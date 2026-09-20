@@ -184,7 +184,7 @@ madera de verdad.
 ### Armar el ejecutable
 
 ```bash
-./packaging/construir.sh
+./packaging/construir.sh          # macOS
 ```
 
 Deja `dist/Nesting/` (~106 MB) y un `.zip` (~56 MB). Va en modo carpeta y no
@@ -195,6 +195,12 @@ vez que alguien abre el programa.
 El script **verifica el paquete antes de comprimirlo** (`--autotest`). No es
 opcional: a un paquete al que le falta un recurso o un módulo oculto se lo ve
 perfecto en la máquina donde se armó y falla en la del que lo recibe.
+
+**Windows** va por `packaging/construir.ps1`, que hace lo mismo pero espera el
+autotest de otra forma (ver el comentario del script). PyInstaller no compila
+cruzado: el `.exe` sólo se puede armar en Windows. El workflow
+[`.github/workflows/windows.yml`](.github/workflows/windows.yml) lo arma en un
+runner de GitHub, corre la suite ahí y deja el `.zip` para bajar.
 
 ### Medir si un cambio fue una mejora
 

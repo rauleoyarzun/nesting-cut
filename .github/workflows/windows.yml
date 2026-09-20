@@ -1,0 +1,50 @@
+# Arma y verifica el ejecutable de Windows.
+#
+# Existe porque PyInstaller no compila cruzado: un .exe sólo se puede armar
+# EN Windows, y el desarrollo de este proyecto pasa en una Mac. Sin esto no
+# hay forma de saber si el programa siquiera arranca en la plataforma para la
+# que está pensado el paquete.
+#
+# Ojo con los minutos: en un repositorio privado los runners de Windows
+# cuentan doble. Por eso no corre en cada push a cualquier rama.
+
+name: Windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  construir:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Instalar
+        run: pip install -e ".[dev]"
+
+      - name: Tests
+        # Los 856 tests nunca corrieron en Windows. Este paso es la mitad del
+        # valor de todo el workflow: decir QUÉ se rompe, no sólo si compila.
+        run: pytest -p no:warnings
+
+      - name: Armar el .exe
+        # `always()` a propósito: si algún test falla queremos igual saber si
+        # el paquete se arma y si pasa su autotest. Una sola corrida contesta
+        # las dos preguntas en vez de obligar a un ida y vuelta.
+        if: always()
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging\construir.ps1
+
+      - name: Guardar el paquete
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nesting-windows
+          path: dist/*.zip
+          if-no-files-found: warn
