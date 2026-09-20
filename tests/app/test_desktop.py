@@ -1,5 +1,6 @@
 """El armado del servidor local, el puente de archivos y el autotest."""
 
+from pathlib import Path
 import sys
 import urllib.request
 
@@ -246,3 +247,27 @@ def test_guardar_deja_de_marcar_pendiente(tmp_path):
     puente.guardar(str(destino), [65])
 
     assert puente.hay_sin_guardar is False
+
+
+def test_los_dialogos_usan_la_api_vigente_de_pywebview():
+    """`OPEN_DIALOG` y `SAVE_DIALOG` están deprecados: cada llamada imprime
+    un aviso y van a desaparecer. En el paquete armado esa consola no se ve,
+    así que el día que pywebview los saque nos enteraríamos por un diálogo
+    que deja de abrir -- justo el que elige el archivo o el que guarda el
+    DXF, o sea el programa entero."""
+    import webview
+
+    # Sin los comentarios: el comentario que explica POR QUÉ no se usan los
+    # nombres viejos los nombra, y un test que se agarra de eso falla por el
+    # motivo equivocado.
+    fuente = "\n".join(
+        linea.split("#")[0]
+        for linea in Path(desktop.__file__).read_text(encoding="utf-8").splitlines()
+    )
+    for viejo in ("OPEN_DIALOG", "SAVE_DIALOG"):
+        assert viejo not in fuente, f"webview.{viejo} está deprecado"
+    assert "webview.FileDialog.OPEN" in fuente
+    assert "webview.FileDialog.SAVE" in fuente
+    # Que los nombres nuevos existan de verdad en la versión instalada: sin
+    # esto el test pasaría igual con un typo.
+    assert webview.FileDialog.OPEN and webview.FileDialog.SAVE

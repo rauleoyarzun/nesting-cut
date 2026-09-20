@@ -766,3 +766,37 @@ Task 14: completa (commits 14cbf8e..4a797f1). Empaquetado para Mac.
   SIGUE ANOTADO: "94 piezas" no se recalcula al cambiar de material. Pasar el material a /api/analizar lo
   arreglaría y de paso haría que la revisión previa marcara también el contorno de placa, pero acopla el
   análisis a la selección de material (habría que reanalizar en cada cambio). No se hizo.
+
+=== CUATRO COSAS QUE REPORTÓ EL USUARIO MIRANDO LA VENTANA DE VERDAD ===
+  1. El botón "Materiales" seguía visible dentro de la pantalla de materiales. La causa no era el olvido:
+     "mostrar" vivía en app.js y "volver" en materiales.js, así que cada cosa que se apaga al entrar había
+     que acordarse de prenderla en el otro archivo. Ahora las dos mitades son `mostrarPantalla()`, una sola
+     función, y materiales.js llama a `mostrarPrincipal()`.
+  2. LAYOUT ROTO AL VOLVER DE MATERIALES DESPUÉS DE REDIMENSIONAR. El navegador embebido NO lo reproduce.
+     Hubo que escribir un arnés que maneja la ventana de pywebview de verdad (webview.evaluate_js +
+     window.resize) y mide la geometría desde adentro de la página. Con eso se reprodujo al primer intento
+     y se descartó la hipótesis obvia: NO era `100vh` -- el body siempre midió igual que la ventana.
+     La causa medida: sin `grid-row` explícito, la fila que le toca a cada hijo depende de cuántos hermanos
+     estén en display:none, y la pantalla de materiales oculta justo al del medio. Con materiales abierta,
+     `.barra-accion` se corría a la fila `1fr` y pasaba de 76 px a 636. Queda tapada, así que no se ve;
+     al volver, WKWebView no re-ubica y la pantalla principal queda en 0 px hasta que un resize fuerza el
+     recálculo. Clavar las tres filas lo saca de raíz. Verificado con el mismo arnés: paso 4 pasa de
+     `principal alto=0 / barra alto=816` a `principal alto=740 / barra top=796 alto=76`.
+  3. webview.OPEN_DIALOG / SAVE_DIALOG deprecados -> webview.FileDialog.OPEN / .SAVE, y pywebview>=5 en
+     pyproject. Importa más de lo que parece: en el paquete armado esa consola no se ve, así que el día que
+     pywebview los saque nos enteraríamos por el diálogo de elegir archivo y el de guardar el DXF dejando
+     de abrir. El test ignora los comentarios -- el comentario que explica por qué no se usan los nombres
+     viejos los nombra, y la primera versión del test falló por eso.
+  4. ZOOM EN LA REVISIÓN. El diagnóstico se dibuja a 1800 px y el panel mide menos de 300: al 20% que entra
+     las medidas de cada descarte son ilegibles, justo cuando hay muchos (59 en el archivo que lo reportó).
+     Botones, rueda anclada al cursor (error medido: 0 px en los dos ejes), doble click para 100%/ajustar,
+     y arrastrar para mover.
+     DOS BUGS DE CSS QUE APARECIERON AL PROBARLO, no al escribirlo:
+     a) `justify-content: center` recorta el borde de arriba y de la izquierda cuando el contenido no
+        entra, que es justo cuando hace falta llegar ahí. Se centra con `margin: auto`.
+     b) El lienzo NO scrolleaba en horizontal: se ensanchaba. Una pista implícita de grilla es `auto`, y
+        `auto` crece hasta el max-content: con la imagen al 100% la columna entera se estiraba a 1800 px y
+        se llevaba puesta la ventana. `grid-template-columns: minmax(0, 1fr)` es la versión en grilla del
+        `min-width: 0` de flex -- el mismo bug que ya había roto los campos Ancho/Alto.
+  LECCIÓN: el arnés de la ventana real es la tercera clase de verificación de esta interfaz, después de
+  leer el código y de correrlo en el navegador embebido. El bug 2 no era alcanzable por ninguna de las dos.

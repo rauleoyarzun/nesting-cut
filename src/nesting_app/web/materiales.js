@@ -15,8 +15,10 @@
 // pywebview no se puede abrir para verlo.
 (() => {
 
-const { apiJson, postJson, refrescarMateriales, mostrarMateriales, mostrarError, $ } =
-  window.__nesting;
+const {
+  apiJson, postJson, refrescarMateriales,
+  mostrarMateriales, mostrarPrincipal, mostrarError, $,
+} = window.__nesting;
 
 let editando = null;
 
@@ -37,8 +39,7 @@ $("btn-materiales").onclick = async () => {
 };
 
 $("btn-volver").onclick = () => {
-  $("pantalla-materiales").classList.add("oculto");
-  $("pantalla-principal").classList.remove("oculto");
+  mostrarPrincipal();
   limpiarFormulario();
 };
 

@@ -200,6 +200,7 @@ async function registrar(fuente) {
     urlImagenActual = null;
   }
   $("lienzo").innerHTML = "";
+  aplicarZoom();
   $("btn-acomodar").classList.remove("oculto");
   $("btn-cancelar").classList.add("oculto");
   $("pista-avance").classList.add("oculto");
@@ -263,6 +264,16 @@ let urlImagenActual = null;
 // toca el lienzo, que ya le pertenece a un pedido más nuevo.
 let pedidoImagen = 0;
 
+// Todo lo que deja el lienzo en texto pasa por acá, para que ningún camino
+// se olvide de apagar los controles de zoom: quedarían prendidos sobre un
+// texto, ofreciendo ampliar la nada. El otro camino que vacía el lienzo es
+// `registrar()`, que llama a `aplicarZoom()` por su cuenta porque ahí no va
+// ningún texto.
+function mensajeEnLienzo(texto) {
+  $("lienzo").textContent = texto;
+  aplicarZoom();
+}
+
 // La revisión existe en dos momentos y son dos dibujos distintos. El del
 // análisis está al segundo de elegir el archivo, que es cuando sirve para
 // decidir si vale la pena acomodar. El del acomodo conoce el material, así
@@ -281,10 +292,11 @@ async function mostrarImagen(nombre) {
   if (!ruta) {
     // La previsualización es el resultado de un acomodo: antes de que haya
     // uno no existe. Sin este texto el lienzo queda gris y mudo.
-    $("lienzo").textContent = estado.fuenteId
-      ? "Todavía no hay nada acomodado."
-      : "Elegí un archivo para empezar.";
-    return;
+    return mensajeEnLienzo(
+      estado.fuenteId
+        ? "Todavía no hay nada acomodado."
+        : "Elegí un archivo para empezar."
+    );
   }
   const miPedido = ++pedidoImagen;
   try {
@@ -299,8 +311,14 @@ async function mostrarImagen(nombre) {
     $("lienzo").innerHTML = "";
     const img = new Image();
     img.alt = nombre === "preview.png" ? "Cómo quedó el acomodo" : "Qué se descartó";
+    // Cada imagen arranca ajustada al panel. Heredar el zoom de la anterior
+    // dejaría al usuario mirando una esquina de un dibujo distinto sin
+    // entender qué está viendo.
+    zoom = null;
+    img.onload = aplicarZoom;
     img.src = url;
     $("lienzo").append(img);
+    aplicarZoom();
   } catch (error) {
     if (miPedido !== pedidoImagen) return;
     if (error.estado === 409) {
@@ -308,12 +326,127 @@ async function mostrarImagen(nombre) {
       // previsualización antes de acomodar, o la revisión de una fuente
       // que no llegó a analizarse). Por eso no usa el cartel de error,
       // sólo deja el lienzo en un estado legible.
-      $("lienzo").textContent = "Todavía no hay imagen para mostrar.";
+      mensajeEnLienzo("Todavía no hay imagen para mostrar.");
       return;
     }
     mostrarError("No se pudo mostrar la imagen", error.message);
   }
 }
+
+// --- zoom -------------------------------------------------------------------
+
+// El diagnóstico se dibuja a 1800 px de ancho y el panel mide menos de 300:
+// las medidas de cada descarte quedan ilegibles justo cuando hay muchos, que
+// es cuando más hace falta leerlas.
+
+const PASOS_ZOOM = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6];
+// `null` es "ajustar al panel", que no es un número fijo: depende del tamaño
+// de la ventana y del alto de la imagen. Por eso no se guarda como 1.0.
+let zoom = null;
+
+const imagenDelLienzo = () => $("lienzo").querySelector("img");
+
+function escalaAjustada(img) {
+  return img.naturalWidth ? img.clientWidth / img.naturalWidth : 1;
+}
+
+function aplicarZoom() {
+  const img = imagenDelLienzo();
+  $("controles-zoom").classList.toggle("oculto", !img);
+  if (!img) return;
+  const lienzo = $("lienzo");
+  lienzo.classList.toggle("ampliado", zoom !== null);
+  img.style.width = zoom === null ? "" : `${img.naturalWidth * zoom}px`;
+  $("nivel-zoom").textContent =
+    `${Math.round((zoom ?? escalaAjustada(img)) * 100)}%`;
+}
+
+function proximoPaso(desde, direccion) {
+  const margen = 0.01;
+  const candidatos =
+    direccion > 0
+      ? PASOS_ZOOM.filter((p) => p > desde + margen)
+      : PASOS_ZOOM.filter((p) => p < desde - margen).reverse();
+  return candidatos.length ? candidatos[0] : null;
+}
+
+function acercar(direccion, clienteX, clienteY) {
+  const img = imagenDelLienzo();
+  if (!img) return;
+  const lienzo = $("lienzo");
+  const antes = zoom ?? escalaAjustada(img);
+  const siguiente = proximoPaso(antes, direccion);
+  if (siguiente === null) return;
+
+  // Qué punto de la imagen está bajo el cursor, medido en píxeles de la
+  // imagen. Sin esto el zoom se va siempre al centro y perseguir un detalle
+  // se vuelve un juego de paciencia.
+  const caja = img.getBoundingClientRect();
+  const enImagenX = (clienteX - caja.left) / antes;
+  const enImagenY = (clienteY - caja.top) / antes;
+
+  zoom = siguiente;
+  aplicarZoom();
+
+  const nueva = img.getBoundingClientRect();
+  lienzo.scrollLeft += nueva.left + enImagenX * zoom - clienteX;
+  lienzo.scrollTop += nueva.top + enImagenY * zoom - clienteY;
+}
+
+function centroDelLienzo() {
+  const c = $("lienzo").getBoundingClientRect();
+  return [c.left + c.width / 2, c.top + c.height / 2];
+}
+
+$("btn-acercar").onclick = () => acercar(1, ...centroDelLienzo());
+$("btn-alejar").onclick = () => acercar(-1, ...centroDelLienzo());
+$("btn-ajustar").onclick = () => {
+  zoom = null;
+  aplicarZoom();
+};
+
+$("lienzo").addEventListener("wheel", (e) => {
+  if (!imagenDelLienzo()) return;
+  // `preventDefault` sólo cuando hay imagen: si no, se come el scroll del
+  // mensaje de texto que el lienzo muestra cuando todavía no hay nada.
+  e.preventDefault();
+  acercar(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
+}, { passive: false });
+
+$("lienzo").ondblclick = () => {
+  const img = imagenDelLienzo();
+  if (!img) return;
+  zoom = zoom === null ? 1 : null;
+  aplicarZoom();
+};
+
+// Arrastrar para mover. Con la imagen a 6x, llegar a una esquina con las
+// barras de scroll es incómodo; agarrarla y tirar es lo que uno espera de
+// un plano.
+let arrastre = null;
+$("lienzo").addEventListener("pointerdown", (e) => {
+  if (zoom === null || !imagenDelLienzo()) return;
+  const lienzo = $("lienzo");
+  arrastre = { x: e.clientX, y: e.clientY, sx: lienzo.scrollLeft, sy: lienzo.scrollTop };
+  lienzo.setPointerCapture(e.pointerId);
+  lienzo.classList.add("agarrando");
+  e.preventDefault();
+});
+$("lienzo").addEventListener("pointermove", (e) => {
+  if (!arrastre) return;
+  $("lienzo").scrollLeft = arrastre.sx - (e.clientX - arrastre.x);
+  $("lienzo").scrollTop = arrastre.sy - (e.clientY - arrastre.y);
+});
+for (const fin of ["pointerup", "pointercancel"]) {
+  $("lienzo").addEventListener(fin, (e) => {
+    if (!arrastre) return;
+    arrastre = null;
+    $("lienzo").releasePointerCapture(e.pointerId);
+    $("lienzo").classList.remove("agarrando");
+  });
+}
+
+// --- solapas (continuación) -------------------------------------------------
 
 const mostrarRevision = () => {
   $("tab-revision").classList.add("activa");
@@ -540,10 +673,20 @@ $("btn-guardar").onclick = async () => {
 // El flujo principal sólo sabe mostrar y ocultar la pantalla: qué hay
 // adentro (la tabla, el alta, el borrado) es de `materiales.js`, que se
 // engancha llamando a `window.__nesting.mostrarMateriales`.
-function mostrarMateriales() {
-  $("pantalla-principal").classList.add("oculto");
-  $("pantalla-materiales").classList.remove("oculto");
+// Las dos mitades del cambio de pantalla viven juntas a propósito. Cuando
+// "mostrar" estaba acá y "volver" en materiales.js, cada cosa que se apagaba
+// al entrar había que acordarse de prenderla en el otro archivo -- y no pasó:
+// el botón "Materiales" se quedaba visible adentro de la pantalla de
+// materiales, ofreciendo ir a donde el usuario ya estaba.
+function mostrarPantalla(cual) {
+  const enMateriales = cual === "materiales";
+  $("pantalla-principal").classList.toggle("oculto", enMateriales);
+  $("pantalla-materiales").classList.toggle("oculto", !enMateriales);
+  $("btn-materiales").classList.toggle("oculto", enMateriales);
 }
+
+const mostrarMateriales = () => mostrarPantalla("materiales");
+const mostrarPrincipal = () => mostrarPantalla("principal");
 
 $("btn-materiales").onclick = mostrarMateriales;
 
@@ -571,6 +714,7 @@ window.__nesting = {
   estado,
   refrescarMateriales,
   mostrarMateriales,
+  mostrarPrincipal,
   mostrarError,
   $,
 };

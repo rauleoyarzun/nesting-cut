@@ -95,6 +95,16 @@ def test_los_controles_miden_44_px(css):
     assert "--alto-control: 44px" in css
 
 
+@pytest.mark.parametrize("id_", [
+    "controles-zoom", "btn-acercar", "btn-alejar", "btn-ajustar", "nivel-zoom",
+])
+def test_la_revision_tiene_con_que_acercarse(html, id_):
+    """El diagnóstico se dibuja a 1800 px de ancho y el panel mide menos de
+    300: al 20% que entra, las medidas de cada descarte son ilegibles justo
+    cuando hay muchos -- 59 en el archivo que lo reportó."""
+    assert f'id="{id_}"' in html
+
+
 def test_no_hay_emojis_en_la_interfaz(html):
     """Los íconos son SVG con trazo. Un emoji se ve distinto en cada sistema
     y en una herramienta de taller queda fuera de lugar."""
@@ -115,6 +125,31 @@ def _reglas(css):
         (m.group(1).strip(), m.group(2))
         for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", sin_comentarios)
     ]
+
+
+@pytest.mark.parametrize("selector,fila", [
+    (".barra-superior", "1"), ("#pantalla-principal", "2"), (".barra-accion", "3"),
+])
+def test_cada_franja_esta_clavada_a_su_fila(css, selector, fila):
+    """Sin `grid-row` explícito, la fila que le toca a cada hijo depende de
+    cuántos hermanos estén en `display: none` -- y la pantalla de materiales
+    oculta justamente al del medio. Medido en la ventana real: con materiales
+    abierto, `.barra-accion` se corría a la fila `1fr` y pasaba de 76 px de
+    alto a 636. Queda tapada, así que no se ve; el problema aparece al
+    volver, porque WKWebView no re-ubica y la pantalla principal queda en
+    0 px hasta que un resize fuerza el recálculo. Lo reportó el usuario."""
+    assert re.search(rf"{re.escape(selector)}\s*\{{\s*grid-row:\s*{fila}\s*;", css), (
+        f"{selector} ya no está clavado a la fila {fila}"
+    )
+
+
+def test_la_grilla_no_se_estira_con_su_contenido(css):
+    """Una pista implícita es `auto`, y `auto` crece hasta el max-content de
+    lo que tiene adentro. Con la revisión ampliada al 100% eso son 1800 px:
+    en vez de recortar y dejar scrollear el lienzo, la columna se estiraba y
+    se llevaba puesta la ventana entera."""
+    cuerpo = css[css.index("\nbody {"):css.index("}", css.index("\nbody {"))]
+    assert "grid-template-columns: minmax(0, 1fr)" in cuerpo
 
 
 def test_ninguna_regla_le_saca_el_marco_a_un_select(css):

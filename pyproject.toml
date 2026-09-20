@@ -13,7 +13,7 @@ dependencies = [
     "rhino3dm",
     "fastapi",
     "uvicorn",
-    "pywebview",
+    "pywebview>=5",  # `FileDialog` reemplazó a OPEN_DIALOG/SAVE_DIALOG
     # Obligatorio para recibir archivos subidos (POST /api/archivos).
     # Sin esto FastAPI rechaza el multipart con un error que no
     # nombra la causa, y sólo en la máquina donde falta.

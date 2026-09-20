@@ -127,7 +127,11 @@ class Puente:
         import webview
 
         elegidos = self.ventana.create_file_dialog(
-            webview.OPEN_DIALOG,
+            # `webview.OPEN_DIALOG` sigue funcionando pero está deprecado, y
+            # cada llamada imprime el aviso en la consola. En el paquete
+            # armado esa consola no se ve, así que el día que pywebview lo
+            # saque nos enteraríamos por un diálogo que dejó de abrir.
+            webview.FileDialog.OPEN,
             allow_multiple=False,
             file_types=("Dibujos vectoriales (*.dxf;*.ai;*.3dm)",),
         )
@@ -137,7 +141,7 @@ class Puente:
         import webview
 
         elegido = self.ventana.create_file_dialog(
-            webview.SAVE_DIALOG, save_filename=sugerido
+            webview.FileDialog.SAVE, save_filename=sugerido
         )
         if not elegido:
             return None

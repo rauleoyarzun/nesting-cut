@@ -177,6 +177,49 @@ def test_el_campo_de_angulos_tiene_donde_mostrar_su_error(html):
     assert 'data-error-de="angulos"' in html
 
 
+def test_el_zoom_arranca_ajustado_en_cada_imagen(js):
+    """Heredar el zoom de la imagen anterior deja al usuario mirando una
+    esquina de un dibujo distinto sin entender qué está viendo."""
+    inicio = js.index("async function mostrarImagen(")
+    cuerpo = js[inicio:js.index("// --- zoom", inicio)]
+    assert "zoom = null" in cuerpo, (
+        "mostrarImagen ya no reinicia el zoom al cargar una imagen nueva"
+    )
+
+
+def test_la_rueda_acerca_donde_esta_el_cursor(js):
+    """Si el zoom se va siempre al centro, perseguir un descarte concreto en
+    un plano de 1800 px se vuelve un juego de paciencia."""
+    inicio = js.index("function acercar(")
+    cuerpo = js[inicio:js.index("\nfunction centroDelLienzo", inicio)]
+    assert "getBoundingClientRect" in cuerpo and "scrollLeft" in cuerpo, (
+        "acercar() ya no corrige el scroll, así que el punto bajo el cursor "
+        "se va de lugar al ampliar"
+    )
+    assert re.search(r'addEventListener\("wheel"', js)
+
+
+def test_los_controles_de_zoom_se_apagan_cuando_no_hay_imagen(js):
+    """Quedarían prendidos sobre un texto, ofreciendo ampliar la nada.
+
+    Dos invariantes, una por cada forma de dejar el lienzo sin imagen:
+    escribir texto pasa siempre por `mensajeEnLienzo`, y vaciarlo del todo
+    (que es lo que hace `registrar()`) avisa por su cuenta."""
+    inicio = js.index("function aplicarZoom(")
+    cuerpo = js[inicio:js.index("\n}", inicio)]
+    assert 'classList.toggle("oculto", !img)' in cuerpo
+
+    assert js.count('$("lienzo").textContent =') == 1, (
+        "hay otro lugar que escribe texto en el lienzo sin pasar por "
+        "mensajeEnLienzo, y deja los controles de zoom prendidos"
+    )
+    registrar = js[js.index("async function registrar("):js.index("async function analizar(")]
+    assert "aplicarZoom()" in registrar, (
+        "registrar() vacía el lienzo y no refresca el zoom: los controles "
+        "quedan prendidos después de elegir otro archivo"
+    )
+
+
 def test_la_revision_se_puede_ver_antes_de_acomodar(js):
     """Es para lo que el usuario pidió esta imagen: saber CUÁLES son los dos
     que se descartaron, en el segundo que tarda el análisis, y no después de
@@ -187,6 +230,22 @@ def test_la_revision_se_puede_ver_antes_de_acomodar(js):
     assert "/api/archivos/${estado.fuenteId}/${nombre}" in cuerpo, (
         "la revisión volvió a depender de que exista un trabajo"
     )
+
+
+def test_el_cambio_de_pantalla_vive_en_un_solo_lugar(js):
+    """Cuando "mostrar" estaba en app.js y "volver" en materiales.js, cada
+    cosa que se apagaba al entrar había que acordarse de prenderla en el otro
+    archivo. No pasó: el botón "Materiales" seguía visible adentro de la
+    pantalla de materiales, ofreciendo ir a donde el usuario ya estaba."""
+    inicio = js.index("function mostrarPantalla(")
+    cuerpo = js[inicio:js.index("\n}", inicio)]
+    for id_ in ("pantalla-principal", "pantalla-materiales", "btn-materiales"):
+        assert id_ in cuerpo, f"mostrarPantalla ya no se ocupa de {id_}"
+    assert cuerpo.count("classList.toggle") == 3, (
+        "alguna mitad del cambio de pantalla volvió a hacerse por afuera, "
+        "que es como se desincronizan"
+    )
+    assert "mostrarPrincipal" in js
 
 
 def test_la_revision_del_trabajo_le_gana_a_la_del_analisis(js):

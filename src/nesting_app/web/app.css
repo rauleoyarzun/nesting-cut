@@ -30,6 +30,12 @@ body {
   height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* Una columna implícita es `auto`, y una pista `auto` se agranda hasta el
+     max-content de lo que tiene adentro. Con la revisión ampliada a 100% eso
+     son 1800 px: en vez de recortar y dejar scrollear el lienzo, la columna
+     entera se estiraba y se llevaba puesta la ventana. `minmax(0, 1fr)` es
+     la versión en grilla del `min-width: 0` de flex. */
+  grid-template-columns: minmax(0, 1fr);
   accent-color: var(--acento);
   font-family: var(--fuente);
   color: var(--texto);
@@ -51,6 +57,23 @@ body {
 }
 .barra-superior { height: 56px; border-bottom: 1px solid var(--borde); }
 .barra-accion { min-height: 76px; border-top: 1px solid var(--borde); }
+
+/* Cada hijo clavado a su fila. Sin esto la fila que le toca a cada uno
+   depende de cuántos hermanos estén en `display: none`, y la pantalla de
+   materiales oculta justamente al del medio: el pie se corría solo a la
+   fila `1fr` y se estiraba a toda la altura. Medido en la ventana real:
+   con la pantalla de materiales abierta, `.barra-accion` medía 636 px de
+   alto en vez de 76.
+
+   Queda tapado por la pantalla de materiales, así que no se ve -- hasta
+   que volvés. WKWebView no vuelve a ubicar los hijos cuando reaparece el
+   del medio, y la pantalla principal queda con 0 px de alto y el pie
+   estirado ocupándolo todo, hasta que un resize fuerza el recálculo. Ese
+   es el bug que reportó el usuario; clavar las filas lo saca de raíz, en
+   vez de depender de que el motor re-ubique bien. */
+.barra-superior { grid-row: 1; }
+#pantalla-principal { grid-row: 2; }
+.barra-accion { grid-row: 3; }
 .marca { font-weight: 700; font-size: 15px; }
 
 /* --- pantalla principal --- */
@@ -76,10 +99,22 @@ body {
 .solapa.activa { color: var(--texto); font-weight: 600; border-bottom-color: var(--acento); }
 .placa-actual { padding-bottom: 10px; font-size: 12px; color: var(--texto-2); }
 .lienzo {
-  flex-grow: 1; min-height: 0; display: flex; align-items: center;
-  justify-content: center; padding: 16px; background: var(--lienzo);
+  flex-grow: 1; min-height: 0; min-width: 0; display: flex; padding: 16px;
+  background: var(--lienzo); overflow: auto;
 }
-.lienzo img, .lienzo svg { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* `margin: auto` y no `justify-content: center`: centrar con
+   `justify-content` recorta el borde de arriba y de la izquierda en cuanto
+   el contenido no entra, y justo ahí es cuando hace falta poder llegar. */
+.lienzo img, .lienzo svg { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
+.lienzo.ampliado { cursor: grab; }
+.lienzo.ampliado.agarrando { cursor: grabbing; }
+/* Ampliada, la imagen manda su tamaño en píxeles y no puede dejarse limitar
+   por el panel; si no, el zoom no agranda nada. */
+.lienzo.ampliado img { max-width: none; max-height: none; }
+
+.zoom { display: flex; align-items: center; gap: 2px; padding-bottom: 4px; }
+.nivel-zoom { min-width: 46px; text-align: center; font-size: 12px; color: var(--texto-2); }
+.zoom .enlace { margin-left: 8px; }
 
 /* --- controles --- */
 .campo { display: flex; flex-direction: column; gap: 6px; border: 0; margin: 0; padding: 0; }
