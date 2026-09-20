@@ -6,9 +6,19 @@ en cada arranque, y con 300 MB de scipy y rhino3dm eso son varios segundos
 de nada cada vez que alguien abre el programa.
 """
 
+import sys
 from pathlib import Path
 
 RAIZ = Path(SPECPATH).parent
+
+# El .ico y el .icns los genera `herramientas/icono.py` a partir del mismo
+# dibujo. PyInstaller acepta uno u otro según la plataforma y se queja si le
+# dan el que no corresponde, así que se elige acá.
+#
+# En macOS hoy no se ve en ningún lado: este .spec arma una CARPETA, no un
+# .app, y el Finder saca el ícono del bundle. Se declara igual para que esté
+# listo el día que se arme un .app, y porque no cuesta nada.
+ICONO = str(RAIZ / "packaging" / ("icono.ico" if sys.platform == "win32" else "icono.icns"))
 
 # Los recursos que `rutas.recurso()` va a buscar. Que falte alguno rompe el
 # programa recién cuando el usuario lo abre, por eso existe `--autotest`.
@@ -45,6 +55,7 @@ exe = EXE(
     name="Nesting",
     console=False,
     disable_windowed_traceback=False,
+    icon=ICONO,
 )
 coll = COLLECT(
     exe, a.binaries, a.datas,

@@ -211,6 +211,15 @@ runner de GitHub, corre la suite ahí y deja el `.zip` para bajar.
 Placas, porcentaje de aprovechamiento y segundos sobre archivos reales. Ver
 [`bench/README.md`](bench/README.md).
 
+### Regenerar el ícono
+
+```bash
+.venv/bin/python herramientas/icono.py
+```
+
+Se dibuja con código, no se guarda sólo como binario. Deja el `.ico`, el
+`.icns` y el favicon. Ver [`herramientas/README.md`](herramientas/README.md).
+
 ### Diagnosticar la ventana
 
 ```bash

@@ -59,3 +59,30 @@ Una herramienta de diagnóstico que dejó de detectar cosas se ve igual que una
 que no encuentra problemas. La parte con criterio (`problemas_de_medida`) es
 aritmética pura y vive en `tests/test_herramienta_ventana_real.py`, con los
 números que midió en la ventana real antes y después de cada arreglo.
+
+## `icono.py`
+
+Dibuja el ícono del programa y genera todo lo que se hace con él.
+
+```bash
+.venv/bin/python herramientas/icono.py            # regenera todos los archivos
+.venv/bin/python herramientas/icono.py comparar   # lo muestra sobre varios fondos
+```
+
+Deja `packaging/icono.ico` (Windows), `packaging/icono.icns` (macOS),
+`src/nesting_app/web/icono.png` (la pestaña del navegador) y
+`docs/imagenes/icono.png` (el maestro a 1024).
+
+El ícono se dibuja con código y no se guarda sólo como binario: un `.ico` no
+se puede corregir ni entender mirándolo, y éste tiene tres colores y una
+composición que alguna vez van a querer ajustarse.
+
+**Son dos dibujos, no uno.** A 16 y 32 px las cinco piezas de la versión
+grande quedan en bloques de dos o tres píxeles separados por ranuras de menos
+de uno: puré. Para esos tamaños hay una composición de tres piezas, con la
+misma idea y la misma paleta. Cada tamaño del `.ico` va **dibujado**, no
+reescalado desde el grande, que es la única forma de que los chicos usen la
+versión simplificada.
+
+`icono.icns` necesita `iconutil`, que es de macOS; en otra plataforma se
+saltea diciéndolo.
