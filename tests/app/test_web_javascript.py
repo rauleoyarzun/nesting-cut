@@ -834,6 +834,10 @@ def _cuerpo_de_handler(js_info: str, evento: str) -> str:
     Ni las comillas del nombre del evento ni el corte de renglones son
     parte del contrato: un formateador que prefiera comillas simples, o que
     parta la llamada y le deje una coma final, no cambia qué escucha nadie.
+    Tampoco lo es el tercer argumento de opciones (`{ passive: false }`,
+    `{ once: true }`, `true`) -- la rueda lo usa y el patrón de cierre lo
+    contempla, además de la forma de dos argumentos, para no seguir de
+    largo buscando el `}` que cierra el handler siguiente.
     Y si no encuentra el handler corta con `pytest.fail` diciendo qué
     buscaba, en vez del `ValueError` pelado de un `.index()`."""
     limpio = _sin_comentarios(js_info)
@@ -843,13 +847,33 @@ def _cuerpo_de_handler(js_info: str, evento: str) -> str:
             f'info.js ya no registra ningún handler de "{evento}": no está '
             f'el `addEventListener("{evento}", ...)` que esta prueba lee'
         )
-    cierre = re.search(r"\n\s*\}\s*,?\s*\)\s*;", limpio[registro.start():])
+    cierre = re.search(
+        r"\n\s*\}\s*(?:,\s*(?:\{[^{}]*\}|[\w.]+)\s*)?,?\s*\)\s*;",
+        limpio[registro.start():],
+    )
     if not cierre:
         pytest.fail(
             f'no se encontró el `}});` que cierra el handler de "{evento}": '
             "el cuerpo del handler no se puede delimitar"
         )
     return limpio[registro.start():registro.start() + cierre.start()]
+
+
+def test_el_cuerpo_del_handler_no_se_come_los_que_siguen(js):
+    """`addEventListener` acepta un tercer argumento -- el objeto de
+    opciones --, y la rueda lo usa: `(e) => {...}, { passive: false });`.
+    Si el patrón que busca el cierre del handler no contempla esa forma, no
+    encuentra el `}` que cierra ahí y sigue buscando más abajo: el "cuerpo"
+    que devuelve para la rueda termina incluyendo el de `ondblclick`
+    (`zoom === null ? 1 : null`) y el de `pointerdown`
+    (`setPointerCapture`), que no tienen nada que ver con la rueda.
+
+    Esto no es un detalle de implementación: `test_la_rueda_no_salta_por_la_
+    escalera` afirma sobre este mismo cuerpo, y con la sobrecaptura pasa por
+    la razón equivocada -- mirando texto de otro handler."""
+    handler = _cuerpo_de_handler(js, "wheel")
+    assert "zoom === null ? 1 : null" not in handler
+    assert "setPointerCapture" not in handler
 
 
 def test_la_pagina_carga_info_js(html):
