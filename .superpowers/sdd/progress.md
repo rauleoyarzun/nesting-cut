@@ -1293,3 +1293,26 @@ Task 7: completa (commits b2da092..5cf3b3a, revisión limpia). Bloque de recorte
       mal en "placas", y es el caso estrella de la función -- un trabajo chico que
       cabe entero en un pedazo que sobró. El código es literal al de mi brief, así que
       el defecto es mío. La tarea 8 toca el mismo archivo.
+Task 8: completa (commits f466da3..722270b, dos commits, revisión limpia). Desplegable
+  de Posiciones (4/8/16 + Personalizado) que reemplaza al campo de texto libre de
+  ángulos, y el arreglo del plural "1 placas". 1101 passed.
+  El revisor corrió los tests nuevos contra un worktree del commit anterior CON
+  PYTHONPATH forzado (la trampa que anotó la tarea 7): 11 de 11 fallan de verdad.
+  Verificó que 16 posiciones dan 22,5 exacto sin flotantes feos, y que es una cuenta
+  (i * 360 / n) y no una tabla que se desincronice de las etiquetas.
+  Desvío no anticipado por el brief y bien resuelto: el símbolo ° está en la categoría
+  Unicode "So", la misma que los emojis, así que test_no_hay_emojis_en_la_interfaz lo
+  rechaza. Pasó a la palabra "grados", que ya tenía precedente en el HTML.
+  Menores pendientes para la revisión final:
+    (a) test_el_campo_de_angulos_sigue_validandose tiene media aserción vacía:
+        `assert '"angulos"' in js` es cierta antes y después (el id ya se usaba en
+        marcarCampo). La otra mitad sí discrimina, así que el test no está vacío.
+        Viene textual de mi brief.
+    (b) Redacción del globo de posiciones: "repartidas parejas" es válido pero suena
+        menos natural que "repartidas parejo". Fricción de lectura, no error.
+  >>> PREGUNTA PARA EL USUARIO, NO ES UN BUG: test_no_hay_emojis_en_la_interfaz
+      rechaza la categoría Unicode "So" entera, que agrupa desde emojis hasta signos
+      tipográficos legítimos (°, §, ©, ±, ×). Un programa que habla de ángulos tiene
+      uso genuino para °, que no depende del sistema operativo como sí pasa con un
+      emoji. El revisor sugiere, si se quiere aflojar, permitir un puñado de símbolos
+      tipográficos concretos en vez de sacar la categoría entera.
