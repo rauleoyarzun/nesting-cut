@@ -1153,3 +1153,40 @@ Task 2: completa (commits 490bf43..81a1e3d, revisión limpia). pack recibe Sheet
     entera. Con test, y el test cuelga en vez de fallar si la guarda queda mal, así
     que se corre con timeout. También se agregó pasar material_name a los dos
     supplies internos y mover una lectura de result.sheets[last] abajo de su guarda.
+Task 3: completa (commits c5bae27..5e39728, revisión limpia tras una vuelta de arreglos).
+  Salteo de recortes vacíos, CostoLayout.placas_nuevas, guarda de costo en la
+  recuperación. 1055 passed.
+  CRÍTICO ENCONTRADO Y ARREGLADO (era un defecto de mi razonamiento como controlador,
+  no del implementador): yo endurecí la guarda de salteo argumentando que el reempaque
+  interno siempre coloca al menos una pieza. Eso vale para la PRIMERA placa del
+  reempaque, no para el derrame a una segunda. Con un recorte como stock, la segunda
+  no recibe nada, no hay recortes que saltear, y se levanta PartTooLargeError que
+  aborta el trabajo entero con un mensaje falso ("el área útil de la placa mdf18 es
+  460 x 460"). Caso ordinario: recorte 500x500, piezas de 1500 y de 400. Lo reproduje
+  yo antes de despachar el arreglo.
+  Arreglo: try/except PartTooLargeError tratado como "este intento no mejoró".
+  >>> DATO QUE VALE GUARDAR: el revisor construyó una política alternativa más
+      ambiciosa (pre-filtrar las pendientes que no entran solas, por bbox sobre las
+      orientaciones permitidas) y la corrió contra 663 escenarios multiplaca con
+      recortes, donde el camino se disparó 855 veces y hubo 283 oportunidades reales
+      de mejorar. Rescates extra: CERO. Layouts distintos: CERO. O sea el `break` no
+      pierde nada medible. Y MÁS IMPORTANTE: esa alternativa IGUAL levantó 4 veces con
+      el RasterOracle, porque el oráculo puede negarse a colocar una pieza cuyo bbox
+      entra (discretización). El pre-filtro que el propio revisor había sugerido en su
+      primera pasada habría dejado el bloqueante vivo. El try/except no es el atajo,
+      es la forma correcta.
+  También: sheets_used pasó a @property sobre len(sheets), que elimina por
+  construcción la desincronización que ya había hecho empatar cuatro layouts en
+  test_effort.py sin que nada avisara.
+  Menores pendientes para la revisión final:
+    (a) tests/engine/test_packer.py:215 quedó tautológico: `len(result.sheets) ==
+        result.sheets_used` con sheets_used siendo len(sheets). Era la mitad de la
+        intención de ese test (viene de la Tarea 2). Cambiarlo por
+        len({p.sheet for p in result.placements}). La propiedad de fondo sigue
+        cubierta en test_recortes.py:231 y test_recuperacion.py:145.
+    (b) El material_name de los dos reempaques internos quedó inobservable: con los
+        PartTooLargeError atrapados, ese mensaje no llega nunca a un usuario ni a un
+        test. El arreglo del crítico volvió moot al paso 4b del brief.
+    (c) El except de _compact_last_sheet queda sin test. De acuerdo en dejarlo: es
+        inalcanzable (la factibilidad es monótona en la ocupación) y está declarado
+        como defensa en profundidad sin afirmar lo contrario.
