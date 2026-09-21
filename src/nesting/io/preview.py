@@ -106,6 +106,18 @@ def write_preview(
             missing_ids.append(placement.part_id)
             continue
 
+        # ValueError a propósito: cli.py y corredor.py atrapan
+        # (ValueError, OSError) alrededor de write_preview para degradar un
+        # fallo de la vista previa a un aviso (el DXF ya se escribió bien).
+        # Un IndexError -- o, peor, un índice negativo indexando en silencio
+        # desde el final -- se les escapa de esa red.
+        if not (0 <= placement.sheet < len(izquierdas)):
+            raise ValueError(
+                f"la colocación de la pieza {placement.part_id} dice estar en "
+                f"la placa {placement.sheet}, pero se recibieron "
+                f"{len(sheets)} placa(s)."
+            )
+
         origin_x = izquierdas[placement.sheet]
         origin_y = piso
 

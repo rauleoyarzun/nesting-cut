@@ -165,6 +165,29 @@ def test_an_unknown_part_id_warns_but_still_draws_the_rest(tmp_path):
     assert reds > 100
 
 
+def test_a_negative_sheet_index_raises_instead_of_drawing_on_another_sheet(tmp_path):
+    """Hallazgo A: un indice negativo no debe indexar desde el final en
+    silencio, tiene que levantar como los otros dos consumidores."""
+    out = tmp_path / "preview.png"
+    part = rect_part(0, 200.0, 100.0)
+    placement = Placement(0, -1, Transform(0.0, False, 50.0, 50.0))
+
+    with pytest.raises(ValueError, match="-1"):
+        write_preview(out, [part], [placement], [HOJA], [0.02])
+
+
+def test_a_sheet_index_past_the_end_raises_value_error(tmp_path):
+    """Hallazgo A: el IndexError de una placa fuera de rango tiene que
+    convertirse en ValueError, que es lo que cli.py y corredor.py atrapan
+    para degradar el fallo de la vista previa a un aviso."""
+    out = tmp_path / "preview.png"
+    part = rect_part(0, 200.0, 100.0)
+    placement = Placement(0, 1, Transform(0.0, False, 50.0, 50.0))
+
+    with pytest.raises(ValueError, match="1"):
+        write_preview(out, [part], [placement], [HOJA], [0.02])
+
+
 def test_a_scale_over_the_pixel_cap_raises(tmp_path):
     out = tmp_path / "preview.png"
     with pytest.raises(ValueError, match="px_per_mm"):

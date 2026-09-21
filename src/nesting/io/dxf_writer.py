@@ -26,7 +26,8 @@ DEFAULT_GAP = 100.0
 
 
 class UnknownPartError(Exception):
-    """A `Placement` references a `part_id` absent from the given `parts`."""
+    """A `Placement` references a `part_id` absent from `parts`, or a `sheet`
+    index absent from the given `sheets`."""
 
 
 class InvalidEntityIdError(Exception):
