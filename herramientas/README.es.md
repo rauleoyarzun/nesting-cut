@@ -62,6 +62,63 @@ que no encuentra problemas. La parte con criterio (`problemas_de_medida`) es
 aritmética pura y vive en `tests/test_herramienta_ventana_real.py`, con los
 números que midió en la ventana real antes y después de cada arreglo.
 
+## `globos_reales.py`
+
+Ejercita los globos de ayuda de las opciones (`src/nesting_app/web/info.js`)
+en la ventana de escritorio de verdad, manejándolos desde afuera.
+
+```bash
+.venv/bin/python herramientas/globos_reales.py
+```
+
+Abre una ventana, necesita una pantalla y tarda unos quince segundos. Sale
+con 1 si encuentra algún problema, y los lista en castellano.
+
+### Por qué existe
+
+Nada en la suite ejecuta el JavaScript de la interfaz: los tests de
+`tests/app/` leen `info.js` como texto y revisan su forma, nunca lo corren.
+Eso alcanza para muchas cosas, pero no para saber si el globo de ayuda
+realmente aparece en pantalla, al lado de su ícono y sin recortarse contra
+el borde de la ventana. La funcionalidad pasó por cuatro rondas de
+endurecimiento de esos tests de texto y en ninguna se pudo demostrar que el
+globo se viera de verdad: hacía falta abrir la ventana a mano y mirar. Esta
+herramienta automatiza esa mirada con `evaluate_js`, que es lo único en este
+proyecto capaz de ejecutar ese código.
+
+Revisa que los diez íconos existan, midan 16x16 y se lleguen con Tab; que un
+globo abra a la derecha de su ícono con el texto que le toca; que abrir otro
+cierre el anterior y limpie su ARIA; que el mismo ícono, un clic afuera, un
+Escape o scrollear el panel lo cierren; que Escape además devuelva el foco;
+que el globo de Resolución no se corte contra el borde de abajo con el panel
+scrolleado del todo, ni el de Material contra la derecha en la ventana
+mínima de 960x640; y que el ícono de piezas espejadas abra su globo sin dar
+vuelta la casilla.
+
+### Cuándo agarrarla
+
+Después de tocar `info.js`, el marcado de `.boton-info` en el HTML, o el CSS
+de `.globo-info`.
+
+### El evento `scroll` tardío de WKWebView
+
+Asignar `scrollTop` por script hace que WKWebView despache el `scroll` de
+forma asíncrona, con una demora que llegó a medirse en casi un segundo. Una
+revisión que scrollea el panel y hace clic enseguida puede recibir ese
+`scroll` recién después del clic, y como cualquier scroll cierra el globo
+según `info.js`, el clic que acababa de abrirlo lo ve cerrado: una carrera
+de la herramienta, no un bug de la interfaz. `esperar_quietud` espera a que
+la cuenta de eventos `scroll`/`resize` deje de moverse en vez de dormir un
+tiempo fijo, así no depende de adivinar cuánto tarda esa demora.
+
+### Su propio criterio está probado
+
+La parte con criterio (`problemas_de_inventario`, `problemas_de_apertura`,
+`problemas_de_cierre`, `problemas_de_escape`, `problemas_de_encuadre`,
+`problemas_de_contenido` y `problemas_de_casilla`) es pura y vive en
+`tests/test_herramienta_globos_reales.py`, con números que se midieron en
+corridas reales de la herramienta.
+
 ## `icono.py`
 
 Dibuja el ícono del programa y genera todo lo que se hace con él.

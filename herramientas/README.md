@@ -60,6 +60,64 @@ finds no problems. The part that makes the judgement (`problemas_de_medida`) is
 pure arithmetic and lives in `tests/test_herramienta_ventana_real.py`, with the
 numbers it measured on the real window before and after each fix.
 
+## `globos_reales.py`
+
+Exercises the options' help bubbles (`src/nesting_app/web/info.js`) in the
+real desktop window, driving them from the outside.
+
+```bash
+.venv/bin/python herramientas/globos_reales.py
+```
+
+It opens a window, it needs a screen and it takes about fifteen seconds. It
+exits with 1 if it finds any problem, and lists them in Spanish.
+
+### Why it exists
+
+Nothing in the suite executes the interface's JavaScript: the tests in
+`tests/app/` read `info.js` as text and check its shape, never run it. That
+covers a lot, but not whether the help bubble actually shows up on screen,
+next to its icon, without being clipped against the window's edge. The
+feature went through four rounds of hardening those text-level tests and
+none of them could prove the bubble ever appeared for real: someone had to
+open the window by hand and look. This tool automates that look with
+`evaluate_js`, which is the only thing in this project able to run that
+code.
+
+It checks that the ten icons exist, measure 16x16 and are reachable with
+Tab; that a bubble opens to the right of its icon with the right text; that
+opening another one closes the previous one and clears its ARIA; that the
+same icon, a click outside, Escape or scrolling the panel close it; that
+Escape also returns focus; that the Resolución bubble is not clipped by the
+bottom edge with the panel scrolled all the way down, nor the Material one
+by the right edge in the 960x640 minimum window; and that the mirrored-parts
+icon opens its bubble without toggling the checkbox.
+
+### When to reach for it
+
+After touching `info.js`, the `.boton-info` markup in the HTML, or the
+`.globo-info` CSS.
+
+### WKWebView's late `scroll` event
+
+Assigning `scrollTop` from script makes WKWebView dispatch the `scroll`
+event asynchronously, with a delay that has been measured at close to a
+second. A check that scrolls the panel and clicks right away can receive
+that `scroll` only after the click, and since any scroll closes the bubble
+according to `info.js`, the click that had just opened it sees it closed: a
+race in the tool, not a bug in the interface. `esperar_quietud` waits for
+the count of `scroll`/`resize` events to stop moving instead of sleeping a
+fixed amount of time, so it does not depend on guessing how long that delay
+will be.
+
+### Its own judgement is tested
+
+The part that makes the judgement (`problemas_de_inventario`,
+`problemas_de_apertura`, `problemas_de_cierre`, `problemas_de_escape`,
+`problemas_de_encuadre`, `problemas_de_contenido` and `problemas_de_casilla`)
+is pure and lives in `tests/test_herramienta_globos_reales.py`, with numbers
+measured in real runs of the tool.
+
 ## `icono.py`
 
 Draws the program's icon and generates everything made from it.
