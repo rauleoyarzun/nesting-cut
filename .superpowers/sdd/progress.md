@@ -1056,3 +1056,38 @@ Task 6: completa (commits 32fa114..a5d6238, aprobada tras un arreglo). 1028 pass
   (q) 22 warnings en la corrida pelada: 20 son `Image.getdata` (Pillow) de los propios
       tests del proyecto y 2 de fastapi/starlette. Ninguno nuevo de este plan; las
       corridas con `-p no:warnings` de las tareas anteriores los estaban tapando.
+
+## Revisión de rama completa
+
+Hecha sobre 4e3a275..a950c1c. Veredicto: confiable, con 5 Important de unas 30 líneas en
+total, ningún Critical, nada que pueda mandar un DXF malo a la fresadora. El revisor
+verificó por su cuenta el reclamo central de seguridad: NO depende del argumento del
+superconjunto, sino de que `ArbitroExacto` importe `placed_polygon` y
+`OVERLAP_AREA_THRESHOLD_MM2` de `verify.py` y aplique los mismos dos chequeos en el mismo
+orden, más `verify()` corriendo al final de los dos caminos de usuario. Barrió ~3500
+posiciones factibles a 2 mm/px y ~2500 a 1 mm/px (donde el presupuesto es más ajustado:
+`radio_optimista(10,1) = 6` px contra una inflación de 2+2, o sea holgura CERO) sin perder
+ni una posición factible.
+Observación suya que vale registrar: `oracle.place` quedó con UN SOLO llamador de
+producción, así que el estado del árbitro no puede desincronizarse del bitmap. La
+desviación de la tarea 5 eliminó por diseño toda esa clase de bugs, en vez de testearla.
+
+Tanda de arreglos final (88005c4): 6 de los 7 ítems aplicados. 1030 passed, 22 warnings
+(los mismos preexistentes), verificado por el controlador.
+  ítem 1: el test estrella pasa a cota inferior + cota de densidad separadas, más `verify()`.
+  ítem 2: el docstring de `pack()` ya no miente sobre cuándo se llama a `progreso`.
+  ítem 3: `EPS` se importa de `verify.py` en vez de duplicarse.
+  ítem 4: change-detector que fija `contact == 4.0` y `resolution == 2.0`, con docstring
+          que explica por qué un change-detector es lo correcto acá.
+  ítem 5: test de propiedad que cruza `ArbitroExacto` contra `verify()` sobre pares al azar
+          y sep en {0, 5, 10}. Confirmado por simulación que habría atrapado el bug
+          histórico de sep=0 (88 de 600 discrepancias con la lógica vieja).
+  ítem 6: se deja de llamar "SUPERCONJUNTO estricto" a algo que es una cota L-infinito con
+          respaldo empírico, no una demostración.
+  ítem 7: RECHAZADO POR EL ARREGLADOR, CON RAZÓN. El revisor final afirmó que el material
+          queda hasta `margin + 2*INFLACION_MAX_PX*resolution` del borde físico. El
+          arreglador no pudo reproducirlo y se negó a escribir en el código un reclamo sin
+          evidencia. LO MEDÍ YO: el margen real cae exacto en 10.00 mm a 4.0, 2.0, 1.0 y
+          0.5 mm/px, con sep 0 y sep 10. El camino del margen NO es conservador: el relleno
+          de `_search` y el anclaje de `masks.origin` en la bbox exacta se compensan. El
+          equivocado era el revisor final, no el arreglador.
