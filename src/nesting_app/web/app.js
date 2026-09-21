@@ -454,17 +454,32 @@ function proximoPaso(desde, direccion) {
   return candidatos.length ? candidatos[0] : null;
 }
 
-function acercar(direccion, clienteX, clienteY) {
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = PASOS_ZOOM[PASOS_ZOOM.length - 1];
+
+// Cuánto zoom por píxel de scroll. Con 0.0015, una muesca de rueda típica
+// (100 px) mueve el zoom un 16% y un gesto de trackpad completo recorre el
+// rango sin pasarse. Es un número de tacto: se ajusta probándolo.
+const SENSIBILIDAD = 0.0015;
+
+// `deltaY` no viene en píxeles en todos lados: Firefox reporta líneas
+// (deltaMode 1) y hay quien reporta páginas (2). Sin normalizar, el mismo
+// gesto salta distinto en cada navegador.
+const PIXELES_POR_MODO = [1, 16, 100];
+function enPixeles(e) {
+  return e.deltaY * (PIXELES_POR_MODO[e.deltaMode] ?? 1);
+}
+
+// El anclaje al cursor lo comparten la rueda y los botones: sin esto el
+// zoom se va siempre al centro y perseguir un detalle es un juego de
+// paciencia.
+function aplicarNuevoZoom(siguiente, clienteX, clienteY) {
   const img = imagenDelLienzo();
-  if (!img) return;
+  if (!img || siguiente === null) return;
   const lienzo = $("lienzo");
   const antes = zoom ?? escalaAjustada(img);
-  const siguiente = proximoPaso(antes, direccion);
-  if (siguiente === null) return;
+  if (siguiente === antes) return;
 
-  // Qué punto de la imagen está bajo el cursor, medido en píxeles de la
-  // imagen. Sin esto el zoom se va siempre al centro y perseguir un detalle
-  // se vuelve un juego de paciencia.
   const caja = img.getBoundingClientRect();
   const enImagenX = (clienteX - caja.left) / antes;
   const enImagenY = (clienteY - caja.top) / antes;
@@ -475,6 +490,25 @@ function acercar(direccion, clienteX, clienteY) {
   const nueva = img.getBoundingClientRect();
   lienzo.scrollLeft += nueva.left + enImagenX * zoom - clienteX;
   lienzo.scrollTop += nueva.top + enImagenY * zoom - clienteY;
+}
+
+// Los botones y el doble clic siguen con la escalera: ahí los números
+// redondos sirven, y un clic es un paso, no un gesto.
+function acercar(direccion, clienteX, clienteY) {
+  const img = imagenDelLienzo();
+  if (!img) return;
+  const antes = zoom ?? escalaAjustada(img);
+  aplicarNuevoZoom(proximoPaso(antes, direccion), clienteX, clienteY);
+}
+
+function zoomContinuo(delta, clienteX, clienteY) {
+  const img = imagenDelLienzo();
+  if (!img) return;
+  const antes = zoom ?? escalaAjustada(img);
+  const siguiente = Math.min(
+    ZOOM_MAX, Math.max(ZOOM_MIN, antes * Math.exp(-delta * SENSIBILIDAD))
+  );
+  aplicarNuevoZoom(siguiente, clienteX, clienteY);
 }
 
 function centroDelLienzo() {
@@ -494,7 +528,7 @@ $("lienzo").addEventListener("wheel", (e) => {
   // `preventDefault` sólo cuando hay imagen: si no, se come el scroll del
   // mensaje de texto que el lienzo muestra cuando todavía no hay nada.
   e.preventDefault();
-  acercar(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
+  zoomContinuo(enPixeles(e), e.clientX, e.clientY);
 }, { passive: false });
 
 $("lienzo").ondblclick = () => {

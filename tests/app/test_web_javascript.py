@@ -230,6 +230,40 @@ def test_el_campo_de_angulos_sigue_validandose(js):
     assert '"angulos"' in js
 
 
+def test_la_revision_esta_a_la_izquierda_del_resultado(html):
+    assert html.index('id="tab-revision"') < html.index('id="tab-preview"')
+
+
+def test_la_solapa_se_llama_resultado(html):
+    assert ">Resultado<" in html
+    assert "Previsualización" not in html
+
+
+def test_la_rueda_no_salta_por_la_escalera(js):
+    """La escalera queda para los botones. Cada evento de rueda avanzaba un
+    escalón entero, y un gesto de trackpad manda decenas: iba de 25% a 600%
+    de un toque."""
+    handler = _cuerpo_de_handler(js, "wheel")
+
+    assert "acercar(" not in handler
+    assert "zoomContinuo" in handler
+
+
+def test_la_rueda_normaliza_el_modo_del_delta(js):
+    """Firefox reporta líneas y no píxeles: sin normalizar, el mismo gesto
+    da un salto distinto en cada navegador."""
+    assert "deltaMode" in _cuerpo_de_funcion(js, "enPixeles")
+
+
+def test_el_zoom_de_la_rueda_esta_acotado(js):
+    cuerpo = _cuerpo_de_funcion(js, "zoomContinuo")
+    assert "ZOOM_MIN" in cuerpo and "ZOOM_MAX" in cuerpo
+
+
+def test_los_botones_siguen_usando_la_escalera(js):
+    assert "proximoPaso" in _cuerpo_de_funcion(js, "acercar")
+
+
 def test_el_zoom_arranca_ajustado_en_cada_imagen(js):
     """Heredar el zoom de la imagen anterior deja al usuario mirando una
     esquina de un dibujo distinto sin entender qué está viendo."""
@@ -242,12 +276,14 @@ def test_el_zoom_arranca_ajustado_en_cada_imagen(js):
 
 def test_la_rueda_acerca_donde_esta_el_cursor(js):
     """Si el zoom se va siempre al centro, perseguir un descarte concreto en
-    un plano de 1800 px se vuelve un juego de paciencia."""
-    inicio = js.index("function acercar(")
-    cuerpo = js[inicio:js.index("\nfunction centroDelLienzo", inicio)]
+    un plano de 1800 px se vuelve un juego de paciencia.
+
+    El anclaje lo hace `aplicarNuevoZoom`, que comparten la rueda y los
+    botones -- no `acercar()`, que ahora sólo elige el próximo escalón."""
+    cuerpo = _cuerpo_de_funcion(js, "aplicarNuevoZoom")
     assert "getBoundingClientRect" in cuerpo and "scrollLeft" in cuerpo, (
-        "acercar() ya no corrige el scroll, así que el punto bajo el cursor "
-        "se va de lugar al ampliar"
+        "aplicarNuevoZoom() ya no corrige el scroll, así que el punto bajo "
+        "el cursor se va de lugar al ampliar"
     )
     assert re.search(r'addEventListener\("wheel"', js)
 
