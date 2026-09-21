@@ -882,3 +882,7 @@ lo ya pusheado.
   LO QUE SIGUE EN LA HISTORIA Y ES DISTINTO EN NATURALEZA: las dos capturas viejas dibujan robot_raaulo.ai
   entero. No son fabricables a esa resolución, pero sí identificables. Si el repo se hace público alguna
   vez, hay que volver a mirarlo -- y ahí alcanza con reescribir esos dos blobs, que es mucho más chico.
+
+## Plan de los globos de ayuda (2026-09-20)
+
+Ledger aparte: `.superpowers/sdd/info-opciones/progress.md`
