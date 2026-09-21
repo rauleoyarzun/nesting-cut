@@ -29,6 +29,7 @@ const TEXTOS = {
   "tol-cierre": "Cuánto puede separarse la punta de un contorno de su principio y todavía contar como cerrado. Si te descarta piezas que a ojo están cerradas, subila.",
   "resolucion": "Cuántos milímetros mide cada píxel con el que el programa \"ve\" la placa. Más fino acomoda apenas mejor y tarda mucho más; 2 mm es buen punto.",
   "espejo": "Deja dar vuelta la pieza como un guante, no sólo rotarla. Gana lugar, pero si el material tiene una cara buena o el dibujo es asimétrico, apagalo.",
+  "recortes": "Pedazos sueltos que sobraron de un trabajo anterior: el acomodo los llena antes de abrir una placa nueva. Se pierden al cerrar el programa -- anotalos de nuevo la próxima vez que los uses.",
 };
 
 const globo = document.getElementById("globo-info");

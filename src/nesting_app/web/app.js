@@ -22,6 +22,11 @@ const estado = {
   terminado: false,
   guardado: false,
   descartes: 0,
+  // Sobrevive a cambiar de archivo y se pierde al cerrar el programa:
+  // `registrar()` no lo toca a propósito. Un recorte anotado tres semanas
+  // después ya se cortó o se traspapeló, así que guardarlo en disco sería
+  // guardar una mentira.
+  recortes: [],
 };
 
 // --- el cliente HTTP --------------------------------------------------------
@@ -212,6 +217,85 @@ async function registrar(fuente) {
 
   await analizar();
 }
+
+// --- recortes ---------------------------------------------------------------
+
+function dibujarRecortes() {
+  const lista = $("lista-recortes");
+  lista.innerHTML = "";
+  estado.recortes.forEach((r, indice) => {
+    const fila = document.createElement("li");
+    const texto = document.createElement("span");
+    texto.textContent =
+      `${r.ancho} × ${r.alto} mm  ×${r.cantidad}` +
+      (r.veta_cruzada ? " · veta cruzada" : "");
+    const quitar = document.createElement("button");
+    quitar.type = "button";
+    quitar.className = "enlace";
+    quitar.setAttribute(
+      "aria-label", `Quitar el recorte de ${r.ancho} por ${r.alto}`
+    );
+    quitar.innerHTML =
+      '<svg viewBox="0 0 16 16" class="icono" aria-hidden="true">' +
+      '<path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
+    quitar.onclick = () => {
+      estado.recortes.splice(indice, 1);
+      dibujarRecortes();
+    };
+    fila.append(texto, quitar);
+    lista.append(fila);
+  });
+}
+
+function abrirAltaRecorte(abierta) {
+  $("alta-recorte").classList.toggle("oculto", !abierta);
+  $("btn-agregar-recorte").classList.toggle("oculto", abierta);
+  if (abierta) $("r-ancho").focus();
+}
+
+$("btn-agregar-recorte").onclick = () => abrirAltaRecorte(true);
+$("btn-cancelar-recorte").onclick = () => abrirAltaRecorte(false);
+
+$("btn-confirmar-recorte").onclick = () => {
+  const ancho = Number($("r-ancho").value);
+  const alto = Number($("r-alto").value);
+  const cantidad = Number($("r-cantidad").value);
+  limpiarErroresDeCampo();
+  if (!(ancho > 0) || !(alto > 0) || !(cantidad >= 1)) {
+    return marcarCampo(
+      "recortes",
+      "poné un ancho y un alto mayores que cero, y al menos una unidad"
+    );
+  }
+  estado.recortes.push({
+    ancho,
+    alto,
+    cantidad,
+    veta_cruzada: $("r-cruzada").checked,
+  });
+  $("r-ancho").value = "";
+  $("r-alto").value = "";
+  $("r-cantidad").value = "1";
+  $("r-cruzada").checked = false;
+  abrirAltaRecorte(false);
+  dibujarRecortes();
+};
+
+// En un material de veta libre la casilla no cambiaría nada, así que se
+// apaga en vez de quedar marcable y muda. Los recortes YA cargados
+// conservan su bandera: en un material libre no hace daño (todos los
+// ángulos están permitidos igual), y si se vuelve a un material con veta
+// tiene que seguir valiendo lo que el usuario dijo del pedazo.
+let vetaPorMaterial = {};
+
+function ajustarVetaCruzada() {
+  const libre = vetaPorMaterial[$("material").value] === "libre";
+  $("r-cruzada").disabled = libre;
+  if (libre) $("r-cruzada").checked = false;
+  $("etiqueta-cruzada").classList.toggle("deshabilitada", libre);
+}
+
+$("material").addEventListener("change", ajustarVetaCruzada);
 
 // --- analizar ---------------------------------------------------------------
 
@@ -476,6 +560,7 @@ function parametros() {
     tol_cierre: Number($("tol-cierre").value),
     resolucion: Number($("resolucion").value),
     esfuerzo: $("esfuerzo").value,
+    recortes: estado.recortes,
   };
 }
 
@@ -605,7 +690,15 @@ function terminar(t) {
     window.pywebview?.api?.marcar_sin_guardar(true);
   }
   const r = t.resultado;
-  const placas = r.placas === 1 ? "1 placa" : `${r.placas} placas`;
+  const nuevas = r.placas - r.recortes_usados;
+  const placas =
+    r.recortes_usados > 0
+      ? `${r.placas} placas (${r.recortes_usados} recorte${
+          r.recortes_usados === 1 ? "" : "s"
+        } + ${nuevas} nueva${nuevas === 1 ? "" : "s"})`
+      : r.placas === 1
+        ? "1 placa"
+        : `${r.placas} placas`;
   $("resultado").innerHTML =
     `<strong>${placas}</strong> · <strong>${(100 * r.total).toFixed(1)}%</strong> ` +
     `aprovechado · sobrante <strong>${r.sobrante_mm.toFixed(0)} mm</strong> · ` +
@@ -706,6 +799,10 @@ async function refrescarMateriales() {
     select.append(opcion);
   }
   if (elegido) select.value = elegido;
+  vetaPorMaterial = Object.fromEntries(
+    datos.materiales.map((m) => [m.nombre, m.veta])
+  );
+  ajustarVetaCruzada();
   return datos.materiales;
 }
 
@@ -718,6 +815,7 @@ window.__nesting = {
   mostrarMateriales,
   mostrarPrincipal,
   mostrarError,
+  dibujarRecortes,
   $,
 };
 

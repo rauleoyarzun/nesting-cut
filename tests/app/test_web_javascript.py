@@ -633,7 +633,7 @@ def _declaraciones_globales(js: str) -> set[str]:
 
 CLAVES_CON_GLOBO = [
     "archivo", "material", "sep", "borde", "copias", "esfuerzo",
-    "angulos", "tol-cierre", "resolucion", "espejo",
+    "angulos", "tol-cierre", "resolucion", "espejo", "recortes",
 ]
 
 
@@ -1541,3 +1541,40 @@ def test_aria_expanded_va_al_boton_y_con_el_valor_correcto(js_info):
 
 def test_el_campo_de_resolucion_arranca_en_uno(html):
     assert re.search(r'id="resolucion"[^>]*value="1"', html)
+
+
+def test_los_recortes_viven_en_el_estado_de_la_sesion(js):
+    assert "recortes: []" in js or "recortes: [ ]" in js
+
+
+def test_registrar_no_borra_los_recortes(js):
+    """Cambiar de archivo no tira los pedazos que hay contra la pared. Se
+    pierden al cerrar el programa, no al abrir otro dibujo."""
+    assert "recortes" not in _cuerpo_de_funcion(js, "registrar")
+
+
+def test_los_recortes_se_mandan_con_los_parametros(js):
+    assert "recortes: estado.recortes" in _cuerpo_de_funcion(js, "parametros")
+
+
+def test_la_casilla_de_veta_cruzada_se_apaga_en_un_material_sin_veta(js):
+    """Mira el cuerpo de la función y no el archivo: la primera versión de
+    este test afirmaba `"disabled" in js`, y esa cadena ya estaba en el
+    botón de guardar -- pasaba antes de que la casilla existiera."""
+    cuerpo = _cuerpo_de_funcion(js, "ajustarVetaCruzada")
+
+    assert '=== "libre"' in cuerpo
+    assert '$("r-cruzada").disabled' in cuerpo
+
+
+def test_el_bloque_de_recortes_tiene_sus_controles(html):
+    for id_ in [
+        "lista-recortes", "alta-recorte", "r-ancho", "r-alto", "r-cantidad",
+        "r-cruzada", "btn-agregar-recorte", "btn-confirmar-recorte",
+        "btn-cancelar-recorte",
+    ]:
+        assert f'id="{id_}"' in html, id_
+
+
+def test_el_reparto_de_placas_se_muestra_al_terminar(js):
+    assert "recortes_usados" in js

@@ -50,6 +50,42 @@
     </div>
 
     <div class="campo">
+      <!-- Debajo de Material y no en Opciones avanzadas: un recorte cambia
+           sobre qué se corta, igual que el material. No es un ajuste fino. -->
+      <div class="renglon-etiqueta">
+        <span class="titulo-campo">
+          <span class="etiqueta">Recortes</span>
+          <button type="button" class="boton-info" data-info="recortes" aria-label="Qué es Recortes" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+        </span>
+        <button type="button" id="btn-agregar-recorte" class="enlace">Agregar</button>
+      </div>
+      <ul id="lista-recortes" class="lista-recortes"></ul>
+      <div id="alta-recorte" class="alta-recorte oculto">
+        <div class="fila">
+          <div class="control con-unidad">
+            <input id="r-ancho" type="number" min="1" step="1" class="medida" aria-label="Ancho del recorte">
+            <span class="unidad">mm</span>
+          </div>
+          <div class="control con-unidad">
+            <input id="r-alto" type="number" min="1" step="1" class="medida" aria-label="Alto del recorte">
+            <span class="unidad">mm</span>
+          </div>
+          <div class="control">
+            <input id="r-cantidad" type="number" min="1" step="1" value="1" class="medida" aria-label="Cuántos recortes de esta medida">
+          </div>
+        </div>
+        <label class="casilla" id="etiqueta-cruzada">
+          <input id="r-cruzada" type="checkbox"> Veta cruzada
+        </label>
+        <div class="fila">
+          <button type="button" id="btn-confirmar-recorte" class="boton secundario">Agregar</button>
+          <button type="button" id="btn-cancelar-recorte" class="enlace">Cancelar</button>
+        </div>
+      </div>
+      <p class="error-campo oculto" data-error-de="recortes"></p>
+    </div>
+
+    <div class="campo">
       <div class="titulo-campo">
         <label class="etiqueta" for="sep">Separación</label>
         <button type="button" class="boton-info" data-info="sep" aria-label="Qué es Separación" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
