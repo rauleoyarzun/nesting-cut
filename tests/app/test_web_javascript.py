@@ -1622,3 +1622,19 @@ def test_el_bloque_de_recortes_tiene_sus_controles(html):
 
 def test_el_reparto_de_placas_se_muestra_al_terminar(js):
     assert "recortes_usados" in js
+
+
+def test_el_plural_de_placas_con_recortes_no_queda_fijo(js):
+    """La rama de `terminar()` para cuando hubo recortes armaba
+    `${r.placas} placas (...)` con "placas" fijo, igual que el resto del
+    texto que sí pluraliza `recorte`/`nueva` según corresponda. Un trabajo
+    chico que entra entero en un solo recorte -- el caso para el que existe
+    esta función -- imprimía "1 placas (1 recorte + 0 nuevas)"."""
+    cuerpo = _cuerpo_de_funcion(js, "terminar")
+    inicio = cuerpo.index("r.recortes_usados > 0")
+    fin = cuerpo.index("nueva${", inicio)
+    rama_con_recortes = cuerpo[inicio:fin]
+    assert not re.search(r"\$\{r\.placas\}\s*placas\b", rama_con_recortes), (
+        'la rama con recortes sigue con "placas" pegado al literal, sin '
+        "pluralizar cuando r.placas es 1"
+    )

@@ -706,7 +706,7 @@ function terminar(t) {
   const nuevas = r.placas - r.recortes_usados;
   const placas =
     r.recortes_usados > 0
-      ? `${r.placas} placas (${r.recortes_usados} recorte${
+      ? `${r.placas} placa${r.placas === 1 ? "" : "s"} (${r.recortes_usados} recorte${
           r.recortes_usados === 1 ? "" : "s"
         } + ${nuevas} nueva${nuevas === 1 ? "" : "s"})`
       : r.placas === 1
