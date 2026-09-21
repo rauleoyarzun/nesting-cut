@@ -233,7 +233,10 @@ cerraba con un dato que hoy engaña: "normal empata con rapido en 5 de 7
 escenarios". Ese empate se midió con la función de costo vieja
 `(placas, alto de la última)`, que NO PODÍA VER la diferencia entre los
 layouts que estaba eligiendo -- peor, prefería el equivocado. Sobre
-`NESTING 2.ai` (mdf15, sep 10, borde 10, 2.0 mm/px), medido en la Tarea 6:
+`NESTING 2.ai` (mdf15, sep 10, borde 10, 2.0 mm/px), medido en la Tarea 6
+con `contact = 1.0` -- el peso vigente mientras se corrió este barrido,
+antes de que la misma Tarea 6 lo recalibrara a 4.0 (ver `Weights.contact`
+en `oracle.py`):
 
 | nivel  | reparto | material última | alto última | seg   |
 |--------|---------|-----------------|-------------|-------|
@@ -254,6 +257,25 @@ niveles dieron exactamente el mismo layout (50/46, 2.1206 m²) por 70.1s,
 de un salto de placa -- que es donde está el archivo de referencia, con 1 a
 4 piezas varadas en la segunda placa -- y no rinde lejos de uno. Lo que
 cambió es que ahora, cuando rinde, se nota.
+
+LO QUE ESTA TABLA NO RESPONDE. Todo lo de arriba -- la tabla de la Tarea 6
+y la de la Task 19 con la que se compara -- se midió con `contact = 1.0`.
+Esta misma Tarea 6 deja de usar ese valor: el default pasa a 4.0. El
+barrido de esfuerzo NO se volvió a correr con contact = 4.0, y hay una
+razón concreta para sospechar que el resultado podría no ser el mismo. En
+`tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+(líneas 157-163 de ese archivo), subir contacto de 1.0 a 4.0 sobre las
+mismas 43 piezas colapsó 3 layouts distintos entre 4 semillas a UNO SOLO:
+ninguna perturbación del orden de inserción mejoraba al orden por área, así
+que `best` nunca se reemplazaba. Eso es exactamente lo que los reintentos
+de `normal` y `lento` son -- perturbaciones del orden de inserción de las
+que se conserva la mejor -- así que si `contact = 4.0` aplana el espacio de
+búsqueda de la misma manera sobre archivos reales, los reintentos podrían
+estar comprando menos de lo que dice la tabla de arriba. No hay medición en
+ningún sentido: ni que lo confirme ni que lo descarte. La tabla y la
+conclusión "nada cambió de signo" quedan tal cual porque no hay evidencia
+para moverlas, no porque se haya verificado que siguen valiendo a
+contact = 4.0.
 
 EL PRESUPUESTO DE 5 MINUTOS, HONESTAMENTE. A 2.0 mm/px (el default desde la
 Task 24) `normal` sale mucho más barato que lo medido en la Task 19: 48.3s

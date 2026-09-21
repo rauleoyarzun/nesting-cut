@@ -1,279 +1,730 @@
-# Task 6: Árbol de contención — informe
+# Task 6 — Recalibrar los valores por omisión y contar la verdad
 
-## Archivos tocados
-
-- `src/nesting/model/part.py` — ampliado el import (`Point, Transform`), agregadas las clases `Part` y `Placement` y el helper `_shoelace_area`. No se tocó `Contour` ni `OpenChain`.
-- `src/nesting/geometry/nesting_tree.py` — nuevo. `build_parts`, `_find_parents`, `_depth_of`.
-- `tests/geometry/test_nesting_tree.py` — nuevo, 11 tests, copiados literalmente del brief.
-
-## Ciclo TDD
-
-### Paso 2 — test corriendo antes de implementar (falla como se esperaba)
-
-```
-$ .venv/bin/pytest tests/geometry/test_nesting_tree.py -v
-============================= test session starts ==============================
-platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: <repo>
-configfile: pyproject.toml
-collected 0 items / 1 error
-
-==================================== ERRORS ====================================
-_____________ ERROR collecting tests/geometry/test_nesting_tree.py _____________
-ImportError while importing test module '<repo>/tests/geometry/test_nesting_tree.py'.
-...
-E   ModuleNotFoundError: No module named 'nesting.geometry.nesting_tree'
-=========================== short test summary info ============================
-ERROR tests/geometry/test_nesting_tree.py
-!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
-=============================== 1 error in 0.04s ==============================
-```
-
-Coincide con lo esperado por el brief.
-
-### Paso 4/5 — implementación literal del brief, primer intento: CUELGA
-
-Al implementar `Part`, `Placement` y `nesting_tree.py` copiando el código del brief tal cual, `pytest tests/geometry/test_nesting_tree.py -v` no terminaba: quedaba en un loop de CPU al 99% sin salida, incluso después de más de 2 minutos. Investigué con `sample` (macOS) sobre el proceso colgado y con un script de reproducción directo (bypaseando pytest) usando `signal.alarm` para capturar el stack en el momento del cuelgue.
-
-El `traceback.print_stack` en el momento del alarm mostró el punto exacto:
-
-```
-File ".../nesting_tree.py", line 26, in build_parts
-    depths = [_depth_of(i, parents) for i in range(len(contours))]
-File ".../nesting_tree.py", line 84, in _depth_of
-    while current is not None:
-```
-
-Causa raíz encontrada por inspección directa: el test `test_depth_two_becomes_an_independent_part` arma tres cuadrados **concéntricos** (mismo centro geométrico, offset de 20mm cada uno: (0,0,100), (20,20,60), (40,40,20), los tres centrados en (50,50)). Con esa geometría, `Polygon.representative_point()` de shapely devuelve el **mismo punto (50,50)** para los tres contornos (para un rectángulo, el punto representativo coincide con el centroide). Verificado en consola:
-
-```
-0 probe POINT (50 50) area 10000.0
-  candidate 0 contains True area 10000.0
-  candidate 1 contains True area 3600.0
-  candidate 2 contains True area 400.0
-1 probe POINT (50 50) area 3600.0
-  candidate 0 contains True area 10000.0
-  candidate 1 contains True area 3600.0
-  candidate 2 contains True area 400.0
-2 probe POINT (50 50) area 400.0
-  candidate 0 contains True area 10000.0
-  candidate 1 contains True area 3600.0
-  candidate 2 contains True area 400.0
-```
-
-El algoritmo del brief elige como "padre" al contenedor de **menor área** que contiene el punto de prueba, sin exigir que ese contenedor sea realmente más grande que el propio contorno. Como el punto de prueba del cuadrado exterior (índice 0) también cae dentro del cuadrado más interno (índice 2, porque son concéntricos), el algoritmo asigna `parents[0] = 2`. De igual modo `parents[1] = 2` y `parents[2] = 1`. Esto produce un ciclo `1 → 2 → 1 → ...` que `_depth_of` recorre para siempre.
-
-## Desviación respecto del brief (con motivo)
-
-Agregué una guarda en `_find_parents`: un candidato solo puede ser padre si su área es **estrictamente mayor** que la del contorno evaluado (`if polygons[candidate].area <= polygon.area: continue`). Es una condición necesaria de cualquier contención real (un polígono no puede contener genuinamente a otro más grande), así que descarta exactamente los falsos positivos que produce la coincidencia del punto representativo en contornos concéntricos, sin afectar ningún caso de contención legítima. Con la guarda, los 11 tests —incluidos los de profundidad 2 y 3, que están armados justamente con contornos concéntricos— pasan y dan la jerarquía esperada por el brief.
-
-Diff conceptual en `_find_parents` (dentro del `for candidate in tree.query(probe)`):
-
-```python
-if candidate == index:
-    continue
-# Un ancestro genuino tiene área estrictamente mayor: un polígono más chico
-# no puede contener realmente a uno más grande. Sin esta guarda, contornos
-# concéntricos que comparten el mismo centroide (y por lo tanto el mismo
-# representative_point()) hacen que un anillo bien anidado "contenga" el
-# punto de prueba de un anillo exterior, generando un ciclo de padres y un
-# loop infinito en _depth_of.
-if polygons[candidate].area <= polygon.area:
-    continue
-if not polygons[candidate].contains(probe):
-    continue
-```
-
-No se modificó ninguna firma pública, ni la regla de profundidad, ni el criterio de robustez pedido (seguir usando `representative_point()` en vez de `contains()` polígono-contra-polígono). El resto del código es idéntico al del brief.
-
-## Paso 5 — test del módulo, ya con el fix: PASA
-
-```
-$ .venv/bin/pytest tests/geometry/test_nesting_tree.py -v
-============================= test session starts ==============================
-platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: <repo>
-configfile: pyproject.toml
-collected 11 items
-
-tests/geometry/test_nesting_tree.py ...........                          [100%]
-
-============================== 11 passed in 0.04s ==============================
-```
-
-## Paso 6 — suite completa
-
-```
-$ .venv/bin/pytest --tb=short
-........................................................................ [ 86%]
-...........                                                              [100%]
-83 passed in 0.78s
-```
-
-72 tests preexistentes + 11 nuevos = 83 passed. El brief anticipaba "48 passed" en este paso, pero esa cifra corresponde al estado del proyecto en el momento en que se escribió el brief; el enunciado de la tarea (que ya venía con "72 tests en verde" antes de empezar) deja claro que el número real de base es 72, así que 83 es la cifra correcta para este repo. No es una desviación de comportamiento, solo una discrepancia de un número desactualizado en el texto del brief.
-
-## Paso 7 — commit
-
-Omitido a pedido explícito: el proyecto no usa git.
+**Commit:** `3ff6cf5` — «Recalibrar con el motor híbrido y contar el objetivo nuevo»
+**Suite:** 1028 pasan, **22 warnings** (no está limpia; detalle abajo).
 
 ---
 
-# Adenda: detección de geometría inválida (agujero parcialmente superpuesto)
+## 0. Corrección previa al brief, y cómo se midió
 
-## Hallazgo original
+El brief (Paso 1) manda correr
+`bench/run_bench.py --resoluciones ... --esfuerzos ...`. **Esos flags no
+existen** — `run_bench.py` sólo acepta `--material --copias --sep --borde
+--unidades`, y su `main()` sólo barre `bench/files/*.dxf`. Confirmado leyendo
+los dos scripts.
 
-`_find_parents` decide contención con `representative_point()` del contorno
-interno — un criterio deliberado para tolerar anillos que comparten un tramo
-de borde con su contenedor (ver el desvío del TDD arriba: es justamente lo que
-hizo falta para no romper con contornos concéntricos). Pero ese mismo criterio
-acepta como agujero pleno a un contorno que solo se **superpone
-parcialmente** con su supuesto exterior: si el punto de prueba cae adentro,
-alcanza, aunque buena parte del contorno esté afuera. El área "agujero" que se
-resta después (`Part.area`) queda mal calculada sin ningún aviso, y esa área
-alimenta cuánto material hace falta comprar.
+`bench/calibrate.py` sí barre contacto, resolución y esfuerzo, pero aplica
+**las mismas `--copias` a todos los archivos**, y acá hizo falta una cantidad
+distinta por archivo (ver §1). Así que:
 
-## Cambios
+- Las mediciones de este informe se tomaron con un script puntual sobre
+  `bench.run_bench.run_one` / `pack()`, mismo motor y mismos parámetros que
+  barre `calibrate.py`, variando un eje por vez.
+- `bench/calibrate.py` **se corrió igual, end to end**, para verificar que la
+  herramienta (con los cambios de esta tarea) funciona: §6.
 
-- `src/nesting/geometry/nesting_tree.py`:
-  - Nueva excepción `OverlappingContourError(Exception)`, exportada desde el
-    módulo, con mensaje en español.
-  - Nueva función `_assert_hole_is_contained(hole_index, owner_index,
-    contours, polygons)`, llamada desde `build_parts` justo antes de agregar
-    cada índice a `holes_by_owner` (es decir, en el mismo punto donde hoy se
-    decide "este contorno de profundidad impar es agujero de tal owner").
-    Calcula `hole_polygon.difference(owner_polygon)` (con shapely) y compara
-    su área contra una tolerancia; si la excede, arma el mensaje de error con
-    los `entity_ids` de agujero y exterior, un punto representativo de la
-    zona conflictiva y su bounding box aproximado, y lanza
-    `OverlappingContourError`.
-  - No se tocó la firma de `build_parts` ni el criterio de
-    `representative_point()` en `_find_parents` — ese sigue existiendo tal
-    cual, porque es lo que permite que un agujero tangente por borde o por un
-    solo punto llegue a candidatearse como agujero en primer lugar. El chequeo
-    nuevo es una segunda verificación, más estricta, que corre *después* de
-    que `_find_parents` ya decidió el padre.
+`bench/files/` está en `.gitignore` y no existía en el worktree; se copiaron
+los tres archivos desde el checkout principal.
 
-### Umbrales elegidos
+### Comandos
 
-```python
-_RELATIVE_OVERLAP_TOLERANCE = 1e-6       # una parte en un millón del área del agujero
-_ABSOLUTE_OVERLAP_TOLERANCE_MM2 = 1e-3   # piso absoluto, mm²
-tolerance = max(_RELATIVE_OVERLAP_TOLERANCE * hole_polygon.area,
-                _ABSOLUTE_OVERLAP_TOLERANCE_MM2)
+```bash
+# baseline y barridos (script puntual, en el scratchpad de la sesión)
+.venv/bin/python scratchpad/barrer.py "/Users/raulo/Downloads/NESTING 2.ai" \
+    --material mdf15 --sep 10 --borde 10 --esfuerzo rapido --resolucion 2.0 \
+    --eje contacto --valores 0.0,0.5,0.8,1.0,2.0,4.0
+.venv/bin/python scratchpad/barrer.py bench/files/muestra.dxf \
+    --material mdf18 --copias 8 --sep 6 --borde 10 --esfuerzo rapido \
+    --resolucion 2.0 --eje contacto --valores 0.0,0.5,0.8,1.0,2.0,4.0
+.venv/bin/python scratchpad/barrer.py "bench/files/banqueta final raulo.ai" \
+    --material mdf18 --copias 5 --sep 6 --borde 10 --esfuerzo rapido \
+    --resolucion 2.0 --eje contacto --valores 0.0,0.5,0.8,1.0,2.0,4.0
+#   ... y los mismos con --eje resolucion / --eje esfuerzo (ver tablas)
+
+# bisección del piso de anidado en agujeros
+.venv/bin/python scratchpad/agujero.py
+
+# sensibilidad a la semilla del fixture de test_different_seeds
+.venv/bin/python scratchpad/semillas.py
+
+# la herramienta del repo, end to end
+.venv/bin/python bench/calibrate.py --material mdf18 --copias 1
+
+# suite
+.venv/bin/python -m pytest
 ```
 
-Se rechaza cuando `outside.area > tolerance`, donde `outside` es la parte del
-agujero que cae fuera del exterior.
+---
 
-- **Relativa (`1e-6`)**: una parte en un millón del área del propio agujero.
-  Para geometrías con coordenadas en el rango normal de un dibujo CNC (cientos
-  a miles de mm), el ruido de punto flotante de una operación booleana de
-  shapely en doble precisión es muchísimo más chico que eso — así que esta
-  tolerancia absorbe el ruido sin abrir la puerta a un desborde real, que en
-  los casos que importa detectar es varios órdenes de magnitud más grande (en
-  la reproducción del hallazgo, el desborde es el 20% del área del agujero,
-  no una parte en un millón).
-- **Absoluta (`1e-3` mm²)**: piso para cuando el agujero mismo es diminuto y
-  la tolerancia relativa colapsaría por debajo del ruido de punto flotante
-  (p.ej. un agujero de 0.0001 mm²: el 1e-6 de eso es 1e-10, menor que el ruido
-  esperable de la resta booleana). Un milésimo de mm² es un cuadrado de
-  ~0.03 mm de lado — muy por debajo de cualquier tolerancia de corte CNC real,
-  así que nunca corresponde a un desborde intencional del dibujo, solo a
-  ruido numérico.
+## 1. Por qué tantas copias
 
-Ambas constantes están declaradas con nombre y comentario en el módulo, junto
-a la definición de `OverlappingContourError`.
+Una configuración sólo se distingue de otra si el trabajo **desborda la
+primera placa**. Con todo en una placa, tanto `first_sheet_utilization` como
+`material_ultima` son cocientes fijos que no dependen del acomodo. Por eso
+`muestra.dxf` va a `--copias 8` (96 piezas) o `6` (72) y
+`banqueta final raulo.ai` a `--copias 5` (200) o `4` (160). `NESTING 2.ai`
+desborda con una copia.
 
-## Tests agregados (`tests/geometry/test_nesting_tree.py`, al final, sin tocar los 11 originales)
+Esto se ve en la corrida de `calibrate.py --copias 1` de §6: las 12 filas del
+barrido dan **exactamente el mismo** material en la última placa.
 
-1. `test_partially_overlapping_contour_raises_instead_of_becoming_a_hole` —
-   reproduce exactamente el caso del hallazgo (exterior (0,0)-(30,30), agujero
-   (10,10)-(35,25)); verifica que lanza `OverlappingContourError` y que el
-   mensaje menciona los `entity_ids` de ambos contornos (0 y 1 en el test).
-2. `test_hole_tangent_to_exterior_along_a_shared_edge_is_not_rejected` —
-   agujero que comparte un tramo del borde izquierdo del exterior (tangente
-   por dentro); no debe lanzar.
-3. `test_hole_touching_exterior_boundary_at_a_single_point_is_not_rejected` —
-   un rombo cuyo vértice inferior toca el borde exterior en un solo punto; no
-   debe lanzar.
-4. `test_deep_concentric_rings_do_not_raise` — seis anillos concéntricos bien
-   anidados (profundidad par/impar alternada); no debe lanzar.
-5. `test_tiny_hole_correctly_nested_does_not_raise` — agujero de 0.001×0.001
-   bien anidado, para confirmar que el piso absoluto de tolerancia no genera
-   falsos positivos en agujeros diminutos.
+---
 
-## Resultado de los tests
+## 2. Peso de contacto — **cambiado: 1.0 → 4.0**
 
-### `pytest tests/geometry/test_nesting_tree.py -v`
+### 2.1 El piso funcional, primero (bisección con el motor híbrido)
+
+`tests/engine/raster/test_raster_oracle.py::test_a_small_part_is_nested_inside_a_big_hole`
+
+| contacto | ¿la pieza chica cae en el agujero? |
+|---|---|
+| 0.0, 0.25, 0.5, 0.6 | **No** |
+| 0.7, 0.8, 0.9, 0.95, 1.0, 2.0, 4.0 | Sí |
+
+El corte bajó un escalón (antes estaba entre 0.7 y 0.8) pero **el piso sigue
+existiendo**. `contact = 0.0` queda descartado por más que sea 1.6-4.8x más
+rápido y gane el barrido en dos de los tres archivos. Esto **confirma la
+trampa** que avisaba el brief.
+
+### 2.2 `NESTING 2.ai` — mdf15, sep 10, borde 10, 36 piezas, resolución 2.0
+
+Esfuerzo `rapido`:
+
+| contacto | placas | reparto | mat. última | tira libre | aprov. 1ª | seg | viol |
+|---|---|---|---|---|---|---|---|
+| 0.0 | 2 | 34 / 2 | 0.0716 m² | 2365 mm | 53.61% | 15.1 | 0 |
+| 0.5 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 25.9 | 0 |
+| 0.8 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 26.2 | 0 |
+| 1.0 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 37.5 | 0 |
+| 2.0 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 24.8 | 0 |
+| **4.0** | 2 | **34 / 2** | **0.0716 m²** | 2365 mm | 53.61% | 25.4 | 0 |
+| 8.0 | 2 | 31 / 5 | 0.1789 m² | 2365 mm | 51.35% | 28.2 | 0 |
+| 16.0 | 2 | 33 / 3 | 0.1172 m² | 2220 mm | 52.65% | 27.9 | 0 |
+
+Esfuerzo `normal`:
+
+| contacto | reparto | mat. última | seg | viol |
+|---|---|---|---|---|
+| 0.7 | 33 / 3 | 0.1106 m² | 48.9 | 0 |
+| 0.8 | 33 / 3 | 0.1106 m² | 48.4 | 0 |
+| 1.0 | 33 / 3 | 0.1106 m² | 48.8 | 0 |
+| 2.0 | 32 / 4 | 0.1432 m² | 46.6 | 0 |
+| **4.0** | **34 / 2** | **0.0716 m²** | 48.8 | 0 |
+
+Esfuerzo `lento`:
+
+| contacto | reparto | mat. última | tira libre | seg | viol |
+|---|---|---|---|---|---|
+| 0.8 | 35 / 1 | 0.1061 m² | 2108.9 mm | 144.3 | 0 |
+| 1.0 | 35 / 1 | 0.1061 m² | 2108.9 mm | 140.1 | 0 |
+| **4.0** | 34 / 2 | **0.0716 m²** | 2365 mm | 177.8 | 0 |
+
+Esta última tabla es, por sí sola, una demostración del criterio nuevo: 4.0
+deja **dos** piezas arriba contra **una** de 1.0 y aun así gana, porque esas
+dos suman menos área. Lo que acerca a tirar la placa es el área, no el conteo.
+
+### 2.3 `muestra.dxf` — mdf18, sep 6, borde 10, `rapido`, resolución 2.0
+
+`--copias 8` (96 piezas):
+
+| contacto | placas | reparto | mat. última | tira libre | aprov. 1ª | seg | viol |
+|---|---|---|---|---|---|---|---|
+| 0.0 | 2 | 52 / 44 | 2.0284 m² | 466 mm | 65.83% | 47.7 | 0 |
+| 0.5 | 2 | 51 / 45 | 2.0745 m² | 466 mm | 64.86% | 68.5 | 0 |
+| 0.8 | 2 | 50 / 46 | 2.1206 m² | 466 mm | 63.90% | 99.2 | 0 |
+| 1.0 | 2 | 50 / 46 | 2.1206 m² | 466 mm | 63.90% | 69.1 | 0 |
+| 2.0 | 2 | 49 / 47 | 2.1667 m² | 370 mm | 62.93% | 69.7 | 0 |
+| 4.0 | 2 | 50 / 46 | 2.1206 m² | 466 mm | 63.90% | 69.9 | 0 |
+
+`--copias 6` (72 piezas):
+
+| contacto | placas | reparto | mat. última | seg | viol |
+|---|---|---|---|---|---|
+| **0.8** | 2 | 54 / 18 | **0.8298 m²** | 38.0 | 0 |
+| 1.0 | 2 | 52 / 20 | 0.9220 m² | 38.7 | 0 |
+| 2.0 | 2 | 52 / 20 | 0.9220 m² | 60.2 | 0 |
+| 4.0 | 2 | 52 / 20 | 0.9220 m² | 60.4 | 0 |
+
+### 2.4 `banqueta final raulo.ai` — mdf18, sep 6, borde 10, `rapido`, resolución 2.0
+
+`--copias 5` (200 piezas):
+
+| contacto | placas | reparto | mat. última | tira libre | aprov. 1ª | seg | viol |
+|---|---|---|---|---|---|---|---|
+| 0.0 | 3 | 138 / 40 / 22 | 0.8167 m² | 1679 mm | 60.25% | 93.8 | 0 |
+| 0.5 | 3 | 139 / 40 / 21 | 0.7809 m² | 1683 mm | 61.00% | 240.5 | 0 |
+| 0.8 | 3 | 139 / 38 / 23 | 0.8591 m² | 1653 mm | 61.00% | 279.9 | 0 |
+| 1.0 | 3 | 141 / 38 / 21 | 0.7842 m² | 1683 mm | 62.50% | 450.6 | 0 |
+| 2.0 | 3 | 136 / 40 / 24 | 0.9014 m² | 1553 mm | 60.08% | 395.0 | 0 |
+| **4.0** | 3 | 136 / 44 / 20 | **0.7582 m²** | 1703 mm | 61.36% | 398.3 | 0 |
+
+`--copias 4` (160 piezas):
+
+| contacto | placas | reparto | mat. última | seg | viol |
+|---|---|---|---|---|---|
+| **0.8** | 2 | 116 / 44 | **2.0724 m²** | 227.8 | 0 |
+| 1.0 | 2 | 113 / 47 | 2.1164 m² | 230.7 | 0 |
+| 4.0 | 2 | 115 / 45 | 2.1147 m² | 308.0 | 0 |
+
+### 2.5 Cara a cara 4.0 contra 1.0
+
+| celda | 1.0 | 4.0 | |
+|---|---|---|---|
+| `NESTING 2.ai` rapido | 0.1432 | **0.0716** | gana 4.0 |
+| `NESTING 2.ai` normal | 0.1106 | **0.0716** | gana 4.0 |
+| `NESTING 2.ai` lento | 0.1061 | **0.0716** | gana 4.0 |
+| `muestra.dxf` x8 | 2.1206 | 2.1206 | empate |
+| `muestra.dxf` x6 | 0.9220 | 0.9220 | empate |
+| `banqueta...` x5 | 0.7842 | **0.7582** | gana 4.0 |
+| `banqueta...` x4 | 2.1164 | **2.1147** | gana 4.0 (apenas) |
+
+**Cinco victorias, dos empates, ninguna derrota.** El tiempo es un empate: el
+costo de la correlación FFT de contacto depende de `contact != 0.0`, no del
+valor (`raster/scoring.py::best_position`), así que las diferencias de
+segundos son del layout, no del peso (25.4 vs 37.5 a favor de 4.0 en un lado,
+60.4 vs 38.7 en contra en otro).
+
+### 2.6 La única celda donde este peso decidió placas
+
+Fixture de `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+(rectángulos variados, material 1000x1000, sep 8, borde 15, `normal`), 48 piezas:
+
+| contacto | semilla 1 | semilla 2 | semilla 3 | semilla 4 |
+|---|---|---|---|---|
+| 1.0 | 2 placas | 2 placas | 2 placas | 2 placas |
+| 4.0 | **1 placa** | **1 placa** | 2 placas | 2 placas |
+
+Sintético, pero es la única celda medida donde el peso cambió lo que le
+cuesta al usuario.
+
+### 2.7 Confirmación y refutación de la hipótesis del brief
+
+- **Confirmado:** `contact = 1.0` cuesta piezas sobre `NESTING 2.ai` (32/4
+  contra 34/2) y sobre `muestra.dxf` x8 (50/46 contra 52/44 de `contact=0`).
+- **Refutado como enunciado general:** sobre `banqueta final raulo.ai` x5,
+  `contact = 1.0` es el **segundo mejor** (0.7842 m²) y `contact = 0.0` es el
+  **cuarto de seis** (0.8167 m²). El peso no «cuesta piezas» siempre.
+- **Refutado que la ganancia de apagarlo sea inalcanzable de otro modo:** el
+  34/2 que da `contact = 0` sobre el archivo de referencia también lo da
+  `contact = 4.0`, **sin** perder el anidado en agujeros.
+
+### 2.8 La ambigüedad que queda, dicha en voz alta
+
+La respuesta **no es monótona y parece una lotería**:
+
+- 2.0 fue el peor de los candidatos que pasan el piso en 3 de las 5 celdas
+  donde se lo midió, estando entre 1.0 y 4.0.
+- Sobre `NESTING 2.ai`, 8.0 (0.1789) y 16.0 (0.1172) son **peores** que 4.0
+  (0.0716). No hay pendiente que seguir.
+- 0.8 le gana a 4.0 en dos celdas, empata en una y pierde en cuatro. No es un
+  candidato descartable, sólo peor que 4.0 en el balance.
+- La cantidad de **placas** sobre archivos reales fue idéntica con todos los
+  pesos en las siete celdas.
+
+Elegí 4.0 igual porque es lo que dice la evidencia disponible (nunca perdió
+contra el valor vigente, en 7 celdas, sobre el criterio que el motor de
+verdad minimiza, sin costo en tiempo y sin romper la capacidad). Pero el
+mecanismo es caótico: **si alguien repite esto sobre otros archivos y le da
+0.8, no me sorprendería.** Lo que sí es sólido es la dirección descartada:
+bajar el contacto por debajo de 0.7 rompe una capacidad real.
+
+---
+
+## 3. Resolución — **sin cambios: 2.0 mm/px**
+
+Contacto 1.0 (el vigente al medir), `rapido`, cero violaciones en las 10 celdas.
+
+### `NESTING 2.ai` (mdf15, sep 10, borde 10)
+
+| mm/px | placas | reparto | mat. última | tira libre | aprov. 1ª | seg |
+|---|---|---|---|---|---|---|
+| 3.0 | 2 | 29 / 7 | 0.2538 m² | 2292 mm | 49.78% | 9.6 |
+| **2.0** | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 36.8 |
+| 1.0 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 110.4 |
+| 0.5 | 2 | 31 / 5 | 0.1789 m² | 2365 mm | 51.35% | 646.2 |
+
+### `muestra.dxf` x8 (mdf18, sep 6, borde 10)
+
+| mm/px | placas | reparto | mat. última | aprov. 1ª | seg |
+|---|---|---|---|---|---|
+| 3.0 | 2 | 50 / 46 | 2.1206 m² | 63.90% | 51.7 |
+| **2.0** | 2 | 50 / 46 | 2.1206 m² | 63.90% | 70.2 |
+| 1.0 | 2 | 53 / 43 | 1.9823 m² | 66.80% | 413.5 |
+
+### `banqueta final raulo.ai` x4 (mdf18, sep 6, borde 10)
+
+| mm/px | placas | reparto | mat. última | aprov. 1ª | seg |
+|---|---|---|---|---|---|
+| 3.0 | 2 | 113 / 47 | 2.1229 m² | 56.76% | 74.6 |
+| **2.0** | 2 | 113 / 47 | 2.1164 m² | 56.90% | 230.7 |
+| 1.0 | 2 | 116 / 44 | 2.0090 m² | 59.15% | 1077.2 |
+
+(0.5 mm/px no se midió sobre los dos archivos del banco: a 1.0 ya tardaban
+413 s y 1077 s, y 0.5 sobre el archivo de referencia salió 5.9x más caro que
+1.0. El presupuesto de una sesión no lo aguanta y el resultado sobre el
+archivo de referencia ya muestra que afinar no ayuda.)
+
+### Veredicto
+
+**La hipótesis del plan se confirma sobre el archivo de referencia y se
+refuta sobre los del banco.**
+
+- `NESTING 2.ai`: 1.0 mm/px da **las mismas cifras** que 2.0 (mismo reparto
+  32/4, mismo material, misma tira) por 3.0x el tiempo. Exactamente lo que el
+  plan predecía.
+- `muestra.dxf` x8 y `banqueta` x4: 1.0 mm/px sí compra densidad — 6.5% y 5.1%
+  menos material en la última placa — al precio de 5.9x y 4.7x el tiempo.
+- En **ningún** archivo cambió la cantidad de placas.
+- Afinar no es monótono: 0.5 mm/px sobre el archivo de referencia dio **peor**
+  que 2.0 (31/5 contra 32/4) y 17.6x más lento. La retícula más fina propone
+  candidatos **distintos**, no mejores.
+- Engrosar a 3.0 empata en los dos del banco pero se desploma en el de
+  referencia (29/7 contra 32/4).
+
+Por eso 2.0 se queda: es la rodilla medida. El docstring ya no justifica el
+valor por un compromiso densidad-vs-tiempo debido a la inflación del raster
+(que dejó de existir: la separación la decide `ArbitroExacto` y da 10.00 mm a
+cualquier resolución), sino por lo único que la resolución gobierna hoy, la
+**finura de la búsqueda**.
+
+---
+
+## 4. Niveles de esfuerzo — **tabla sin cambios, nota reescrita**
+
+Contacto 1.0, resolución 2.0.
+
+### `NESTING 2.ai` (mdf15, sep 10, borde 10)
+
+| nivel | reintentos | reparto | mat. última | **alto última** | seg |
+|---|---|---|---|---|---|
+| rapido | 1 | 32 / 4 | 0.1432 m² | 235 mm | 37.7 |
+| normal | 3 | 33 / 3 | 0.1106 m² | 308 mm | 48.3 |
+| lento | 12 | 35 / 1 | 0.1061 m² | 491 mm | 136.2 |
+
+**Este es el hallazgo más nítido de la tarea.** Los reintentos mejoran de
+forma monótona — de 4 piezas varadas a 1 — pero el **alto** de la última placa
+**crece** con cada mejora. Con el costo viejo `(placas, alto)`, 308 mm y
+491 mm puntúan **peor** que 235 mm: `normal` y `lento` encontraban esos
+layouts y después los descartaban. Buena parte del «normal empata con rapido
+en 5 de 7 escenarios» que documentaba `EFFORT_RESTARTS` era eso.
+
+### `muestra.dxf` x8
+
+| nivel | reparto | mat. última | seg |
+|---|---|---|---|
+| rapido | 50 / 46 | 2.1206 m² | 70.1 |
+| normal | 50 / 46 | 2.1206 m² | 132.1 |
+| lento | 50 / 46 | 2.1206 m² | 401.9 |
+
+Idénticos. La regla vieja se sostiene (el esfuerzo rinde cerca de un salto de
+placa y no lejos); lo que cambió es que **cuando rinde, ahora se nota**.
+
+**No cambié la tabla** porque nada de lo que la fijó cambió de signo, y porque
+subir `normal` empeoraría el presupuesto de tiempo sin una ganancia medida que
+lo pague. Sí dejé dicho en el docstring que el objetivo de 5 minutos **no es
+universal**: una sola pasada sobre `banqueta final raulo.ai --copias 5`
+(200 piezas) tarda 450.6 s, así que `normal` ahí se va muy por encima.
+
+---
+
+## 5. Qué cambié, default por default
+
+| Cosa | Antes | Ahora | Por qué |
+|---|---|---|---|
+| `Weights.contact` | 1.0 | **4.0** | §2.5: nunca perdió contra 1.0 en 7 celdas, 5 victorias. Piso de anidado respetado (§2.1). Sin costo en tiempo. |
+| `NestConfig.resolution` | 2.0 | 2.0 | §3: 1.0 compra 5-7% de material en la última al precio de ~5x el tiempo y no cambia placas; 0.5 empeora; 3.0 se desploma en el archivo de referencia. |
+| `NestParams.resolucion` | 2.0 | 2.0 | Idem — no hizo falta tocar `params.py`. |
+| `EFFORT_RESTARTS` | 1/3/12 | 1/3/12 | §4. |
+| `Weights.bottom_left` | 1.0 | 1.0 | No se barrió: es la referencia contra la que se mide el contacto. |
+| Métrica de `bench/calibrate.py` | aprov. 1ª placa | `(placas, material última, seg)` | §6. |
+
+### Prosa reescrita
+
+- `NestConfig.resolution` (`src/nesting/engine/oracle.py`): el docstring
+  justificaba 2.0 por un compromiso densidad-vs-tiempo nacido de la inflación
+  del raster. Eso ya no existe. Ahora dice qué gobierna la resolución hoy
+  (finura de la búsqueda, no separación) y trae la tabla nueva de 10 celdas.
+- `Weights.contact` (mismo archivo): tabla nueva, piso rebisectado, y un
+  párrafo explícito diciendo que **no es una tendencia**.
+- `Weights` (docstring de clase): decía «Calibrated in Task 24».
+- `EFFORT_RESTARTS` (`src/nesting/engine/packer.py`): §4.
+- `docs/superpowers/calibracion.md`: reescrito. La corrida vieja queda como
+  **Anexo** (explica de dónde salió 2.0 mm/px y su razonamiento sigue siendo
+  útil como forma), y arriba va la recalibración con el motor híbrido.
+- `README.md` y `README.es.md`: la promesa («las menos placas y la tira más
+  grande posible») pasa a ser «menos placas → menos material en la última →
+  con la misma cantidad, lo más compactada posible», en la cabecera y en la
+  tabla «Busca»/«Aims for». El párrafo de resultados pasa de tres cifras a
+  cuatro y explica que las dos últimas **compiten**. Cada uno en su idioma.
+  De paso, el badge de tests y la línea de desarrollo pasaron de 856 a 1028 y
+  de ~4 min a ~7 min, que era otra afirmación falsa.
+- `bench/calibrate.py`: docstring de módulo, de los tres barridos y de
+  `_mejor`.
+- `bench/run_bench.py`: docstrings de los dos campos nuevos de `BenchResult`.
+
+---
+
+## 6. El banco medía una cosa y el motor optimizaba otra
+
+`calibrate.py` ordenaba por `first_sheet_utilization`. **Eso ya no es lo que
+el motor persigue**, y no es un detalle teórico: en el barrido de contacto
+sobre `banqueta final raulo.ai` x5, los contactos 0.5 y 0.8 dan
+**exactamente el mismo** aprovechamiento de primera placa (61.00%) y dejan
+0.7809 m² y 0.8591 m² en la última. La métrica vieja no puede distinguirlos;
+el motor sí.
+
+Lo extendí, como el brief autorizaba:
+
+- `BenchResult` suma `material_ultima_m2` y `tira_libre_mm`, sacados de
+  `layout_cost`.
+- Los tres barridos devuelven ahora una fila uniforme
+  `(eje, aprov. 1ª, seg, placas, material última, tira libre)`.
+- `_best_contact` → `_mejor`, que ordena por `(placas, material última,
+  segundos)`: el mismo orden que `layout_cost`. La tira libre **no** entra
+  como criterio: es la cifra que se le muestra al usuario, pero es justo la
+  que la Tarea 1 sacó del segundo lugar.
+- El aprovechamiento de la primera placa **se sigue reportando**: es la única
+  columna con diferencias continuas cuando dos configuraciones empatan en
+  placas.
+
+Corrida real de la herramienta modificada (`--copias 1`, o sea sin desborde;
+sirve como verificación de que funciona y como ilustración de §1 — las 12
+filas dan el mismo material en la última placa):
 
 ```
-$ .venv/bin/pytest tests/geometry/test_nesting_tree.py -v
-============================= test session starts ==============================
-platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: <repo>
-configfile: pyproject.toml
-collected 16 items
+Calibrando sobre 2 archivo(s) (--copias 1): muestra.dxf, banqueta final raulo.ai
 
-tests/geometry/test_nesting_tree.py ................                     [100%]
+PESO DE CONTACTO  (bottom_left fijo en 1.0, esfuerzo rapido, resolucion 2.0 mm/px)
+  contacto  aprov. 1ra placa   seg. medio   placas  mat. ult. m2   tira mm
+--------------------------------------------------------------------------
+       0.0             19.5%          4.5        2        0.9255      1586
+       0.5             19.5%          9.0        2        0.9255      1593
+       1.0             19.5%         11.2        2        0.9255      1594
+       2.0             19.5%         14.8        2        0.9255      1573
+       4.0             19.5%         14.9        2        0.9255      1615
 
-============================== 16 passed in 0.08s ==============================
+-> mejor contacto medido: 0.0
+
+RESOLUCION DEL RASTER  (contact = mejor medido, esfuerzo rapido)
+     mm/px  aprov. 1ra placa   seg. medio   placas  mat. ult. m2   tira mm
+--------------------------------------------------------------------------
+       0.5             19.5%        103.3        2        0.9255      1583
+       1.0             19.5%         21.0        2        0.9255      1579
+       2.0             19.5%          4.7        2        0.9255      1586
+       3.0             19.5%          2.0        2        0.9255      1579
+
+NIVELES DE ESFUERZO  (contact = mejor medido, resolucion 2.0 mm/px)
+     nivel  aprov. 1ra placa   seg. medio   placas  mat. ult. m2   tira mm
+--------------------------------------------------------------------------
+    rapido             19.5%          4.8        2        0.9255      1586
+    normal             19.5%          9.3        2        0.9255      1586
+     lento             19.5%         29.5        2        0.9255      1635
 ```
 
-11 originales (sin modificar) + 5 nuevos = 16 passed.
+---
 
-### `pytest -q` (suite completa)
+## 7. El trabajo de referencia
 
-```
-$ .venv/bin/pytest -v
-============================= test session starts ==============================
-platform darwin -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: <repo>
-configfile: pyproject.toml
-collected 88 items
+`NESTING 2.ai`, mdf15, sep 10, borde 10, `rapido`, 2.0 mm/px:
 
-tests/geometry/test_chaining.py ..........................               [ 29%]
-tests/geometry/test_flatten.py .......................                   [ 55%]
-tests/geometry/test_nesting_tree.py ................                     [ 73%]
-tests/geometry/test_transform.py ...............                         [ 90%]
-tests/model/test_entities.py ......                                      [ 97%]
-tests/test_smoke.py ..                                                   [100%]
+| contacto | placas | reparto | mat. última | tira libre | seg | viol |
+|---|---|---|---|---|---|---|
+| 1.0 (antes) | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 37.5 | 0 |
+| **4.0 (ahora)** | 2 | **34 / 2** | **0.0716 m²** | 2365 mm | 25.4 | 0 |
 
-============================== 88 passed in 0.77s ==============================
-```
-
-(Nota: con `-q` puro este pytest 9.1.1 en este entorno no imprime la línea de
-resumen final "N passed" en la captura de salida, aunque sí imprime los `.` de
-progreso y el exit code es 0 — usé `-v` para confirmar el conteo con la línea
-de resumen visible. 72 preexistentes + 16 de `test_nesting_tree.py` = 88.)
-
-## Verificación manual (`python -c`)
-
-**Caso 1 — repro del hallazgo (debe lanzar):**
+Por la CLI, con los defaults ya cambiados:
 
 ```
-=== Caso 1: repro del desborde (debe lanzar) ===
-OverlappingContourError: Dos contornos se superponen parcialmente en vez de estar uno anidado dentro del otro: el contorno con entity_ids [20] se acepta como agujero del contorno con entity_ids [10], pero una parte de área 75 mm² queda afuera de ese exterior. Zona conflictiva cerca de (32.50, 17.50), dentro del rectángulo aproximado (30.00, 10.00)-(35.00, 25.00). Revisá esos entity_ids en el dibujo original.
+$ .venv/bin/nest "NESTING 2.ai" --material mdf15 --sep 10 --borde 10 \
+      --esfuerzo rapido -o cortado.dxf
+Placa 1/2   aprovechamiento  53.6%
+Placa 2/2   aprovechamiento   1.5%   <- sobrante útil ~1830x2365 mm
+----------------------------------
+36 piezas - 2 placas - 27.6% total - 24.8s
+  material en la última placa: 0.072 m²  ·  tira libre: 2365 mm
 ```
 
-Lanza como se esperaba, con los `entity_ids` (10 y 20 en esta prueba manual)
-y coordenadas aproximadas de la zona conflictiva.
+(El DXF se escribió, o sea que la verificación pasó: el programa no escribe
+uno que no haya verificado.)
 
-**Caso 2 — agujero tangente por borde compartido (NO debe lanzar):**
+El techo del plan sigue lejos: la placa 1 llega al 53.61% contra el 64.4% que
+exigiría una sola placa.
+
+---
+
+## 8. Tests
+
+### Modificados
+
+- `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`:
+  el fixture pasa de 43 a 52 piezas. **Por qué, medido:** con contacto 4.0,
+  43 piezas dan **un solo** layout entre las semillas 1-4 (con 1.0 dan 3), o
+  sea que ninguna perturbación mejora al orden por área y `best` nunca se
+  reemplaza. Con 52 piezas hay **4 layouts distintos entre 4 semillas con los
+  dos pesos**. La aserción (`a.placements != b.placements`) no se ablandó: se
+  corrigió el fixture para que vuelva a estar donde el orden de inserción
+  decide, que es lo que el test dice que prueba.
+- `tests/test_calibration.py::test_the_weight_sweep_respects_the_copies_argument`:
+  desempaquetado posicional adaptado a la fila de 6 columnas. Misma aserción.
+
+### Agregados
+
+- `test_every_sweep_reports_what_the_engine_actually_minimises`: las filas
+  traen material en la última y tira libre.
+- `test_the_best_row_is_picked_with_the_engines_criterion_not_the_first_sheet`:
+  con el orden anterior fallaría.
+- `test_the_best_row_breaks_ties_by_time`.
+
+### La suite, en limpio
 
 ```
-=== Caso 2: agujero tangente por borde compartido (NO debe lanzar) ===
-OK, no lanzo. parts: 1 holes: 1
+$ .venv/bin/python -m pytest
+1028 passed, 22 warnings in 416.62s (0:06:56)
 ```
 
-No lanza, y el agujero tangente se sigue aceptando como agujero de la pieza,
-tal como antes del cambio — confirma que no se rompió el caso que
-`representative_point()` existe para tolerar.
+**No está limpia de warnings.** Las 22 son todas `DeprecationWarning`, de dos
+familias, ninguna introducida por esta tarea:
 
-## Archivos tocados en esta adenda
+| # | Origen | Warning |
+|---|---|---|
+| 20 | Tests propios del proyecto (`tests/io/test_diagnostic.py`, `tests/io/test_preview.py`, `tests/test_cli.py`, `tests/test_icono.py`) | `Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.` |
+| 2 | `fastapi`/`starlette` al importar `TestClient` | `Using httpx with starlette.testclient is deprecated; install httpx2 instead` y `The anyio.abc.BlockingPortal alias is deprecated` |
 
-- `src/nesting/geometry/nesting_tree.py` — agregado `OverlappingContourError`,
-  las constantes de tolerancia y `_assert_hole_is_contained`; una línea nueva
-  dentro de `build_parts` que la invoca. No se tocó la firma de `build_parts`
-  ni `_find_parents`.
-- `tests/geometry/test_nesting_tree.py` — agregados 5 tests al final; los 11
-  originales quedaron intactos.
+Las 20 de Pillow **son del código del proyecto** (sus tests) y se arreglan
+cambiando `getdata()` por `get_flattened_data()`; las 2 restantes son de una
+dependencia. No las toqué: quedan fuera del alcance de esta tarea y meter ese
+cambio acá habría mezclado dos cosas en un commit. El dato relevante es que
+la evidencia de la tarea anterior, tomada con `-p no:warnings`, **ocultaba
+20 warnings del propio proyecto**.
+
+---
+
+## 9. Autorrevisión
+
+- **¿Todos los números de los docstrings están medidos?** Sí. Crucé uno por
+  uno contra las salidas guardadas de cada barrido. Los únicos números no
+  medidos por mí son los que la nota de `EFFORT_RESTARTS` **cita** de la Task
+  19 (46s/81s/317s), y están marcados como suyos.
+- **¿Corriste `test_a_small_part_is_nested_inside_a_big_hole`?** Sí: bisección
+  de 11 valores (§2.1) más el test real en la suite completa, dos veces, con
+  el default nuevo.
+- **¿Quedó prosa falsa?** Barrí «franja más grande» / «largest possible
+  strip» en README, docs, src y bench: cero apariciones. Encontré y corregí de
+  paso el conteo de tests (856 → 1028) y el tiempo de suite (~4 → ~7 min) en
+  los dos README. Dejé a propósito el texto de ayuda de `--resolucion` en
+  `cli.py`, en `web/info.js` y en la tabla de opciones de los README («más
+  fino acomoda un poco mejor y tarda mucho más»): lo medido lo respalda, y
+  cambiarlo desincronizaría el texto de la app con su spec y sus tests.
+- **¿Está limpia la salida de la suite?** No. Ver §8.
+
+---
+
+## 10. Preocupaciones
+
+1. **La elección de `contact = 4.0` descansa sobre una respuesta caótica.**
+   4.0 no perdió nunca contra 1.0 en 7 celdas, y eso es lo mejor que tengo,
+   pero 2.0 es peor que sus dos vecinos y 8.0/16.0 son peores que 4.0: el
+   mecanismo no tiene pendiente. Si aparece un archivo nuevo, hay que
+   remedir. Lo que **no** cambiaría es la parte sólida: por debajo de 0.7 se
+   rompe el anidado en agujeros.
+2. **0.8 quedó como segundo candidato vivo**, no descartado: gana en dos
+   celdas. No lo elegí porque pierde en cuatro.
+3. **`calibrate.py` sigue sin poder usar copias distintas por archivo**, que
+   es lo que hace falta para que sus números discriminen. Con `--copias N`
+   único, o un archivo no desborda o el otro tarda una eternidad. No lo
+   arreglé (agregar ese flag es un cambio de interfaz que no pedía el brief),
+   pero es la razón por la que las mediciones de este informe no salieron de
+   la herramienta.
+4. **No medí 0.5 mm/px sobre los dos archivos del banco.** A 1.0 ya tardaban
+   413 s y 1077 s por celda. La conclusión sobre 0.5 se apoya sólo en el
+   archivo de referencia (donde salió peor y 17.6x más lento).
+5. **Los 20 warnings de Pillow son del proyecto** y siguen ahí.
+
+---
+
+## Arreglo: tres defectos de prosa en la calibración
+
+Revisión de la Tarea 6 encontró tres defectos "Importante", los tres del
+mismo tipo: un número o una afirmación en un docstring que la propia
+evidencia de este informe no sostiene tal como estaba escrita. Ningún
+valor calibrado cambió (`Weights.contact` sigue en 4.0, `NestConfig.resolution`
+en 2.0, `EFFORT_RESTARTS` en 1/3/12); sólo se corrigió lo que la prosa dice
+sobre esos valores.
+
+### Hallazgo 1 — la ventaja de velocidad, mal repartida entre 0.0 y 0.5
+
+`src/nesting/engine/oracle.py`, punto 1 del docstring de `Weights.contact`.
+La tabla del §2.5 del informe (arriba) muestra que 0.5 tarda prácticamente
+lo mismo que 4.0 sobre el archivo de referencia (25.9 s contra 25.4 s), y
+el propio punto 2 del docstring explica por qué: el costo de la
+correlación FFT de contacto se paga o no según `contact != 0.0`, no según
+la magnitud del peso. Sólo 0.0 evita ese costo. El texto anterior le
+atribuía la ventaja de velocidad a los dos valores por igual.
+
+**Antes:**
+> Así que 0.0 y 0.5 quedan descartados por más que sean 1.6-4.8x más
+> rápidos y ganen en algunos archivos: bottom-left solo gana el argmax y
+> la pieza chica se planta en el fondo-izquierda de la placa vacía.
+
+**Después:**
+> Así que 0.0 y 0.5 quedan descartados por el mismo piso: bottom-left solo
+> gana el argmax y la pieza chica se planta en el fondo-izquierda de la
+> placa vacía. La ventaja de velocidad es sólo de 0.0 -- 1.6-4.8x más
+> rápido y gana el barrido en dos de los tres archivos -- porque el costo
+> de la correlación FFT de contacto se paga o no según `contact != 0.0`
+> (punto 2 más abajo), no según su magnitud: 0.5 tarda prácticamente lo
+> mismo que 4.0 (25.9 s contra 25.4 s sobre el archivo de referencia).
+
+`docs/superpowers/calibracion.md` ya tenía la afirmación bien acotada a
+0.0 (línea 101-103 tras el arreglo) y no necesitó cambios.
+
+### Hallazgo 2 — "48 piezas" citadas como el fixture, cuando el fixture tiene 52
+
+`src/nesting/engine/oracle.py` (punto 4 del docstring de `Weights.contact`)
+y `docs/superpowers/calibracion.md` (sección "Un caso sintético donde sí
+decidió placas") describían la evidencia de la única celda donde el peso
+cambió placas como "el fixture de
+`test_different_seeds_can_give_different_results`... con 48 piezas". El
+fixture, tal como está commiteado hoy, tiene 52 piezas
+(`tests/engine/test_effort.py:171`, `range(52)`), y su propio docstring
+explica por qué: 52 es la cantidad que sigue siendo sensible a la semilla
+con los dos pesos (contacto 1.0 y 4.0 dan 4 layouts distintos entre 4
+semillas). 48 no aparece en ningún otro lado del informe.
+
+**No pude establecer, a partir de lo que quedó registrado en este informe,
+si la corrida de 48 piezas reproduce el mismo resultado (1 placa contra 2)
+sobre las 52 piezas del fixture final.** Lo que sí está bien establecido:
+material (1000x1000), sep (8) y borde (15) de la corrida de 48 coinciden
+exactamente con `base_config` del fixture (`tests/engine/test_effort.py:29`),
+así que es una muestra generada con el mismo patrón de piezas que el
+fixture, no un archivo distinto -- pero con una cantidad de piezas que ya
+no es la que quedó commiteada. Los scripts puntuales de la sesión
+(`scratchpad/semillas.py` y similares) no sobrevivieron al cierre de la
+sesión que los corrió, así que no hay forma de re-verificar la corrida de
+48 sin remedir, y este arreglo tiene explícitamente prohibido remedir. Por
+eso el docstring deja la pregunta abierta en vez de adivinar una respuesta.
+
+**Antes** (`oracle.py`, punto 4):
+> UNA VEZ SÍ DECIDIÓ PLACAS, en un caso sintético justo en el quiebre: 48
+> rectángulos variados (el fixture de
+> `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`,
+> material de 1000x1000, sep 8, borde 15, esfuerzo normal) entran en UNA
+> placa con contacto 4.0 y semillas 1 o 2, y necesitan DOS con contacto 1.0
+> con las cuatro semillas probadas. Es un fixture sintético, no un archivo
+> real, pero es la única celda medida donde este peso cambió lo que le
+> cuesta al usuario.
+
+**Después** (`oracle.py`, punto 4):
+> UNA VEZ SÍ DECIDIÓ PLACAS, en un caso sintético justo en el quiebre: 48
+> rectángulos variados, generados con el mismo patrón que el fixture de
+> `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+> (mismo material de 1000x1000, sep 8, borde 15, esfuerzo normal) -- NO es
+> el fixture tal como quedó en el repo, que tiene 52 piezas, elegidas por
+> una razón distinta (que la Tarea 6 documenta en el docstring del propio
+> test: que la salida siga siendo sensible a la semilla con los dos pesos).
+> No quedó establecido, a partir de lo medido en la Tarea 6, si esta
+> corrida de 48 sigue dando el mismo resultado sobre el fixture de 52
+> piezas que terminó commiteado; lo que sí está medido es que estas 48
+> piezas entran en UNA placa con contacto 4.0 y semillas 1 o 2, y necesitan
+> DOS con contacto 1.0 en las cuatro semillas probadas. Es una muestra
+> sintética, no un archivo real, pero es la única celda medida donde este
+> peso cambió lo que le cuesta al usuario.
+
+`docs/superpowers/calibracion.md` recibió el mismo arreglo en su sección
+correspondiente (antes: "El fixture de
+`test_different_seeds_can_give_different_results`... con 48 piezas";
+después: "48 rectángulos variados, generados con el mismo patrón que el
+fixture de... -- **no** es el fixture tal como quedó commiteado, que tiene
+52 piezas... No quedó establecido si esta corrida de 48 piezas reproduce
+el mismo resultado sobre las 52 del fixture final").
+
+### Hallazgo 3 — la tabla de `EFFORT_RESTARTS` no decía a qué peso de contacto se midió
+
+`src/nesting/engine/packer.py`, nota de `EFFORT_RESTARTS`. La tabla de
+reintentos por nivel de esfuerzo (§4 del informe) se midió con
+`contact = 1.0`, el peso vigente mientras corría esa parte de la Tarea 6,
+antes de que la misma tarea recalibrara el default a 4.0. La nota no lo
+decía, a diferencia de la nota vecina de `Weights.contact` en `oracle.py`,
+que sí dice "MEDIDO EN LA TAREA 6 (contacto 1.0...)". Peor que la omisión:
+hay evidencia directa, en el propio commit, de que el peso nuevo puede
+cambiar lo que valen los reintentos.
+`tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+(líneas 157-163) registra que sobre las mismas 43 piezas que antes usaba
+el fixture, subir contacto de 1.0 a 4.0 colapsó 3 layouts distintos entre
+4 semillas a uno solo -- ninguna perturbación del orden de inserción
+mejoraba al orden por área, así que el mejor de N intentos nunca se
+reemplazaba. Eso es exactamente lo que hacen los reintentos de `normal` y
+`lento`. No se remidió la tabla de esfuerzo con contacto 4.0, así que no
+hay evidencia de si eso mismo pasa sobre archivos reales; se dejó dicho
+como pregunta abierta, no como conclusión.
+
+**Antes:**
+> Sobre `NESTING 2.ai` (mdf15, sep 10, borde 10, 2.0 mm/px), medido en la
+> Tarea 6:
+>
+> | nivel  | reparto | material última | alto última | seg   |
+> |--------|---------|-----------------|-------------|-------|
+> | rapido | 32 / 4  | 0.1432 m²       | 235 mm      | 37.7  |
+> | normal | 33 / 3  | 0.1106 m²       | 308 mm      | 48.3  |
+> | lento  | 35 / 1  | 0.1061 m²       | 491 mm      | 136.2 |
+>
+> [...]
+>
+> CUÁNDO SIGUE SIN COMPRAR NADA. [...] Lo que cambió es que ahora, cuando
+> rinde, se nota.
+>
+> EL PRESUPUESTO DE 5 MINUTOS, HONESTAMENTE. [...]
+
+**Después** (dos cambios: la frase que abre la tabla, y un párrafo nuevo
+entre "CUÁNDO SIGUE SIN COMPRAR NADA" y "EL PRESUPUESTO DE 5 MINUTOS"):
+> Sobre `NESTING 2.ai` (mdf15, sep 10, borde 10, 2.0 mm/px), medido en la
+> Tarea 6 con `contact = 1.0` -- el peso vigente mientras se corrió este
+> barrido, antes de que la misma Tarea 6 lo recalibrara a 4.0 (ver
+> `Weights.contact` en `oracle.py`):
+>
+> [misma tabla]
+>
+> [...]
+>
+> CUÁNDO SIGUE SIN COMPRAR NADA. [...] Lo que cambió es que ahora, cuando
+> rinde, se nota.
+>
+> LO QUE ESTA TABLA NO RESPONDE. Todo lo de arriba -- la tabla de la Tarea
+> 6 y la de la Task 19 con la que se compara -- se midió con
+> `contact = 1.0`. Esta misma Tarea 6 deja de usar ese valor: el default
+> pasa a 4.0. El barrido de esfuerzo NO se volvió a correr con
+> `contact = 4.0`, y hay una razón concreta para sospechar que el
+> resultado podría no ser el mismo. En
+> `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+> (líneas 157-163 de ese archivo), subir contacto de 1.0 a 4.0 sobre las
+> mismas 43 piezas colapsó 3 layouts distintos entre 4 semillas a UNO
+> SOLO: ninguna perturbación del orden de inserción mejoraba al orden por
+> área, así que `best` nunca se reemplazaba. Eso es exactamente lo que los
+> reintentos de `normal` y `lento` son -- perturbaciones del orden de
+> inserción de las que se conserva la mejor -- así que si `contact = 4.0`
+> aplana el espacio de búsqueda de la misma manera sobre archivos reales,
+> los reintentos podrían estar comprando menos de lo que dice la tabla de
+> arriba. No hay medición en ningún sentido: ni que lo confirme ni que lo
+> descarte. La tabla y la conclusión "nada cambió de signo" quedan tal
+> cual porque no hay evidencia para moverlas, no porque se haya verificado
+> que siguen valiendo a `contact = 4.0`.
+>
+> EL PRESUPUESTO DE 5 MINUTOS, HONESTAMENTE. [...]
+
+### Verificación
+
+```
+$ .venv/bin/python -m pytest tests/engine/test_effort.py tests/test_calibration.py tests/engine/raster/test_raster_oracle.py
+41 passed in 375.62s (0:06:15)
+```
+
+```
+$ grep -n "48" src/nesting/engine/oracle.py docs/superpowers/calibracion.md
+```
+Las únicas apariciones de "48" en esos dos archivos son, ahora, las que
+explican por qué esa cantidad **no** es el fixture commiteado (52 piezas);
+ninguna la sigue llamando "el fixture".
+
+No se tocó `src/nesting/geometry/verify.py`, ningún test se debilitó, y
+`Weights.contact`, `NestConfig.resolution` y `EFFORT_RESTARTS` quedaron con
+los mismos valores.

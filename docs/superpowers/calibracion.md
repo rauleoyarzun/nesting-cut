@@ -203,18 +203,23 @@ no del peso.
 
 ### Un caso sintético donde sí decidió placas
 
-El fixture de
+48 rectángulos variados, generados con el mismo patrón que el fixture de
 `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
-(rectángulos variados, material 1000x1000, sep 8, borde 15, esfuerzo
-`normal`), con 48 piezas:
+(mismo material 1000x1000, sep 8, borde 15, esfuerzo `normal`) — **no** es
+el fixture tal como quedó commiteado, que tiene 52 piezas, elegidas por una
+razón distinta (que la salida siga siendo sensible a la semilla con los dos
+pesos; ver el docstring del propio test). No quedó establecido si esta
+corrida de 48 piezas reproduce el mismo resultado sobre las 52 del fixture
+final — no se remidió sobre 52 antes de cerrar la tarea:
 
 | contacto | semilla 1 | semilla 2 | semilla 3 | semilla 4 |
 |---|---|---|---|---|
 | 1.0 | 2 placas | 2 placas | 2 placas | 2 placas |
 | 4.0 | **1 placa** | **1 placa** | 2 placas | 2 placas |
 
-Es sintético, pero es la única celda medida donde este peso cambió lo que le
-cuesta al usuario.
+Es sintético, no un archivo real, pero es la única celda medida donde este
+peso cambió lo que le cuesta al usuario — con la salvedad de la cantidad de
+piezas, arriba.
 
 ### Lo que NO dicen estas tablas
 

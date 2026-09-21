@@ -50,10 +50,14 @@ class Weights:
        `test_a_small_part_is_nested_inside_a_big_hole`, la pieza chica deja
        de caer en el agujero de la grande con contacto en {0.0, 0.25, 0.5,
        0.6} y vuelve a caer desde 0.7 en adelante (antes el corte estaba
-       entre 0.7 y 0.8). Así que 0.0 y 0.5 quedan descartados por más que
-       sean 1.6-4.8x más rápidos y ganen en algunos archivos: bottom-left
-       solo gana el argmax y la pieza chica se planta en el fondo-izquierda
-       de la placa vacía.
+       entre 0.7 y 0.8). Así que 0.0 y 0.5 quedan descartados por el mismo
+       piso: bottom-left solo gana el argmax y la pieza chica se planta en
+       el fondo-izquierda de la placa vacía. La ventaja de velocidad es sólo
+       de 0.0 -- 1.6-4.8x más rápido y gana el barrido en dos de los tres
+       archivos -- porque el costo de la correlación FFT de contacto se paga
+       o no según `contact != 0.0` (punto 2 más abajo), no según su
+       magnitud: 0.5 tarda prácticamente lo mismo que 4.0 (25.9 s contra
+       25.4 s sobre el archivo de referencia).
 
     2. ENTRE LOS QUE PASAN EL PISO, 4.0 NUNCA PERDIÓ CONTRA 1.0. Siete
        celdas, repartidas entre tres archivos, dos materiales, tres niveles
@@ -91,13 +95,21 @@ class Weights:
        veces quedó adelante, no el que sigue una pendiente.
 
     4. UNA VEZ SÍ DECIDIÓ PLACAS, en un caso sintético justo en el quiebre:
-       48 rectángulos variados (el fixture de
-       `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`,
-       material de 1000x1000, sep 8, borde 15, esfuerzo normal) entran en
-       UNA placa con contacto 4.0 y semillas 1 o 2, y necesitan DOS con
-       contacto 1.0 con las cuatro semillas probadas. Es un fixture
-       sintético, no un archivo real, pero es la única celda medida donde
-       este peso cambió lo que le cuesta al usuario.
+       48 rectángulos variados, generados con el mismo patrón que el fixture
+       de
+       `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+       (mismo material de 1000x1000, sep 8, borde 15, esfuerzo normal) --
+       NO es el fixture tal como quedó en el repo, que tiene 52 piezas,
+       elegidas por una razón distinta (que la Tarea 6 documenta en el
+       docstring del propio test: que la salida siga siendo sensible a la
+       semilla con los dos pesos). No quedó establecido, a partir de lo
+       medido en la Tarea 6, si esta corrida de 48 sigue dando el mismo
+       resultado sobre el fixture de 52 piezas que terminó commiteado; lo
+       que sí está medido es que estas 48 piezas entran en UNA placa con
+       contacto 4.0 y semillas 1 o 2, y necesitan DOS con contacto 1.0 en
+       las cuatro semillas probadas. Es una muestra sintética, no un archivo
+       real, pero es la única celda medida donde este peso cambió lo que le
+       cuesta al usuario.
 
     Por eso 4.0 y no más: es el mejor medido, es el máximo del rango
     barrido que todavía mejora, y el escalón siguiente ya empeora.
