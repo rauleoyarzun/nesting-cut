@@ -1246,3 +1246,27 @@ Task 5: completa (commits db89a8f..9d34add, revisión limpia, CERO hallazgos).
       0 llega a a_supply, produce un Sheet de área cero y de ahí a oracle.reset(0, h)
       y a divisiones por el área de la placa. HAY QUE VERIFICAR QUE LA CADENA SIGA
       INTACTA.
+Task 6: completa (commits 625d7d5..7f20777, revisión limpia, CERO hallazgos).
+  corredor.acomodar arma el plan con a_supply(params, material); Resultado gana
+  recortes_usados calculado por el motor; la API lo serializa. 1082 passed.
+  A partir de acá un recorte llega DE VERDAD al motor.
+  El encargo que dejó la tarea 5 quedó resuelto: el revisor leyó jobs.py entero y
+  confirmó que no hay reintento, reencolado ni recuperación que reconstruya params;
+  que el único llamador de corredor.acomodar es api.py vía registro.crear; y que
+  NestParams es frozen con recortes como tupla de Recorte también frozen, sin
+  ninguna lista mutable adentro.
+  >>> RESPUESTA EMPÍRICA A LA PREGUNTA DEL RECORTE INVÁLIDO: el revisor construyó
+      NestParams con Recorte(0.0, 700.0), ancho negativo, cantidad 0 y 0x0, y llamó a
+      corredor.acomodar SALTEANDO la API. En los cuatro casos: sin excepción y con
+      resultado correcto (placas=1, recortes_usados=0, la pieza en la placa de stock).
+      La razón es la guarda de _pack_once que ya existía: en una placa donde no entra
+      nada y todavía quedan posiciones de recorte por consumir, la placa se saltea y
+      no llega a existir en el resultado. Un recorte de área cero cae justo ahí, así
+      que nunca se cuenta como usado ni corrompe total_utilization. O sea: la
+      degradación es silenciosa (el recorte inválido se ignora sin aviso) pero NO hay
+      resultado equivocado ni excepción fea. El riesgo que arrastrábamos desde la
+      tarea 5 queda acotado.
+  NO ES UN HALLAZGO, está documentado y es deliberado: RecorteEntrada declara
+  ancho/alto como float pelado sin Field(gt=0). El docstring de ParamsEntrada dice que
+  Pydantic sólo verifica tipos y que las reglas de rango viven en validar(), que es el
+  mismo código que corre la CLI. Una sola fuente de verdad para la regla.
