@@ -179,7 +179,7 @@ def test_la_recuperacion_no_acepta_un_layout_mas_caro():
     )
 
     salida = _recuperar_de_la_ultima_placa(
-        entrada, [grande, chica], CONFIG, ShelfOracle, None
+        entrada, [grande, chica], CONFIG, ShelfOracle, "mdf18"
     )
 
     assert layout_cost(salida, [grande, chica]) <= layout_cost(

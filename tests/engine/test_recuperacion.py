@@ -65,7 +65,7 @@ def test_una_pieza_de_la_ultima_placa_vuelve_a_la_primera_si_entra():
     assert [p.sheet for p in goloso.placements if p.part_id == ANGOSTA.id] == [1]
 
     recuperado = _recuperar_de_la_ultima_placa(
-        goloso, TRES, CONFIG, ShelfOracle
+        goloso, TRES, CONFIG, ShelfOracle, PLACA.name
     )
 
     assert [p.sheet for p in recuperado.placements if p.part_id == ANGOSTA.id] == [0]
@@ -86,7 +86,7 @@ def test_si_la_ultima_placa_queda_vacia_se_descarta():
     assert goloso.sheets_used == 2
 
     recuperado = _recuperar_de_la_ultima_placa(
-        goloso, TRES, CONFIG, ShelfOracle
+        goloso, TRES, CONFIG, ShelfOracle, PLACA.name
     )
 
     assert recuperado.sheets_used == 1
@@ -143,7 +143,7 @@ def test_la_recuperacion_nunca_empeora_el_costo():
             multiplaca += 1
 
             despues = _recuperar_de_la_ultima_placa(
-                antes, parts, config, factory
+                antes, parts, config, factory, material.name
             )
 
             caso = (motor, seed)

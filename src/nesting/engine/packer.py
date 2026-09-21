@@ -522,11 +522,12 @@ def pack(
             raise Cancelado("el trabajo se canceló")
 
     best = _recuperar_de_la_ultima_placa(
-        best, parts, config, oracle_factory,
+        best, parts, config, oracle_factory, supply.material_name,
         aviso_recuperacion if progreso is not None else None,
-        supply,
     )
-    best = _compact_last_sheet(best, parts, config, oracle_factory, supply)
+    best = _compact_last_sheet(
+        best, parts, config, oracle_factory, supply.material_name
+    )
     best.seconds = time.perf_counter() - started
     return best
 
@@ -547,10 +548,16 @@ def _recuperar_de_la_ultima_placa(
     parts: Sequence[Part],
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
+    material_name: str,
     aviso: Callable[[int, int], None] | None = None,
-    supply: SheetSupply | None = None,
 ) -> PackResult:
     """Reintentar en las placas anteriores lo que quedó en la última.
+
+    `material_name` es obligatorio y sólo sirve para el mensaje de un
+    `PartTooLargeError`: el `SheetSupply` de una sola placa que se arma acá
+    abajo lo lleva. Es un `str` y no el `SheetSupply` entero porque es lo
+    único que se usa de él, y no tiene default para que un llamador nuevo no
+    pueda olvidárselo en silencio.
 
     `aviso` se reenvía tal cual a cada `_pack_once` interno -- misma forma
     que la de `_pack_once`, ver su docstring -- así que puede levantar para
@@ -618,13 +625,6 @@ def _recuperar_de_la_ultima_placa(
     if result.sheets_used < 2:
         return result
 
-    # El `SheetSupply` de una sola placa que se arma abajo tiene que llevar
-    # el nombre del material: un `PartTooLargeError` que salga de ahí lo
-    # nombra. `pack` siempre pasa el suyo; sin él queda el nombre genérico.
-    nombre_material = (
-        SheetSupply.material_name if supply is None else supply.material_name
-    )
-
     by_id = {p.id: p for p in parts}
     ultima = result.sheets_used - 1
     en_ultima = [p for p in result.placements if p.sheet == ultima]
@@ -655,7 +655,7 @@ def _recuperar_de_la_ultima_placa(
                     orden,
                     SheetSupply(
                         stock=result.sheets[placa],
-                        material_name=nombre_material,
+                        material_name=material_name,
                     ),
                     config,
                     oracle_factory,
@@ -743,9 +743,14 @@ def _compact_last_sheet(
     parts: Sequence[Part],
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
-    supply: SheetSupply | None = None,
+    material_name: str,
 ) -> PackResult:
-    """Re-pack the last sheet on its own, pulled harder towards the corner."""
+    """Re-pack the last sheet on its own, pulled harder towards the corner.
+
+    `material_name` es obligatorio y sólo nombra el material en un eventual
+    `PartTooLargeError`; ver el docstring de
+    `_recuperar_de_la_ultima_placa`, que lo recibe igual y por lo mismo.
+    """
     if result.sheets_used < 1:
         return result
 
@@ -759,9 +764,6 @@ def _compact_last_sheet(
     # mano con `sheets` vacío tiene que salir por ese `return`, no reventar
     # con `IndexError` dos líneas antes.
     hoja = result.sheets[last]
-    nombre_material = (
-        SheetSupply.material_name if supply is None else supply.material_name
-    )
 
     boosted = replace(
         config,
@@ -774,7 +776,7 @@ def _compact_last_sheet(
     try:
         redone = _pack_once(
             order,
-            SheetSupply(stock=hoja, material_name=nombre_material),
+            SheetSupply(stock=hoja, material_name=material_name),
             boosted,
             oracle_factory,
         )
