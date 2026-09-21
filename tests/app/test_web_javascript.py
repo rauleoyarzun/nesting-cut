@@ -1537,3 +1537,7 @@ def test_aria_expanded_va_al_boton_y_con_el_valor_correcto(js_info):
         r"""\s*["']aria-expanded["']\s*,\s*["']false["']\s*,?\s*\)""",
         cerrar,
     ), "cerrar() no le anuncia al botón aria-expanded en false"
+
+
+def test_el_campo_de_resolucion_arranca_en_uno(html):
+    assert re.search(r'id="resolucion"[^>]*value="1"', html)

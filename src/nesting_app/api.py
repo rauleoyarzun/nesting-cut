@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from nesting.model.material import Material
-from nesting.params import NestParams, ParamsInvalidosError, validar
+from nesting.params import NestParams, ParamsInvalidosError, Recorte, validar
 from nesting_app import corredor, materials_store, rutas
 from nesting_app.archivos import (
     Deposito,
@@ -70,6 +70,21 @@ class RutaLocal(BaseModel):
     ruta: str
 
 
+class RecorteEntrada(BaseModel):
+    ancho: float
+    alto: float
+    cantidad: int = 1
+    veta_cruzada: bool = False
+
+    def a_recorte(self) -> Recorte:
+        return Recorte(
+            ancho=self.ancho,
+            alto=self.alto,
+            cantidad=self.cantidad,
+            veta_cruzada=self.veta_cruzada,
+        )
+
+
 class PedidoAnalisis(BaseModel):
     fuente_id: str
     unidades: str | None = None
@@ -92,8 +107,9 @@ class ParamsEntrada(BaseModel):
     espejo: bool = True
     unidades: str | None = None
     tol_cierre: float = 0.1
-    resolucion: float = 2.0
+    resolucion: float = 1.0
     esfuerzo: str = "normal"
+    recortes: list[RecorteEntrada] = Field(default_factory=list)
 
     def a_params(self) -> NestParams:
         return NestParams(
@@ -107,6 +123,7 @@ class ParamsEntrada(BaseModel):
             tol_cierre=self.tol_cierre,
             resolucion=self.resolucion,
             esfuerzo=self.esfuerzo,
+            recortes=tuple(r.a_recorte() for r in self.recortes),
         )
 
 

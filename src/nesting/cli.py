@@ -392,7 +392,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--tol-cierre", type=float, default=DEFAULT_CHAIN_TOL,
                         dest="tol_cierre",
                         help="tolerancia para unir extremos de contornos, en mm")
-    parser.add_argument("--resolucion", type=float, default=2.0, dest="resolucion",
+    parser.add_argument("--resolucion", type=float, default=1.0, dest="resolucion",
                         help="resolución del raster, en mm por píxel: más fino "
                              "acomoda un poco mejor pero tarda mucho más")
     parser.add_argument("--esfuerzo", choices=sorted(EFFORT_RESTARTS), default="normal",

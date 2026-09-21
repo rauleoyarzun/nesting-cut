@@ -14,9 +14,27 @@ contarla.
 from dataclasses import dataclass
 
 from nesting.engine.oracle import NestConfig
+from nesting.model.material import Material
+from nesting.model.sheet import Sheet, SheetSupply
 from nesting.tolerances import DEFAULT_CHAIN_TOL
 
 DEFAULT_ANGLES: tuple[float, ...] = (0.0, 90.0, 180.0, 270.0)
+
+
+@dataclass(frozen=True)
+class Recorte:
+    """Un pedazo que sobró, para la corrida que viene y nada más.
+
+    No es una entrada del catálogo: el catálogo describe lo que se compra,
+    que se repite igual cada vez, y un recorte es de a uno y deja de existir
+    cuando se cortó.
+    """
+
+    ancho: float
+    alto: float
+    cantidad: int = 1
+    veta_cruzada: bool = False
+    """La veta de este pedazo corre a lo ancho y no a lo alto."""
 
 
 @dataclass(frozen=True)
@@ -31,8 +49,9 @@ class NestParams:
     espejo: bool = True
     unidades: str | None = None
     tol_cierre: float = DEFAULT_CHAIN_TOL
-    resolucion: float = 2.0
+    resolucion: float = 1.0
     esfuerzo: str = "normal"
+    recortes: tuple[Recorte, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -77,11 +96,29 @@ def validar(p: NestParams) -> None:
         raise ParamsInvalidosError(ReglaRota("tol_cierre", "> 0", p.tol_cierre))
     if p.resolucion <= 0:
         raise ParamsInvalidosError(ReglaRota("resolucion", "> 0", p.resolucion))
+    for indice, recorte in enumerate(p.recortes, start=1):
+        if recorte.ancho <= 0:
+            raise ParamsInvalidosError(
+                ReglaRota(f"recorte {indice}: ancho", "> 0", recorte.ancho)
+            )
+        if recorte.alto <= 0:
+            raise ParamsInvalidosError(
+                ReglaRota(f"recorte {indice}: alto", "> 0", recorte.alto)
+            )
+        if recorte.cantidad < 1:
+            raise ParamsInvalidosError(
+                ReglaRota(f"recorte {indice}: cantidad", ">= 1", recorte.cantidad)
+            )
 
 
 def mensaje_cli(rota: ReglaRota) -> str:
-    """La redacción de terminal, con el nombre del flag adentro."""
-    return f"{FLAG_POR_CAMPO[rota.campo]} tiene que ser {rota.regla}, se recibió {rota.valor}"
+    """La redacción de terminal, con el nombre del flag adentro.
+
+    Un campo sin flag -- los recortes, que sólo se cargan desde la interfaz
+    -- se nombra tal cual en vez de romper con KeyError.
+    """
+    nombre = FLAG_POR_CAMPO.get(rota.campo, rota.campo)
+    return f"{nombre} tiene que ser {rota.regla}, se recibió {rota.valor}"
 
 
 def a_config(p: NestParams) -> NestConfig:
@@ -93,4 +130,30 @@ def a_config(p: NestParams) -> NestConfig:
         mirror=p.espejo,
         resolution=p.resolucion,
         effort=p.esfuerzo,
+    )
+
+
+def a_supply(p: NestParams, material: Material) -> SheetSupply:
+    """Arma el plan de placas: los recortes primero, la del Material después.
+
+    Se ordenan de mayor a menor sin importar en qué orden se cargaron. Meter
+    el grande primero evita que una pieza mediana quede varada porque el
+    motor gastó el único recorte que la aceptaba en algo chico.
+    """
+    hojas = [
+        Sheet(
+            width=recorte.ancho,
+            height=recorte.alto,
+            grain_tolerance=material.grain_tolerance,
+            cross_grain=recorte.veta_cruzada,
+            scrap=True,
+        )
+        for recorte in p.recortes
+        for _ in range(recorte.cantidad)
+    ]
+    hojas.sort(key=lambda hoja: hoja.area, reverse=True)
+    return SheetSupply(
+        stock=material.stock_sheet(),
+        scraps=tuple(hojas),
+        material_name=material.name,
     )

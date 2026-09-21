@@ -236,3 +236,23 @@ def test_el_diagnostico_existe_aunque_el_trabajo_falle(cliente, tmp_path):
     esperar(cliente, trabajo_id, {"error"})
 
     assert cliente.get(f"/api/trabajos/{trabajo_id}/diagnostico.png").status_code == 200
+
+
+def test_la_resolucion_por_omision_de_la_api_es_uno():
+    from nesting_app.api import ParamsEntrada
+
+    assert ParamsEntrada(material="mdf18").a_params().resolucion == 1.0
+
+
+def test_los_recortes_llegan_al_params():
+    from nesting_app.api import ParamsEntrada
+
+    entrada = ParamsEntrada(
+        material="mdf18",
+        recortes=[{"ancho": 600.0, "alto": 800.0, "cantidad": 2, "veta_cruzada": True}],
+    )
+    recortes = entrada.a_params().recortes
+
+    assert len(recortes) == 1
+    assert recortes[0].cantidad == 2
+    assert recortes[0].veta_cruzada is True

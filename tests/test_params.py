@@ -2,14 +2,21 @@
 
 import pytest
 
+from nesting.model.material import Material
 from nesting.params import (
     FLAG_POR_CAMPO,
     NestParams,
     ParamsInvalidosError,
+    Recorte,
+    ReglaRota,
     a_config,
+    a_supply,
     mensaje_cli,
     validar,
 )
+
+MDF = Material("mdf18", 1830.0, 2600.0, grain_tolerance=180.0)
+FENOLICO = Material("fenolico18", 1220.0, 2440.0, grain_tolerance=5.0)
 
 
 def p(**cambios):
@@ -118,3 +125,88 @@ def test_importar_los_parametros_no_arrastra_el_motor():
     ).stdout.strip()
 
     assert salida == "", f"nesting.params arrastró: {salida}"
+
+
+def test_la_resolucion_por_omision_es_uno():
+    assert NestParams(material="mdf18").resolucion == 1.0
+
+
+def test_sin_recortes_el_plan_es_una_sola_placa_infinita():
+    plan = a_supply(NestParams(material="mdf18"), MDF)
+
+    assert plan.scraps == ()
+    assert plan.sheet(0) == plan.sheet(5) == MDF.stock_sheet()
+    assert plan.material_name == "mdf18"
+
+
+def test_la_cantidad_se_expande_a_una_placa_por_unidad():
+    params = NestParams(material="mdf18", recortes=(Recorte(600.0, 800.0, cantidad=3),))
+    plan = a_supply(params, MDF)
+
+    assert len(plan.scraps) == 3
+    assert all(h.width == 600.0 and h.height == 800.0 for h in plan.scraps)
+    assert all(h.scrap for h in plan.scraps)
+
+
+def test_los_recortes_se_ordenan_de_mayor_a_menor():
+    """Si el chico fuera primero, una pieza mediana que sólo entra en el
+    grande podría quedar varada porque el grande se llenó de piezas que
+    también entraban en el chico."""
+    params = NestParams(
+        material="mdf18",
+        recortes=(Recorte(300.0, 300.0), Recorte(900.0, 900.0), Recorte(600.0, 600.0)),
+    )
+    plan = a_supply(params, MDF)
+
+    assert [h.width for h in plan.scraps] == [900.0, 600.0, 300.0]
+
+
+def test_los_recortes_heredan_la_veta_del_material():
+    params = NestParams(material="fenolico18", recortes=(Recorte(600.0, 800.0),))
+    plan = a_supply(params, FENOLICO)
+
+    assert plan.scraps[0].grain_tolerance == 5.0
+    assert plan.scraps[0].cross_grain is False
+
+
+def test_la_veta_cruzada_viaja_al_plan():
+    params = NestParams(
+        material="fenolico18", recortes=(Recorte(600.0, 800.0, veta_cruzada=True),)
+    )
+    assert a_supply(params, FENOLICO).scraps[0].cross_grain is True
+
+
+def test_un_recorte_mas_grande_que_la_placa_se_acepta():
+    params = NestParams(material="mdf18", recortes=(Recorte(3000.0, 3000.0),))
+    assert a_supply(params, MDF).scraps[0].width == 3000.0
+
+
+@pytest.mark.parametrize("recorte, campo, regla", [
+    (Recorte(0.0, 800.0), "recorte 1: ancho", "> 0"),
+    (Recorte(600.0, -1.0), "recorte 1: alto", "> 0"),
+    (Recorte(600.0, 800.0, cantidad=0), "recorte 1: cantidad", ">= 1"),
+])
+def test_validar_rechaza_un_recorte_invalido(recorte, campo, regla):
+    with pytest.raises(ParamsInvalidosError) as capturado:
+        validar(NestParams(material="mdf18", recortes=(recorte,)))
+
+    assert capturado.value.rota.campo == campo
+    assert capturado.value.rota.regla == regla
+
+
+def test_el_error_dice_cual_de_la_lista():
+    params = NestParams(
+        material="mdf18", recortes=(Recorte(600.0, 800.0), Recorte(0.0, 800.0))
+    )
+    with pytest.raises(ParamsInvalidosError) as capturado:
+        validar(params)
+
+    assert capturado.value.rota.campo == "recorte 2: ancho"
+
+
+def test_mensaje_cli_no_se_rompe_con_un_campo_que_no_tiene_flag():
+    """Los recortes no vienen de la CLI, así que no tienen flag. Un
+    `FLAG_POR_CAMPO[campo]` crudo levantaría KeyError si alguien llegara
+    igual hasta acá."""
+    rota = ReglaRota("recorte 1: ancho", "> 0", 0.0)
+    assert "recorte 1: ancho" in mensaje_cli(rota)
