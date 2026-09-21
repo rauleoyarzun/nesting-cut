@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from nesting.model.sheet import Sheet, allowed_angles as _allowed_angles_de_placa
+
 
 def _default_materials_path() -> Path:
     """Dónde está el catálogo que viene con el programa.
@@ -34,8 +36,6 @@ def _default_materials_path() -> Path:
 
 DEFAULT_MATERIALS_PATH = _default_materials_path()
 
-GRAIN_EPS = 1e-9
-
 
 @dataclass(frozen=True)
 class Material:
@@ -50,6 +50,14 @@ class Material:
     grados, asi que cualquier valor de 90 o mas equivale a rotacion libre,
     igual que 180. Por convencion se usa 180 para expresar "libre".
     """
+
+    def stock_sheet(self) -> Sheet:
+        """La placa que se abre cuando hay que comprar material."""
+        return Sheet(
+            width=self.sheet_w,
+            height=self.sheet_h,
+            grain_tolerance=self.grain_tolerance,
+        )
 
 
 def _as_float(value: object, *, name: str, field: str) -> float:
@@ -136,9 +144,4 @@ def allowed_angles(material: Material, angles: Sequence[float]) -> list[float]:
     as 180. The useful range is really 0 to 90; 180 is the conventional
     spelling for "free rotation".
     """
-    return [a for a in angles if _distance_to_grain_axis(a) <= material.grain_tolerance + GRAIN_EPS]
-
-
-def _distance_to_grain_axis(angle: float) -> float:
-    folded = angle % 180.0
-    return min(folded, 180.0 - folded)
+    return _allowed_angles_de_placa(material.stock_sheet(), angles)
