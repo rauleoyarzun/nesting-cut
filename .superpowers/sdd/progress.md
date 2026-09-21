@@ -984,3 +984,35 @@ Task 4: completa (commits 4cf85ab..788c7f9, revisión aprobada). 1021 passed (10
       en el código lo anota.
   (g) Nits: `_mejores` recorre el arreglo entero por tanda; imports dentro de los cuerpos
       de dos tests.
+Task 5: completa (commits 353177c..4bea902, aprobada tras un arreglo). 1024 passed + 1 del arreglo.
+  DEFECTO DEL PLAN, grande, encontrado y demostrado por el implementador: el algoritmo que
+  yo especifiqué era un NO-OP. `_pack_once` ya prueba cada pieza pendiente contra CADA placa
+  (`for part in remaining`, y los fallos se acumulan en `still_pending`), y colocar sólo
+  agrega material, así que volver a preguntarle a una placa congelada con la misma consulta
+  golosa no puede recuperar nada jamás. Medido con mi código tal cual: 0 recuperaciones en
+  45 escenarios al azar y 0 en el trabajo real. Verifiqué el argumento yo mismo contra el
+  bucle: es correcto.
+  Sustituto (mismo nombre, firma y punto de llamada): rompe la avaricia cambiando el ORDEN
+  DE INSERCIÓN -- la placa anterior se rearma desde cero con la pieza pendiente primero, y
+  se acepta sólo si no se cayó ninguna de las piezas originales. Esa condición de aceptación
+  es lo que impide que `layout_cost` suba.
+  RESULTADO MEDIDO sobre NESTING 2.ai: 32/4 (antes 31/5), 0 violaciones, material en la
+  última placa 0.179 -> 0.143 m2. Es exactamente el disco que el usuario movió a mano.
+  Arreglo (4bea902): la pasada era sorda -- hasta 24 s sin llamar al callback de progreso,
+  o sea barra congelada y botón de cancelar muerto, contra el contrato que el propio módulo
+  documenta con `Cancelado`. Se reenvía el `aviso` a `_pack_once` reusando `avisos_de` y el
+  campo `compactando` que ya existían. Sin campos nuevos en `Avance`, sin tocar `nesting_app`.
+  COSTO: el trabajo real pasó de 11.7 s a 35.8 s en `rapido` (3.1x). El costo es constante
+  por `pack()`, así que se diluye en `normal`/`lento`. Un tope de 1 intento por placa lo
+  bajaría a ~24 s a cambio de la mitad de la tasa de recuperación.
+  Menores pendientes p/revisión final:
+  (h) el docstring público de `pack()` sigue diciendo que `progreso` se llama "una vez más
+      al entrar en la compactación final"; ahora se llama muchas veces más durante la
+      recuperación. Una línea.
+  (i) `_recuperar_de_la_ultima_placa` devuelve un `PackResult` nuevo mientras su vecina
+      `_compact_last_sheet` muta el suyo en el lugar. Asimetría de estilo.
+  (j) dos idiomas distintos para la misma guarda `progreso is None` a pocas líneas.
+
+NOTA PARA LA TASK 6: el plan manda correr `bench/run_bench.py --resoluciones ... --esfuerzos ...`
+  y esos flags NO EXISTEN. La herramienta correcta es `bench/calibrate.py`, que ya barre peso
+  de contacto, resolución y esfuerzo, y toma sólo `--material` y `--copias`.
