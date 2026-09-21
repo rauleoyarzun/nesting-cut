@@ -1226,3 +1226,23 @@ Task 4: completa (commits 0fcdbe3..e7ee740, revisión limpia + dos menores arreg
     (d) bench/run_bench.py sigue calculando tira_libre_mm con material.sheet_h, el
         mismo patrón que _print_summary sí arregló. Inocuo hoy (el bench nunca arma
         recortes). Fuera del alcance de la tarea 4.
+Task 5: completa (commits db89a8f..9d34add, revisión limpia, CERO hallazgos).
+  Recorte, NestParams.recortes, tres reglas en validar(), a_supply(), y resolución
+  1.0 mm/px por omisión en los cuatro lugares (NestParams, ParamsEntrada, el default
+  de --resolucion, el value del HTML). RecorteEntrada en la API. 1078 passed.
+  La CLI no ganó bandera, verificado con --help real.
+  Ningún test dependía en silencio del default viejo de resolución: los que ejercitan
+  el motor sin pasar resolucion hacen aserciones de alto nivel, no de geometría fina.
+  >>> ENCARGO PARA LA REVISIÓN DE LA TAREA 6: a_supply() NO valida (igual que
+      a_config). Hoy eso es inocuo porque a_supply no se llama desde ningún lugar
+      productivo -- corredor.py todavía arma el SheetSupply a mano ignorando
+      params.recortes. La tarea 6 es la que conecta a_supply al corredor. El revisor
+      trazó los dos caminos y confirmó que hoy validar() corre SIEMPRE antes:
+      api.py:358 lo llama sincrónicamente en el hilo de la request, sobre el mismo
+      objeto NestParams (frozen) que después va a la cola y llega al hilo trabajador
+      sin reconstruirse. Pydantic NO frena nada: RecorteEntrada declara ancho/alto
+      como float pelado, sin Field(gt=0), a diferencia de MaterialEntrada. O sea la
+      única barrera es validar(). Si la tarea 6 rompe esa cadena, un recorte de ancho
+      0 llega a a_supply, produce un Sheet de área cero y de ahí a oracle.reset(0, h)
+      y a divisiones por el área de la placa. HAY QUE VERIFICAR QUE LA CADENA SIGA
+      INTACTA.
