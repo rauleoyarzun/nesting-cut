@@ -1091,3 +1091,35 @@ Tanda de arreglos final (88005c4): 6 de los 7 ítems aplicados. 1030 passed, 22 
           0.5 mm/px, con sep 0 y sep 10. El camino del margen NO es conservador: el relleno
           de `_search` y el anclaje de `masks.origin` en la bbox exacta se compensan. El
           equivocado era el revisor final, no el arreglador.
+
+---
+
+# Progreso — Recortes de placa y cuatro ajustes de interfaz
+
+Plan: docs/superpowers/plans/2026-09-21-recortes-y-ajustes.md
+Spec: docs/superpowers/specs/2026-09-21-recortes-y-ajustes-design.es.md
+Modo: subagent-driven-development, rama `recortes-de-placa` desde main en 1d626ab.
+Artefactos de esta corrida: .superpowers/sdd/recortes/
+
+Revisión previa del plan (antes de la tarea 1): tres tests de interfaz no
+aseguraban nada y se arreglaron en 1d626ab. El peor afirmaba `"disabled" in js`,
+cadena que ya estaba en el botón de guardar: pasaba antes de implementar nada.
+
+## Tareas
+
+Task 1: completa (commits 1d626ab..d03e7f5, revisión limpia). Sheet, SheetSupply,
+  allowed_angles con cross_grain, Material.stock_sheet(). 1038 passed (eran 1030).
+  El revisor verificó a mano la matemática de cross_grain, incluido que `% 180`
+  normaliza los negativos de `angle - 90.0`, y el caso límite tolerancia 90.
+  Menores pendientes para la revisión final:
+    (a) test_la_veta_cruzada_no_cambia_nada_en_una_placa_libre es vacuo: con
+        tolerancia 180 la comparación es verdadera para cualquier offset, así que
+        pasaría aunque cross_grain rotara 45 grados o nada. Defecto del brief, no
+        del implementador. La cobertura real la da el test del eje rotado.
+    (b) RESUELTO en el plan: el docstring de Material.grain_tolerance nombraba
+        _distance_to_grain_axis, que se mudó a sheet.py. Se agregó el arreglo al
+        paso 6 de la Tarea 2, que ya toca ese archivo.
+    (c) DESCARTADO: "docstrings en español en model/" no es un hallazgo. El
+        revisor verificó que el repo no sigue esa regla (discard.py entero en
+        español, material.py mixto). Se corrigió la restricción global del plan
+        para que no se vuelva a reportar nueve veces.

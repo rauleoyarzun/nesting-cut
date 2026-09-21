@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - **TDD sin excepciones:** test que falla, correrlo para verlo fallar, implementación mínima, test que pasa, commit. Un paso por vez.
-- **Todo texto de cara al usuario va en español**, con tildes y eñes. Los nombres y docstrings del motor (`src/nesting/`) siguen la mezcla que ya tiene el repo: identificadores en inglés en `engine/`, `model/`, `io/` y `geometry/`; en español en `params.py` y en todo `src/nesting_app/`.
+- **Todo texto de cara al usuario va en español**, con tildes y eñes.
+- **Idioma del código:** los identificadores van en inglés en `src/nesting/engine/`, `model/`, `io/` y `geometry/`, y en español en `params.py` y en todo `src/nesting_app/`. Los **docstrings y comentarios** son mixtos en todo el repo y no hay una regla que seguir: `model/entities.py` y `model/part.py` están en inglés, `model/discard.py` entero en español, `model/material.py` mezclado. Escribir el docstring en el idioma en que se piensa mejor la explicación es lo que viene haciendo el repo. **No es un hallazgo de revisión** que un docstring esté en un idioma u otro.
 - **Nada de emojis.** El test `test_no_hay_emojis_en_la_interfaz` ya lo prohíbe y no se relaja. El `✕` del botón de quitar es U+2715, no un emoji; si el test lo rechaza, usar un SVG en línea con trazo como el resto de los íconos.
 - **Ningún token de color nuevo en `app.css`.** Se usan los que ya están: `--panel`, `--borde`, `--radio`, `--sombra`, `--texto`, `--texto-2`.
 - **La CLI no gana ninguna bandera.** Cambia por dentro (arma el `SheetSupply`, pasa `sheets` a `verify`/`write_dxf`/`write_preview`, default de `--resolucion`), pero su superficie de flags queda igual. Si un paso te pide agregar `--recorte`, el paso está mal: pará y avisá.
@@ -599,6 +600,22 @@ Borrar el import de `Material` de `packer.py` si ya no queda ningún uso.
 En `src/nesting/model/material.py`, borrar la función `allowed_angles` entera
 y su import de delegación. `Material` queda con `load_materials` y
 `stock_sheet()`.
+
+Y limpiar las dos referencias que quedan colgando: el docstring del campo
+`Material.grain_tolerance` dice "ver `_distance_to_grain_axis`", función que
+la Tarea 1 mudó a `sheet.py`. Reemplazar esa referencia por una al
+comportamiento, sin nombrar una función que ya no vive en este archivo:
+
+```
+    grain_tolerance: float
+    """Degrees a part may deviate from the grain axis.
+
+    El rango útil real es 0 a 90: la distancia angular al eje de veta nunca
+    supera 90 grados, así que cualquier valor de 90 o más equivale a
+    rotación libre, igual que 180. Por convención se usa 180 para expresar
+    "libre". El cálculo vive en `nesting.model.sheet.allowed_angles`.
+    """
+```
 
 En `src/nesting/cli.py:219`, reemplazar:
 
