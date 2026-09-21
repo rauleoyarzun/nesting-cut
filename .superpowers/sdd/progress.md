@@ -1123,3 +1123,33 @@ Task 1: completa (commits 1d626ab..d03e7f5, revisión limpia). Sheet, SheetSuppl
         revisor verificó que el repo no sigue esa regla (discard.py entero en
         español, material.py mixto). Se corrigió la restricción global del plan
         para que no se vuelva a reportar nueve veces.
+Task 2: completa (commits 490bf43..81a1e3d, revisión limpia). pack recibe SheetSupply,
+  PackResult.sheets, orientations por placa, aprovechamiento por área de cada placa.
+  1040 passed. Ningún valor esperado tocado.
+  El revisor NO se conformó con leer: armó un worktree en el commit padre y comparó
+  65 escenarios (4 materiales incl. uno con veta, 8 semillas, rapido y normal)
+  colocación por colocación, más 12 casos comparando utilization en hexadecimal.
+  Cero diferencias.
+  Fuera del brief y con razón: bench/run_bench.py y tests/engine/raster/test_raster_oracle.py
+  (forzados por la firma). tests/test_calibration.py NO se tocó: no llama a pack, el
+  brief se equivocó al listarlo.
+  Menores pendientes para la revisión final:
+    (a) total_utilization puede diferir en 1 ulp con medidas de placa no enteras:
+        el denominador pasó de A*n a la suma de n áreas. Con el catálogo que se
+        distribuye (cuatro medidas enteras) la diferencia es exactamente 0. No hay
+        forma de conservar la cuenta vieja con placas distintas, así que se acepta.
+    (b) Identificadores en español dentro de engine/ (usadas, hoja, siguiente,
+        indice). Vienen del brief; el archivo ya venía mezclado.
+  RESUELTO EN EL PLAN, antes de despachar la tarea 3 (dos hallazgos que convergían):
+    El hallazgo (4) del revisor y el punto 3 del informe del implementador señalaban
+    que los dos SheetSupply internos del packer no llevan material_name. Mirándolo
+    encontré algo peor: esos supplies pasan un RECORTE como stock, y la guarda que
+    la tarea 3 iba a escribir (`if hoja.scrap: continue`) habría hecho un BUCLE
+    INFINITO ahí -- sheet(i) devuelve el mismo recorte para siempre. Era inalcanzable
+    por un argumento razonado (siempre entra al menos una pieza, porque ya estaban en
+    esa placa), que es justo la clase de garantía que este plan ya tuvo que
+    reemplazar por una verificada en la recuperación. La guarda pasa a mirar la
+    POSICIÓN en el plan (`siguiente - 1 < len(supply.scraps)`), que elimina la clase
+    entera. Con test, y el test cuelga en vez de fallar si la guarda queda mal, así
+    que se corre con timeout. También se agregó pasar material_name a los dos
+    supplies internos y mover una lectura de result.sheets[last] abajo de su guarda.

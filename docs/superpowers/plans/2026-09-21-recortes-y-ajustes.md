@@ -810,9 +810,28 @@ def test_el_aprovechamiento_de_un_recorte_se_mide_contra_su_area():
 
 
 def test_una_placa_del_material_vacia_no_se_saltea_nunca():
-    """Saltear una placa infinita sería un bucle sin fin. La guarda tiene
-    que mirar `scrap`, no "quedó vacía"."""
     plan = SheetSupply(stock=Sheet(100.0, 100.0, grain_tolerance=180.0))
+    piezas = [rect_part(0, 400.0, 400.0)]
+
+    with pytest.raises(PartTooLargeError):
+        pack(piezas, plan, CONFIG, ShelfOracle)
+
+
+def test_un_recorte_usado_como_placa_infinita_no_cicla():
+    """La guarda mira la posición en el plan, no `hoja.scrap`.
+
+    `_recuperar_de_la_ultima_placa` y `_compact_last_sheet` arman
+    `SheetSupply(stock=<una placa del resultado>)`, y esa placa puede ser un
+    recorte. Ahí `supply.sheet(i)` devuelve el MISMO recorte para siempre:
+    una guarda que saltee por `hoja.scrap` no llega nunca a una placa
+    distinta y gira sin fin.
+
+    OJO AL CORRERLO: con la guarda equivocada este test NO falla, CUELGA.
+    Corralo con `timeout 60 .venv/bin/pytest ...` -- que se agote el tiempo
+    es el resultado esperado antes del arreglo, y es información, no un
+    problema del test.
+    """
+    plan = SheetSupply(stock=recorte(100.0, 100.0))
     piezas = [rect_part(0, 400.0, 400.0)]
 
     with pytest.raises(PartTooLargeError):
@@ -849,9 +868,19 @@ En `_pack_once`, reemplazar la guarda:
             # de 100x100 no sirve para nada grande -- así que se saltea y no
             # llega a existir en el resultado: ni placa al 0% en la
             # previsualización, ni rectángulo vacío en el DXF. En una placa
-            # del Material, en cambio, sigue siendo el error de siempre: esa
-            # placa es infinita, y saltearla sería un bucle sin fin.
-            if hoja.scrap:
+            # del Material sigue siendo el error de siempre.
+            #
+            # LA CONDICIÓN MIRA LA POSICIÓN EN EL PLAN, NO `hoja.scrap`, Y LA
+            # DIFERENCIA ES UN BUCLE INFINITO. Lo que hace seguro saltear no
+            # es que la placa sea un recorte: es que la próxima vuelta vaya a
+            # recibir una placa DISTINTA. Eso vale mientras queden recortes
+            # por consumir, y deja de valer apenas `supply.sheet()` entra en
+            # su placa infinita, que devuelve la misma para siempre. Los dos
+            # `SheetSupply` que este mismo archivo arma adentro
+            # (`_recuperar_de_la_ultima_placa` y `_compact_last_sheet`) pasan
+            # un recorte COMO stock: con `if hoja.scrap` ahí, un reempaque
+            # donde no entrara nada giraría sin fin en vez de levantar.
+            if siguiente - 1 < len(supply.scraps):
                 continue
             _raise_too_large(
                 still_pending[0], hoja, config, choices, supply.material_name
@@ -894,10 +923,46 @@ y la línea final:
     return CostoLayout(placas_nuevas, material, top)
 ```
 
+- [ ] **Step 4b: Llevar el nombre del material a los dos reempaques internos**
+
+Los dos `SheetSupply` que `packer.py` arma adentro no llevan `material_name`,
+así que un `PartTooLargeError` que salga de ahí diría "la placa del material"
+sin nombrarlo. Hasta esta tarea era inalcanzable; con recortes de medidas
+distintas deja de serlo.
+
+`_recuperar_de_la_ultima_placa` y `_compact_last_sheet` reciben el `supply`
+externo como parámetro nuevo (`pack` ya lo tiene a mano) y lo usan para el
+nombre:
+
+```python
+                SheetSupply(
+                    stock=result.sheets[placa],
+                    material_name=supply.material_name,
+                ),
+```
+
+```python
+    redone = _pack_once(
+        order,
+        SheetSupply(stock=hoja, material_name=supply.material_name),
+        boosted,
+        oracle_factory,
+    )
+```
+
+Y en `pack`, las dos llamadas pasan `supply`.
+
+Además, en `_compact_last_sheet`, mover `hoja = result.sheets[last]` **abajo**
+de la guarda `if len(on_last) < 2: return result`. Hoy se lee antes, y un
+`PackResult` armado a mano con `sheets` vacío revienta con `IndexError` en vez
+de salir por el `return` de dos líneas después.
+
 - [ ] **Step 5: Correr los tests**
 
-Run: `.venv/bin/pytest tests/engine/test_recortes.py -v`
-Expected: PASS, 10 tests
+Run: `timeout 120 .venv/bin/pytest tests/engine/test_recortes.py -v`
+Expected: PASS, 11 tests. **Se corre con `timeout` a propósito**: si
+`test_un_recorte_usado_como_placa_infinita_no_cicla` cuelga en vez de pasar,
+la guarda quedó mirando `hoja.scrap` en lugar de la posición en el plan.
 
 Run: `.venv/bin/pytest tests/engine -v`
 Expected: PASS
