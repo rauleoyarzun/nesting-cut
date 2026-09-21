@@ -676,17 +676,45 @@ def test_el_texto_del_globo_entra_en_un_globo(js_info, clave):
 
 
 def _cuerpo_de_funcion(js_info: str, nombre: str) -> str:
-    """El cuerpo de `function <nombre>(...) { ... }`, sin comentarios.
+    """El cuerpo de la función `<nombre>`, sin comentarios.
+
+    Se aceptan las dos formas de declararla: `function <nombre>(...) {` y
+    `const <nombre> = (...) => {`. Pasar de una a la otra no cambia nada de
+    lo que el usuario ve, así que no tiene por qué obligar a editar una
+    prueba.
 
     Se delimita igual que en el resto del archivo: desde la declaración
     hasta el primer `}` que arranca una línea (ninguna de las funciones de
     `info.js` tiene un bloque anidado que cierre así antes de su propio
     final). Pasa por `_sin_comentarios` para que comentar una línea cuente
     igual que borrarla; los textos quedan porque muchas de las aserciones
-    son sobre un literal."""
+    son sobre un literal.
+
+    Cuando no encuentra la función corta con `pytest.fail` y dice qué
+    buscaba: antes era un `.index()` pelado, y renombrar o redeclarar la
+    función daba un `ValueError: substring not found` sin una palabra sobre
+    qué archivo, qué función ni qué formas se aceptan."""
     limpio = _sin_comentarios(js_info)
-    inicio = limpio.index(f"function {nombre}(")
-    return limpio[inicio:limpio.index("\n}", inicio)]
+    declaracion = re.search(
+        rf"""\bfunction\s+{nombre}\s*\("""
+        rf"""|\b(?:const|let|var)\s+{nombre}\s*="""
+        rf"""\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>""",
+        limpio,
+    )
+    if not declaracion:
+        pytest.fail(
+            f"info.js ya no declara `{nombre}` de ninguna de las dos formas "
+            f"que esta prueba sabe leer -- `function {nombre}(...) {{` o "
+            f"`const {nombre} = (...) => {{` --, así que no hay cuerpo que "
+            "mirar"
+        )
+    fin = limpio.find("\n}", declaracion.start())
+    if fin == -1:
+        pytest.fail(
+            f"no se encontró el `}}` que cierra a `{nombre}` al principio de "
+            "un renglón: el cuerpo de la función no se puede delimitar"
+        )
+    return limpio[declaracion.start():fin]
 
 
 def _cuerpo_de_handler(js_info: str, evento: str) -> str:
@@ -698,10 +726,27 @@ def _cuerpo_de_handler(js_info: str, evento: str) -> str:
     los textos; ahora no, porque lo que decide el comportamiento de estos
     handlers *son* literales -- `".boton-info"` en el `closest` del click,
     `"Escape"` en el guardia del keydown -- y sin ellos no hay forma de
-    fijarlos."""
+    fijarlos.
+
+    Ni las comillas del nombre del evento ni el corte de renglones son
+    parte del contrato: un formateador que prefiera comillas simples, o que
+    parta la llamada y le deje una coma final, no cambia qué escucha nadie.
+    Y si no encuentra el handler corta con `pytest.fail` diciendo qué
+    buscaba, en vez del `ValueError` pelado de un `.index()`."""
     limpio = _sin_comentarios(js_info)
-    inicio = limpio.index(f'addEventListener("{evento}"')
-    return limpio[inicio:limpio.index("\n});", inicio)]
+    registro = re.search(rf"""addEventListener\(\s*["']{evento}["']""", limpio)
+    if not registro:
+        pytest.fail(
+            f'info.js ya no registra ningún handler de "{evento}": no está '
+            f'el `addEventListener("{evento}", ...)` que esta prueba lee'
+        )
+    cierre = re.search(r"\n\s*\}\s*,?\s*\)\s*;", limpio[registro.start():])
+    if not cierre:
+        pytest.fail(
+            f'no se encontró el `}});` que cierra el handler de "{evento}": '
+            "el cuerpo del handler no se puede delimitar"
+        )
+    return limpio[registro.start():registro.start() + cierre.start()]
 
 
 def test_la_pagina_carga_info_js(html):
@@ -813,6 +858,32 @@ def test_el_boton_abierto_se_declara_antes_de_usarse(info_limpio):
     )
 
 
+def test_el_margen_contra_el_borde_se_declara_antes_de_usarse(info_limpio):
+    """`const MARGEN = 8;` es la otra declaración del ámbito del módulo, y
+    borrarla mata la feature tan callado como borrar `abierto`: `ubicar()`
+    lee `MARGEN` cuatro veces, y en modo estricto leer un nombre que nadie
+    declaró es un ReferenceError.
+
+    Dónde tira es lo que lo hace invisible: adentro de `ubicar()`, después
+    del `classList.remove("oculto")` y antes del `globo.style.visibility =
+    ""`. El globo queda sin la clase que lo esconde pero con el
+    `visibility: hidden` que `ubicar()` le puso para medirlo, o sea
+    invisible para siempre, y `abrir()` --que quedó a mitad de camino--
+    nunca llega a ponerle los atributos ARIA al botón ni a anotarlo en
+    `abierto`. En la pantalla: el primer clic en un ícono no hace nada, y
+    ninguno de los siguientes tampoco.
+
+    Se fija que esté declarada, no cuánto vale: el valor es aritmética de
+    `ubicar()` y queda deliberadamente sin fijar (ver
+    `test_ubicar_consulta_la_ventana_y_mueve_el_globo`).
+
+    Verificación manual: borrando `const MARGEN = 8;`, este test falla."""
+    assert re.search(r"\b(?:const|let|var)\s+MARGEN\s*=", info_limpio), (
+        "info.js ya no declara `MARGEN`: en modo estricto, las cuatro "
+        "lecturas que hace ubicar() tiran, y el globo queda invisible"
+    )
+
+
 def test_el_click_resuelve_el_boton_por_la_clase_que_el_html_usa(js_info, html):
     """`e.target.closest?.(".boton-info")` es lo que traduce "el usuario
     apretó acá" en "apretó el ícono de ayuda de tal campo". Con un selector
@@ -835,7 +906,7 @@ def test_el_click_resuelve_el_boton_por_la_clase_que_el_html_usa(js_info, html):
     `e.target` por `e.currentTarget`, este test falla en los dos casos."""
     cuerpo = _cuerpo_de_handler(js_info, "click")
     hallazgo = re.search(
-        r"""e\.target\.closest\??\.?\(\s*["']\.([\w-]+)["']\s*\)""", cuerpo
+        r"""e\.target\.closest\??\.?\(\s*["']\.([\w-]+)["']\s*,?\s*\)""", cuerpo
     )
     assert hallazgo, (
         "el handler de click ya no resuelve el botón con "
@@ -863,7 +934,7 @@ def test_el_click_en_un_boton_llama_a_abrir(js_info):
     Verificación manual: borrando la línea `if (boton) abrir(boton);`, y
     negándole la condición, este test falla en los dos casos."""
     cuerpo = _cuerpo_de_handler(js_info, "click")
-    llamada = re.search(r"if\s*\(([^)]*)\)\s*\{?\s*abrir\(\s*boton\s*\)", cuerpo)
+    llamada = re.search(r"if\s*\(([^)]*)\)\s*\{?\s*abrir\(\s*boton\s*,?\s*\)", cuerpo)
     assert llamada, (
         "el handler de click ya no llama a abrir(boton) detrás de una "
         "guarda: ningún clic abre el globo"
@@ -898,7 +969,7 @@ def test_el_mismo_boton_cierra_el_globo_que_tenia_abierto(js_info):
     sacando por separado el `cerrar();` y el `return;` de adentro de las
     llaves, este test falla en los cuatro casos."""
     cuerpo = _cuerpo_de_handler(js_info, "click")
-    rama = re.search(r"if\s*\(([^)]*===\s*abierto[^)]*)\)\s*\{(.*?)\}", cuerpo, re.S)
+    rama = re.search(r"if\s*\(([^)]*===\s*abierto\b[^)]*)\)\s*\{(.*?)\}", cuerpo, re.S)
     assert rama, (
         "el handler de click ya no compara el botón apretado con `abierto` "
         "por identidad: o no hay toggle, o la comparación está dada vuelta "
@@ -965,7 +1036,7 @@ def test_abrir_saca_el_texto_del_data_info_del_boton(js_info):
     cuerpo = _cuerpo_de_funcion(js_info, "abrir")
     assert re.search(
         r"""\bTEXTOS\s*\[\s*boton\."""
-        r"""(?:dataset\.info\b|getAttribute\(\s*["']data-info["']\s*\))""",
+        r"""(?:dataset\.info\b|getAttribute\(\s*["']data-info["']\s*,?\s*\))""",
         cuerpo,
     ), "abrir() ya no busca el texto en TEXTOS por el data-info del botón"
 
@@ -1032,21 +1103,21 @@ def test_abrir_deja_el_globo_realmente_visible(js_info):
     info.js, una por vez, este test falla en cada caso. Comentarlas también
     lo hace fallar, desde que los cuerpos pasan por `_sin_comentarios`."""
     abrir = _cuerpo_de_funcion(js_info, "abrir")
-    assert re.search(r"\bubicar\(\s*boton\s*\)", abrir), (
+    assert re.search(r"\bubicar\(\s*boton\s*,?\s*\)", abrir), (
         "abrir() ya no llama a ubicar(boton): nada muestra ni posiciona el "
         "globo"
     )
 
     ubicar = _cuerpo_de_funcion(js_info, "ubicar")
-    assert 'classList.remove("oculto")' in ubicar, (
+    assert re.search(r"""classList\.remove\(\s*["']oculto["']\s*,?\s*\)""", ubicar), (
         "ubicar() ya no le saca la clase oculto al globo: queda oculto para "
         "siempre"
     )
-    assert re.search(r'visibility\s*=\s*"hidden"', ubicar), (
+    assert re.search(r"""visibility\s*=\s*["']hidden["']""", ubicar), (
         "ubicar() ya no esconde el globo para medirlo: aparece un cuadro "
         "parpadeando en la esquina antes de cada globo"
     )
-    assert re.search(r'visibility\s*=\s*""', ubicar), (
+    assert re.search(r"""visibility\s*=\s*(?:""|'')""", ubicar), (
         "ubicar() ya no limpia el visibility \"hidden\" que puso para "
         "medir el globo: queda invisible para siempre"
     )
@@ -1077,12 +1148,68 @@ def test_el_globo_se_ubica_contra_el_boton(js_info):
         "ubicar() ya no mide el globo: sin su tamaño no puede saber si "
         "entra, y la variable queda sin definir"
     )
-    muestra = re.search(r'\bglobo\.classList\.remove\(\s*"oculto"\s*\)', cuerpo)
+    muestra = re.search(
+        r"""\bglobo\.classList\.remove\(\s*["']oculto["']\s*,?\s*\)""", cuerpo
+    )
     assert muestra and muestra.start() < mide.start(), (
         "ubicar() mide el globo antes de sacarle la clase `oculto`, que es "
         "`display: none`: mide 0 x 0 y los dos ajustes contra el borde de "
         "la ventana dejan de hacer nada"
     )
+
+
+def test_ubicar_declara_las_coordenadas_antes_de_usarlas(js_info):
+    """`let x = ...` y `let y = ...` son las dos variables con las que
+    `ubicar()` hace toda la cuenta. Borrar cualquiera de las dos
+    declaraciones --y dejar el resto igual-- deja un nombre que nadie
+    declaró, y el modo estricto no lo perdona: la primera lectura
+    (`x + g.width`, `y + g.height`) tira ReferenceError adentro de
+    `ubicar()`, con la clase `oculto` ya sacada y el `visibility: hidden`
+    todavía puesto. El globo queda invisible para siempre y el botón sin
+    sus atributos ARIA, igual que con `MARGEN`.
+
+    Ninguna otra prueba se entera: las cuentas que nombran `x` e `y`
+    siguen escritas tal cual, y las aserciones sobre `innerWidth` /
+    `innerHeight` y sobre `globo.style.left` / `globo.style.top` las
+    encuentran todas.
+
+    Se fija la declaración, no lo que se le asigna: de qué lado del ícono
+    arranca cada coordenada es aritmética de `ubicar()`, deliberadamente
+    sin fijar (ver el test que sigue).
+
+    Verificación manual: borrando `let x = b.right + MARGEN;` y
+    `let y = b.top;`, una por vez, este test falla en los dos casos."""
+    cuerpo = _cuerpo_de_funcion(js_info, "ubicar")
+    for coordenada in ("x", "y"):
+        assert re.search(rf"\b(?:const|let|var)\s+{coordenada}\s*=", cuerpo), (
+            f"ubicar() ya no declara `{coordenada}`: en modo estricto, la "
+            "primera lectura tira y el globo se queda invisible"
+        )
+
+
+def _reaccion_al_borde(cuerpo: str, eje: str) -> str:
+    """Lo que `ubicar()` *hace* cuando la cuenta contra `window.<eje>` dice
+    que el globo no entra.
+
+    Si el recorte está escrito con un `if`, es su rama: las llaves, o lo
+    que quede del renglón cuando no las tiene (las dos formas están en el
+    archivo, y pasar de una a la otra no cambia nada). Si no hay ningún
+    `if` --un `Math.min` recorta lo mismo sin ramificar-- son los
+    renglones que nombran el eje.
+
+    Sirve para distinguir un recorte de una comparación sola: comparar y
+    no asignar nada deja al globo saliéndose de la pantalla."""
+    for comparacion in re.finditer(
+        r"if\s*(\([^()]*(?:\([^()]*\)[^()]*)*\))\s*", cuerpo
+    ):
+        if eje not in comparacion.group(1):
+            continue
+        resto = cuerpo[comparacion.end():]
+        if not resto.startswith("{"):
+            return resto.split("\n", 1)[0]
+        fin = resto.find("}")
+        return resto[1:] if fin == -1 else resto[1:fin]
+    return "\n".join(l for l in cuerpo.splitlines() if eje in l)
 
 
 def test_ubicar_consulta_la_ventana_y_mueve_el_globo(js_info):
@@ -1102,6 +1229,16 @@ def test_ubicar_consulta_la_ventana_y_mueve_el_globo(js_info):
     de que la palabra `innerWidth` apareciera exactamente una vez en el
     archivo.
 
+    Cada uno de los dos recortes, además, tiene que *hacer* algo: comparar
+    contra el borde y no mover nada es lo mismo que no comparar. El de la
+    horizontal está escrito en un solo renglón --la asignación va pegada al
+    `if`-- y por eso borrarlo se notaba; el de la vertical lleva llaves, y
+    vaciarlas (`if (y + g.height > window.innerHeight - MARGEN) { }`)
+    dejaba pasar la aserción de arriba, a la que le alcanza con que el
+    renglón del `innerHeight` nombre un `height`. El globo de las opciones
+    de abajo se iba fuera de la pantalla: exactamente la falla que este
+    test dice evitar. La asimetría era del formato, no de la intención.
+
     **La aritmética de `ubicar()` queda deliberadamente sin fijar**: los
     `MARGEN`, el `b.right` contra el `b.left`, los `Math.max`, cuál de las
     dos coordenadas recibe cuál cuenta. Escribir eso en el test es
@@ -1111,9 +1248,9 @@ def test_ubicar_consulta_la_ventana_y_mueve_el_globo(js_info):
     olvido; el techo honesto de una prueba que lee el archivo como texto.
 
     Verificación manual: cambiando `window.innerWidth` por
-    `window.innerHeight`, y borrando por separado cada uno de los dos
-    `globo.style.left` / `globo.style.top`, este test falla en los tres
-    casos."""
+    `window.innerHeight`, borrando por separado cada uno de los dos
+    `globo.style.left` / `globo.style.top`, y vaciando las llaves del
+    ajuste vertical, este test falla en los cuatro casos."""
     cuerpo = _cuerpo_de_funcion(js_info, "ubicar")
     for eje, medida in (("innerWidth", "width"), ("innerHeight", "height")):
         lineas = [l for l in cuerpo.splitlines() if eje in l]
@@ -1121,6 +1258,11 @@ def test_ubicar_consulta_la_ventana_y_mueve_el_globo(js_info):
         assert all(medida in l for l in lineas), (
             f"hay una cuenta contra window.{eje} que no menciona ningún "
             f"`{medida}`: el ancho y el alto de la ventana quedaron cruzados"
+        )
+        assert re.search(r"\b\w+\s*=(?![=>])", _reaccion_al_borde(cuerpo, eje)), (
+            f"la cuenta contra window.{eje} compara y no asigna nada: el "
+            "globo se sale de la pantalla igual que si el ajuste no "
+            "estuviera"
         )
     for coordenada in ("left", "top"):
         asignacion = re.search(rf"\bglobo\.style\.{coordenada}\s*=(.+)", cuerpo)
@@ -1169,11 +1311,12 @@ def test_cerrar_oculta_el_globo_y_limpia_los_atributos(js_info):
     `abierto = null;`, fallan esta prueba y
     `test_aria_expanded_va_al_boton_y_con_el_valor_correcto`."""
     cuerpo = _cuerpo_de_funcion(js_info, "cerrar")
-    assert 'classList.add("oculto")' in cuerpo, (
+    assert re.search(r"""classList\.add\(\s*["']oculto["']\s*,?\s*\)""", cuerpo), (
         "cerrar() ya no oculta el globo"
     )
     saca = re.search(
-        r'\babierto\.removeAttribute\(\s*["\']aria-describedby["\']\s*\)', cuerpo
+        r"""\babierto\.removeAttribute\(\s*["']aria-describedby["']\s*,?\s*\)""",
+        cuerpo,
     )
     assert saca, (
         "cerrar() ya no le saca aria-describedby *al botón*: un lector de "
@@ -1184,7 +1327,7 @@ def test_cerrar_oculta_el_globo_y_limpia_los_atributos(js_info):
         "cerrar() ya no vacía `abierto`: el botón anterior sigue "
         "considerándose el que tiene el globo abierto"
     )
-    anuncia = re.search(r'\babierto\.setAttribute\(\s*["\']aria-expanded["\']', cuerpo)
+    anuncia = re.search(r"""\babierto\.setAttribute\(\s*["']aria-expanded["']""", cuerpo)
     assert anuncia and vacia.start() > max(saca.start(), anuncia.start()), (
         "cerrar() vacía `abierto` antes de usarlo para limpiarle los "
         "atributos al botón: lo que viene después son accesos sobre null y "
@@ -1212,7 +1355,7 @@ def test_cada_listener_se_registra_donde_el_evento_pasa(info_limpio, receptor, e
     Verificación manual: cambiando el receptor de cada uno de los cuatro
     listeners, este test falla en los cuatro casos."""
     assert re.search(
-        rf'\b{receptor}\.addEventListener\(\s*"{evento}"', info_limpio
+        rf"""\b{receptor}\.addEventListener\(\s*["']{evento}["']""", info_limpio
     ), (
         f'el listener de "{evento}" ya no está colgado de `{receptor}`: '
         "el evento no pasa por donde está escuchando y el handler no corre "
@@ -1242,14 +1385,16 @@ def test_el_scroll_y_el_resize_cierran_llamando_a_cerrar(js_info, info_limpio):
     `true` del scroll y cambiando `cerrar` por otra cosa, este test falla
     en los cuatro casos."""
     assert re.search(
-        r'document\.addEventListener\(\s*"scroll"\s*,\s*cerrar\s*,\s*true\s*\)',
+        r"""document\.addEventListener\("""
+        r"""\s*["']scroll["']\s*,\s*cerrar\s*,\s*true\s*,?\s*\)""",
         info_limpio,
     ), (
         "el scroll ya no cierra el globo llamando a cerrar en la fase de "
         "captura"
     )
     assert re.search(
-        r'window\.addEventListener\(\s*"resize"\s*,\s*cerrar\s*\)', info_limpio
+        r"""window\.addEventListener\(\s*["']resize["']\s*,\s*cerrar\s*,?\s*\)""",
+        info_limpio,
     ), "el resize ya no cierra el globo llamando a cerrar"
 
 
@@ -1281,7 +1426,7 @@ def test_escape_cierra_el_globo_y_solo_escape(js_info):
         "el handler de keydown ya no reconoce Escape por diferencia: o no "
         "cierra con Escape, o cierra con cualquier otra tecla"
     )
-    assert re.search(r"!\s*abierto", condicion) and "||" in condicion, (
+    assert re.search(r"!\s*abierto\b", condicion) and "||" in condicion, (
         "el guardia del keydown ya no se va cuando *no* hay nada abierto: "
         f"`{condicion.strip()}`"
     )
@@ -1335,7 +1480,8 @@ def test_abrir_pone_aria_describedby_en_el_boton(js_info):
     `globo`, este test falla en los dos casos."""
     cuerpo = _cuerpo_de_funcion(js_info, "abrir")
     assert re.search(
-        r'\bboton\.setAttribute\(\s*"aria-describedby"\s*,\s*"globo-info"\s*\)',
+        r"""\bboton\.setAttribute\("""
+        r"""\s*["']aria-describedby["']\s*,\s*["']globo-info["']\s*,?\s*\)""",
         cuerpo,
     ), "abrir() ya no asocia el globo *al botón* con aria-describedby"
 
@@ -1359,8 +1505,12 @@ def test_aria_expanded_va_al_boton_y_con_el_valor_correcto(js_info):
     abrir = _cuerpo_de_funcion(js_info, "abrir")
     cerrar = _cuerpo_de_funcion(js_info, "cerrar")
     assert re.search(
-        r'\bboton\.setAttribute\(\s*"aria-expanded"\s*,\s*"true"\s*\)', abrir
+        r"""\bboton\.setAttribute\("""
+        r"""\s*["']aria-expanded["']\s*,\s*["']true["']\s*,?\s*\)""",
+        abrir,
     ), "abrir() no le anuncia al botón aria-expanded en true"
     assert re.search(
-        r'\babierto\.setAttribute\(\s*"aria-expanded"\s*,\s*"false"\s*\)', cerrar
+        r"""\babierto\.setAttribute\("""
+        r"""\s*["']aria-expanded["']\s*,\s*["']false["']\s*,?\s*\)""",
+        cerrar,
     ), "cerrar() no le anuncia al botón aria-expanded en false"
