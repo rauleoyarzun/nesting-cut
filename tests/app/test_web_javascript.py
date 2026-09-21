@@ -747,12 +747,44 @@ def test_abrir_registra_el_boton_como_el_globo_abierto(js_info):
     )
 
 
+def test_abrir_deja_el_globo_realmente_visible(js_info):
+    """`test_el_click_en_un_boton_llama_a_abrir` sólo comprueba que el click
+    llegue a `abrir(boton)`; no mira si `abrir`, una vez llamada, deja algo
+    en pantalla. Tres borrados distintos y salteados entre sí -- la línea
+    `ubicar(boton);` dentro de `abrir()`, la línea
+    `globo.classList.remove("oculto");` dentro de `ubicar()`, o la línea
+    `globo.style.visibility = "";` al final de `ubicar()` -- dejan pasar
+    toda la batería de pruebas existente sin que el globo vuelva a hacerse
+    visible nunca: `ubicar()` es la única que le saca la clase `oculto` y la
+    única que limpia el `visibility = "hidden"` que ella misma puso para
+    medirlo sin que parpadee en la esquina.
+
+    Verificación manual: borrando cualquiera de esas tres líneas de
+    info.js, una por vez, este test falla en cada caso."""
+    abrir = _cuerpo_de_funcion(js_info, "abrir")
+    assert re.search(r"\bubicar\(\s*boton\s*\)", abrir), (
+        "abrir() ya no llama a ubicar(boton): nada muestra ni posiciona el "
+        "globo"
+    )
+
+    ubicar = _cuerpo_de_funcion(js_info, "ubicar")
+    assert 'classList.remove("oculto")' in ubicar, (
+        "ubicar() ya no le saca la clase oculto al globo: queda oculto para "
+        "siempre"
+    )
+    assert re.search(r'visibility\s*=\s*""', ubicar), (
+        "ubicar() ya no limpia el visibility \"hidden\" que puso para "
+        "medir el globo: queda invisible para siempre"
+    )
+
+
 def test_cerrar_oculta_el_globo_y_limpia_los_atributos(js_info):
     """Reducir el cuerpo de `cerrar()` a sólo `abierto = null;` deja pasar
-    las demás pruebas -- ninguna mira adentro de la función -- pero el
-    globo, que ya estaba en pantalla, no vuelve a ocultarse nunca: nada le
-    agrega la clase `oculto` ni le saca los atributos ARIA al botón que lo
-    tenía abierto.
+    las demás pruebas -- la única que mira adentro de la función,
+    `test_los_valores_de_aria_expanded_no_estan_invertidos`, sólo busca el
+    literal de `aria-expanded` -- pero el globo, que ya estaba en pantalla,
+    no vuelve a ocultarse nunca: nada le agrega la clase `oculto` ni le saca
+    los atributos ARIA al botón que lo tenía abierto.
 
     Verificación manual: reemplazando el cuerpo de `cerrar()` por
     `abierto = null;`, este test falla."""
@@ -812,6 +844,24 @@ def test_el_boton_anuncia_si_esta_abierto(js_info):
     texto sin tener que ir a buscarlo."""
     assert "aria-expanded" in js_info
     assert "aria-describedby" in js_info
+
+
+def test_abrir_pone_aria_describedby_en_el_boton(js_info):
+    """`test_el_boton_anuncia_si_esta_abierto` sólo greppea la cadena
+    `"aria-describedby"` en el archivo entero, y esa cadena sigue viva
+    dentro de `cerrar()` -- en su `removeAttribute` -- aunque `abrir()` ya
+    no la ponga. Borrar `boton.setAttribute("aria-describedby",
+    "globo-info");` de `abrir()` deja pasar esa prueba igual, y un lector de
+    pantalla nunca llega a leer el texto de ayuda porque el botón nunca
+    quedó asociado al globo. Es la inversión exacta de la aserción sobre
+    `removeAttribute("aria-describedby")` que ya hace
+    `test_cerrar_oculta_el_globo_y_limpia_los_atributos` sobre `cerrar()`.
+
+    Verificación manual: borrando esa línea de info.js, este test falla."""
+    cuerpo = _cuerpo_de_funcion(js_info, "abrir")
+    assert re.search(
+        r'setAttribute\(\s*"aria-describedby"\s*,\s*"globo-info"\s*\)', cuerpo
+    ), "abrir() ya no asocia el globo al botón con aria-describedby"
 
 
 def test_los_valores_de_aria_expanded_no_estan_invertidos(js_info):
