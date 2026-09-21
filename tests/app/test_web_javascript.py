@@ -186,6 +186,50 @@ def test_el_campo_de_angulos_tiene_donde_mostrar_su_error(html):
     assert 'data-error-de="angulos"' in html
 
 
+def _opciones_de_posiciones(html: str) -> str:
+    """El `<select id="posiciones">` solo, sin el resto de la página.
+
+    Buscar `value="4"` en el HTML entero pasaría por cualquier campo
+    numérico que tenga un 4 adelante."""
+    desde = html.index('id="posiciones"')
+    return html[desde : html.index("</select>", desde)]
+
+
+@pytest.mark.parametrize("valor", ["4", "8", "16", "personalizado"])
+def test_el_desplegable_de_posiciones_tiene_las_cuatro_opciones(html, valor):
+    assert f'value="{valor}"' in _opciones_de_posiciones(html)
+
+
+def test_las_posiciones_arrancan_en_cuatro(html):
+    assert re.search(
+        r'<option value="4"[^>]*selected', _opciones_de_posiciones(html)
+    )
+
+
+def test_las_posiciones_se_reparten_en_la_vuelta_entera(js):
+    """4 posiciones son 0/90/180/270 y 16 son cada 22,5 grados. La cuenta
+    tiene que ser i * 360 / n, no una tabla de ángulos escrita a mano: una
+    tabla se desincroniza de las etiquetas del desplegable en cuanto
+    alguien agregue 32."""
+    cuerpo = _cuerpo_de_funcion(js, "angulosElegidos")
+
+    assert "360" in cuerpo
+    assert "Array.from" in cuerpo
+
+
+def test_personalizado_revela_el_campo_de_texto(js):
+    cuerpo = _cuerpo_de_funcion(js, "angulosElegidos")
+    assert '"personalizado"' in cuerpo
+    assert "campo-angulos" in js
+
+
+def test_el_campo_de_angulos_sigue_validandose(js):
+    """Sólo en la rama Personalizado, pero con el mismo error debajo del
+    campo que tenía antes."""
+    assert "angulosElegidos" in _cuerpo_de_funcion(js, "angulosValidos")
+    assert '"angulos"' in js
+
+
 def test_el_zoom_arranca_ajustado_en_cada_imagen(js):
     """Heredar el zoom de la imagen anterior deja al usuario mirando una
     esquina de un dibujo distinto sin entender qué está viendo."""
@@ -633,7 +677,7 @@ def _declaraciones_globales(js: str) -> set[str]:
 
 CLAVES_CON_GLOBO = [
     "archivo", "material", "sep", "borde", "copias", "esfuerzo",
-    "angulos", "tol-cierre", "resolucion", "espejo", "recortes",
+    "angulos", "posiciones", "tol-cierre", "resolucion", "espejo", "recortes",
 ]
 
 

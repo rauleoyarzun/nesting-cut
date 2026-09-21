@@ -141,6 +141,21 @@
       <summary>Opciones avanzadas</summary>
       <div class="campo">
         <div class="titulo-campo">
+          <label class="etiqueta" for="posiciones">Posiciones</label>
+          <button type="button" class="boton-info" data-info="posiciones" aria-label="Qué es Posiciones" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+        </div>
+        <div class="desplegable">
+          <select id="posiciones" class="control">
+            <option value="4" selected>4 — 0, 90, 180, 270</option>
+            <option value="8">8 — cada 45 grados</option>
+            <option value="16">16 — cada 22,5 grados</option>
+            <option value="personalizado">Personalizado</option>
+          </select>
+          <svg viewBox="0 0 16 16" class="icono flecha" aria-hidden="true"><path d="M4 6.5l4 4 4-4"></path></svg>
+        </div>
+      </div>
+      <div class="campo oculto" id="campo-angulos">
+        <div class="titulo-campo">
           <label class="etiqueta" for="angulos">Ángulos</label>
           <button type="button" class="boton-info" data-info="angulos" aria-label="Qué es Ángulos" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
         </div>

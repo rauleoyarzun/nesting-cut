@@ -554,7 +554,7 @@ function parametros() {
     sep: Number($("sep").value),
     borde: Number($("borde").value),
     copias: Number($("copias").value),
-    angulos: angulosDelCampo(),
+    angulos: angulosElegidos(),
     espejo: $("espejo").checked,
     unidades: estado.unidades,
     tol_cierre: Number($("tol-cierre").value),
@@ -564,11 +564,18 @@ function parametros() {
   };
 }
 
-// Los ángulos son el único parámetro que se tipea como texto libre. Un
-// "9o" en vez de "90" daba `NaN`, `JSON.stringify` lo mandaba como `null`,
-// y el servidor devolvía el 422 crudo de pydantic. Se corta acá, con el
-// mismo cartel debajo del campo que usan los demás parámetros.
-function angulosDelCampo() {
+// Las posiciones son el camino normal: 4, 8 o 16 repartidas en la vuelta
+// entera. El campo de texto libre queda para "Personalizado", que es el
+// único que puede traer basura -- un "9o" en vez de "90" daba `NaN`,
+// `JSON.stringify` lo mandaba como `null`, y el servidor devolvía el 422
+// crudo de pydantic. Se corta acá, con el mismo cartel debajo del campo
+// que usan los demás parámetros.
+function angulosElegidos() {
+  const posiciones = $("posiciones").value;
+  if (posiciones !== "personalizado") {
+    const n = Number(posiciones);
+    return Array.from({ length: n }, (_, i) => (i * 360) / n);
+  }
   return $("angulos")
     .value.split(",")
     .map((t) => t.trim())
@@ -577,9 +584,15 @@ function angulosDelCampo() {
 }
 
 function angulosValidos() {
-  const lista = angulosDelCampo();
+  const lista = angulosElegidos();
   return lista.length > 0 && lista.every(Number.isFinite);
 }
+
+$("posiciones").onchange = () => {
+  $("campo-angulos").classList.toggle(
+    "oculto", $("posiciones").value !== "personalizado"
+  );
+};
 
 function corriendo(si) {
   $("btn-acomodar").classList.toggle("oculto", si);

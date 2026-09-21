@@ -26,6 +26,7 @@ const TEXTOS = {
   "copias": "Cuántas veces se repite el contenido entero del archivo. Si el archivo trae 12 piezas y ponés 3, acomoda 36.",
   "esfuerzo": "Cuántas veces intenta acomodar antes de quedarse con la mejor. Más esfuerzo nunca da un resultado peor, pero tarda más: Normal alcanza casi siempre.",
   "angulos": "Las rotaciones que puede probar en cada pieza, separadas por comas. Menos ángulos es más rápido; sumar 45 suele ganar lugar en piezas largas. Si el material respeta la veta, sólo se usan 0 y 180.",
+  "posiciones": "Cuántas rotaciones prueba en cada pieza, repartidas parejas en la vuelta entera: 4 son 0/90/180/270, 16 son cada 22,5 grados. Más posiciones gana lugar pero tarda más. Personalizado abre el campo de ángulos sueltos, para casos que no son una repartición pareja.",
   "tol-cierre": "Cuánto puede separarse la punta de un contorno de su principio y todavía contar como cerrado. Si te descarta piezas que a ojo están cerradas, subila.",
   "resolucion": "Cuántos milímetros mide cada píxel con el que el programa \"ve\" la placa. Más fino acomoda apenas mejor y tarda mucho más; 2 mm es buen punto.",
   "espejo": "Deja dar vuelta la pieza como un guante, no sólo rotarla. Gana lugar, pero si el material tiene una cara buena o el dibujo es asimétrico, apagalo.",
