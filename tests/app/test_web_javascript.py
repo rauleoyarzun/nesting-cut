@@ -587,8 +587,69 @@ def _declaraciones_globales(js: str) -> set[str]:
     return nombres
 
 
-def test_los_dos_scripts_no_declaran_el_mismo_nombre_global(js, js_materiales):
-    """Dos `<script>` clásicos comparten el ámbito global.
+
+# --- los globos de ayuda ---------------------------------------------------
+
+CLAVES_CON_GLOBO = [
+    "archivo", "material", "sep", "borde", "copias", "esfuerzo",
+    "angulos", "tol-cierre", "resolucion", "espejo",
+]
+
+
+@pytest.fixture(scope="module")
+def js_info():
+    return (rutas.recurso("web") / "info.js").read_text(encoding="utf-8")
+
+
+def claves_y_textos(js_info: str) -> dict[str, str]:
+    """El literal `TEXTOS` de `info.js`, leído como diccionario.
+
+    Leerlo con una expresión regular y no evaluarlo es a propósito: el test
+    no necesita un intérprete de JavaScript, necesita saber qué claves hay y
+    qué dice cada una. Por eso el literal tiene todas las claves entre
+    comillas y un par clave/valor por línea -- es un formato que se parsea
+    en cuatro líneas, y el test que sigue lo obliga a seguir siéndolo.
+    """
+    cuerpo = js_info[js_info.index("const TEXTOS = {"):]
+    cuerpo = cuerpo[:cuerpo.index("\n};")]
+    return {
+        m.group(1): m.group(2).replace('\\"', '"')
+        for m in re.finditer(r'^\s*"([^"]+)":\s*"((?:[^"\\]|\\.)*)"', cuerpo, re.M)
+    }
+
+
+def test_estan_las_diez_claves_y_ninguna_de_mas(js_info):
+    assert sorted(claves_y_textos(js_info)) == sorted(CLAVES_CON_GLOBO)
+
+
+@pytest.mark.parametrize("clave", CLAVES_CON_GLOBO)
+def test_el_texto_del_globo_dice_algo(js_info, clave):
+    assert claves_y_textos(js_info)[clave].strip()
+
+
+@pytest.mark.parametrize("clave", CLAVES_CON_GLOBO)
+def test_el_texto_del_globo_entra_en_un_globo(js_info, clave):
+    """Son dos o tres oraciones al costado de un campo, no un párrafo. A
+    partir de acá el globo empieza a taparle la pantalla al que lo abrió."""
+    texto = claves_y_textos(js_info)[clave]
+    assert len(texto) <= 300, f"{clave}: {len(texto)} caracteres"
+
+
+def test_la_pagina_carga_info_js(html):
+    assert '<script src="info.js">' in html
+
+
+def test_info_js_va_entero_adentro_de_una_iife(js_info):
+    """Ver el test de nombres globales de más abajo: sin la IIFE, cualquier
+    nombre que `app.js` ya haya declarado mata este archivo entero."""
+    assert "(() => {" in js_info and "})();" in js_info
+
+
+@pytest.mark.parametrize("a,b", [
+    ("app", "materiales"), ("app", "info"), ("materiales", "info"),
+])
+def test_ningun_script_declara_un_nombre_que_otro_ya_declaro(a, b):
+    """Los `<script>` clásicos comparten el ámbito global.
 
     Declarar en `materiales.js` un `const` que `app.js` ya declaró es un
     SyntaxError, y no falla la línea: **falla el archivo entero** antes de
@@ -599,13 +660,15 @@ def test_los_dos_scripts_no_declaran_el_mismo_nombre_global(js, js_materiales):
     ningún material, y la consola de una ventana de pywebview no se puede
     abrir para ver el error.
 
-    El arreglo fue envolver `materiales.js` en una IIFE. Este test existe
-    para que nadie la saque sin enterarse.
+    El arreglo fue envolver los archivos de más en una IIFE. Este test existe
+    para que nadie la saque sin enterarse, y se parametriza para que sumar un
+    cuarto archivo sea agregar un par acá.
     """
-    chocan = _declaraciones_globales(js) & _declaraciones_globales(js_materiales)
+    leer = lambda n: (rutas.recurso("web") / f"{n}.js").read_text(encoding="utf-8")
+    chocan = _declaraciones_globales(leer(a)) & _declaraciones_globales(leer(b))
 
     assert not chocan, (
-        f"app.js y materiales.js declaran los mismos nombres globales: {sorted(chocan)}. "
+        f"{a}.js y {b}.js declaran los mismos nombres globales: {sorted(chocan)}. "
         "Dos <script> clásicos comparten ámbito, así que eso es un SyntaxError "
         "que mata el segundo archivo entero."
     )
