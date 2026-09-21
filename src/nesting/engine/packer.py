@@ -219,36 +219,53 @@ def _raise_too_large(
 EFFORT_RESTARTS: dict[str, int] = {"rapido": 1, "normal": 3, "lento": 12}
 """How many insertion orders each effort level tries.
 
-Measured against wall-clock, not guessed: see the Task 19 report
-(`.superpowers/sdd/task-19-report.md`). A single greedy pass over
-`bench/files/muestra.dxf` (mdf18, default sep/margin, 1 mm/px) took ~46s at
---copias 4 and ~81s at --copias 6, and `pack()`'s time scales linearly with
-the restart count. `normal = 3` lands at 182s / 236s -- comfortably under
-the project's 5-minute target for the harder of the two references, with
-~20% of the budget still spare. `normal = 4` already crosses it (317s at
---copias 6), so 3 is the most this level can spend. `lento = 12` (4x normal)
-is chosen for a real, monotonic drop in the compaction cost as restarts grow
-(measured on a smaller synthetic scenario, since the reference file is too
-slow to sweep at this multiplier): mean last-sheet height fell from 816mm at
-3 restarts to 800mm at 12, with the best-of-N result improving 790mm -> 780mm
-too. It costs roughly 4x normal's wall time in exchange.
+Los tres números siguen siendo los de la Task 19
+(`.superpowers/sdd/task-19-report.md`), que los midió contra reloj: una
+pasada golosa sobre `bench/files/muestra.dxf` (mdf18, sep/margen por
+omisión, 1 mm/px) tardaba ~46s a --copias 4 y ~81s a --copias 6, el tiempo
+de `pack()` escala lineal con los reintentos, `normal = 4` ya cruzaba el
+objetivo de 5 minutos (317s a --copias 6) y `lento = 12` mostraba una caída
+monótona del costo de compactación al crecer los reintentos. Nada de eso
+cambió de signo, y por eso la tabla no se tocó.
 
-What that time actually buys, honestly: a reviewer measured `normal` against
-`rapido` over 7 varied scenarios and found `normal` ties `rapido` -- same
-`layout_cost` -- in 5 of the 7, despite costing 3-4x as much wall time (the
-`normal = 3` vs `rapido = 1` ratio above). The gain is not gradual; it does
-not show up as "slightly better packing" most of the time. It shows up
-specifically when the layout sits near a sheet breakpoint -- close enough to
-the edge of needing one more sheet that a better insertion order avoids
-opening it. That is also exactly the case where it is worth the most: saving
-a whole sheet dwarfs the extra minutes spent finding the order that avoids
-it. Away from a breakpoint, extra restarts mostly re-arrange the same sheet
-count at a similar height, which is why the tie rate is so high. `lento`
-follows the same pattern one level up (see `pack()`'s superset construction
-below, which also guarantees `lento <= normal <= rapido` by construction,
-never just by luck of the seed) -- it is worth reaching for when a job is
-suspected to be near a breakpoint and the extra wall time is affordable, not
-as a default "better quality" dial."""
+QUÉ SÍ CAMBIÓ, Y POR QUÉ ESTA NOTA SE REESCRIBIÓ. La versión anterior
+cerraba con un dato que hoy engaña: "normal empata con rapido en 5 de 7
+escenarios". Ese empate se midió con la función de costo vieja
+`(placas, alto de la última)`, que NO PODÍA VER la diferencia entre los
+layouts que estaba eligiendo -- peor, prefería el equivocado. Sobre
+`NESTING 2.ai` (mdf15, sep 10, borde 10, 2.0 mm/px), medido en la Tarea 6:
+
+| nivel  | reparto | material última | alto última | seg   |
+|--------|---------|-----------------|-------------|-------|
+| rapido | 32 / 4  | 0.1432 m²       | 235 mm      | 37.7  |
+| normal | 33 / 3  | 0.1106 m²       | 308 mm      | 48.3  |
+| lento  | 35 / 1  | 0.1061 m²       | 491 mm      | 136.2 |
+
+Los reintentos mejoran de verdad y de forma monótona -- de 4 piezas varadas
+a 1 -- pero el ALTO de la última placa CRECE con cada mejora. Con el
+desempate viejo, `normal` y `lento` encontraban esos layouts y después los
+tiraban, porque 308 mm y 491 mm puntúan peor que 235 mm. Parte del "empate"
+que esta nota reportaba era eso: el esfuerzo extra sí encontraba algo, y el
+costo lo descartaba. Con `CostoLayout` (Tarea 1) la mejora se registra.
+
+CUÁNDO SIGUE SIN COMPRAR NADA. Sobre `muestra.dxf` a --copias 8, los tres
+niveles dieron exactamente el mismo layout (50/46, 2.1206 m²) por 70.1s,
+132.1s y 401.9s. La regla vieja se sostiene: el esfuerzo extra rinde cerca
+de un salto de placa -- que es donde está el archivo de referencia, con 1 a
+4 piezas varadas en la segunda placa -- y no rinde lejos de uno. Lo que
+cambió es que ahora, cuando rinde, se nota.
+
+EL PRESUPUESTO DE 5 MINUTOS, HONESTAMENTE. A 2.0 mm/px (el default desde la
+Task 24) `normal` sale mucho más barato que lo medido en la Task 19: 48.3s
+sobre el archivo de referencia (36 piezas) y 132.1s sobre `muestra.dxf` a
+--copias 8 (96 piezas). Pero el objetivo no es universal: una sola pasada
+sobre `banqueta final raulo.ai` a --copias 5 (200 piezas) ya tarda 450.6s,
+o sea que `normal` ahí se va muy por encima de los 5 minutos. El objetivo
+vale para trabajos del tamaño contra el que se calibró, no para cualquier
+carga.
+
+`pack()` garantiza `lento <= normal <= rapido` por construcción (ver el
+superconjunto de reintentos más abajo), nunca por suerte de la semilla."""
 
 COMPACTION_BOOST = 3.0
 """How much the bottom-left weight is multiplied by on the final compaction pass."""

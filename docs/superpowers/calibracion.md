@@ -1,250 +1,437 @@
-# Calibración — 2026-09-18
+# Calibración
 
-Medido con `bench/calibrate.py` (y, para el desborde de placa que hizo falta
-forzar, con llamadas directas a `bench.run_bench.run_one` desde scripts
-puntuales — ver la nota de alcance más abajo) sobre los archivos de
-`bench/files/`.
+Dos corridas, con dos motores distintos:
 
-## Archivos
+- **2026-09-18 (Task 24), motor conservador.** La grilla del raster decidía
+  las colisiones sola. Fijó `resolucion = 2.0 mm/px` y confirmó
+  `contact = 1.0`. Queda más abajo, en «Anexo».
+- **2026-09-21 (Tarea 6 del plan de densidad y colisión exacta), motor
+  híbrido.** La grilla propone candidatos con halo optimista y
+  `ArbitroExacto` (`src/nesting/engine/exact.py`) decide sobre los polígonos
+  exactos. Es la corrida vigente y es la que cuenta este documento.
+
+---
+
+# Recalibración 2026-09-21 — motor híbrido
+
+## Qué cambió debajo de la calibración
+
+1. **El criterio.** `layout_cost` devolvía `(placas, alto de la última
+   placa)`. Ahora devuelve `CostoLayout(placas, material_ultima,
+   alto_ultima)`: primero placas, después cuánto material queda arriba en la
+   última, y el alto sólo como desempate. El desempate viejo era
+   activamente dañino, y esta corrida lo muestra con números (ver «Niveles
+   de esfuerzo»).
+2. **La separación.** Dejó de fijarla la grilla. Pedir 10 mm daba 16 mm
+   reales a 2 mm/px; ahora da 10.00 mm a cualquier resolución.
+3. **La pasada de recuperación** (Tarea 5) mueve a placas anteriores lo que
+   quedó varado en la última.
+
+Las dos primeras invalidan la calibración anterior: se calibró un peso
+contra una métrica que el motor ya no persigue, y una resolución contra un
+compromiso densidad/tiempo que ya no existe.
+
+## Método
+
+Cada celda es una corrida de `pack()` sobre un archivo, variando un solo
+parámetro contra una configuración base, con `seed=0` y verificando el
+resultado con `geometry/verify.py`. **Cero violaciones en todas las celdas
+de las tablas de barrido de este documento** (la excepción son las corridas
+de sensibilidad a la semilla, que comparan layouts y no llaman al
+verificador).
+
+Las corridas se hicieron con un script puntual sobre
+`bench.run_bench.run_one` (mismo motor y mismos parámetros que barre
+`bench/calibrate.py`), porque `bench/calibrate.py` aplica las mismas
+`--copias` a todos los archivos y acá hizo falta una cantidad distinta por
+archivo. El comando equivalente end to end es:
+
+```bash
+.venv/bin/python bench/calibrate.py --material mdf18 --copias 5
+```
+
+### Por qué hacen falta tantas copias
+
+Una configuración sólo se distingue de otra si el trabajo **desborda la
+primera placa**: con todo en una sola placa, tanto el aprovechamiento como
+el material de la última son cocientes fijos que no dependen del acomodo.
+Por eso `muestra.dxf` se corre a `--copias 8` (96 piezas) o `6` (72), y
+`banqueta final raulo.ai` a `--copias 5` (200) o `4` (160).
+`NESTING 2.ai` desborda con una sola copia.
+
+### Archivos
 
 | Archivo | Piezas (1 copia) | Origen |
 |---|---|---|
-| `muestra.dxf` | 12 (4 asientos + 8 patas cóncavas) | Sintético, generado por `bench/make_sample.py` — pensado a propósito con curvas y concavidades para estresar el término de contacto |
-| `banqueta.ai` | 40 | Export real desde CorelDRAW (AI3) del proyecto de una banqueta |
-| `banqueta.3dm` | 0 | Modelo 3D del ensamblaje armado (Task 23), no un layout de corte plano. No entra en `bench/calibrate.py` (su glob es `*.dxf` + `*.ai`) y no sirve para calibrar. |
+| `NESTING 2.ai` | 36 | El trabajo real de referencia del plan (mdf15, sep 10, borde 10) |
+| `bench/files/muestra.dxf` | 12 | Sintético, de `bench/make_sample.py`: curvas y concavidades para estresar el término de contacto |
+| `bench/files/banqueta final raulo.ai` | 40 | Export real desde CorelDRAW (AI3) |
+| `bench/files/banqueta raulo.3dm` | 0 | Modelo 3D del ensamblaje, no un layout de corte. No entra en la calibración |
 
-## Nota de método: por qué hizo falta forzar desborde de placa
+### Qué mide el banco ahora
 
-El aprovechamiento **total** es área de piezas sobre área de placas usadas:
-con la misma cantidad de placas da **idéntico por construcción**, sea cual
-sea la calidad del acomodo. Pero lo mismo le pasa a
-**`first_sheet_utilization`** cuando *todas* las piezas entran en la primera
-placa: en ese caso también es un cociente fijo (área total de piezas / área
-de la placa), independiente de cómo se acomoden. Con `--copias 1` o `2` en
-cualquiera de los dos archivos reales, todo entra en una sola placa, así que
-**ninguna de las dos métricas distingue configuraciones** — se comprobó
-midiendo (`contact=0.0` y `contact=0.5` dieron exactamente el mismo
-`first_sheet_utilization`, 16 cifras significativas incluidas, que el
-default en una corrida a `--copias 2` del archivo real).
+`bench/run_bench.py` y `bench/calibrate.py` reportaban aprovechamiento de la
+primera placa y ordenaban por eso. **Se cambió en esta tarea**: `BenchResult`
+suma `material_ultima_m2` y `tira_libre_mm`, y `calibrate._mejor` ordena por
+`(placas, material en la última, segundos)`, el mismo orden que
+`layout_cost`. Ordenar por una cifra que el motor no optimiza recomienda
+valores que el motor después no elige — y eso pasó de verdad: en el barrido
+de contacto sobre `banqueta final raulo.ai`, 0.5 y 0.8 empataron en
+aprovechamiento de primera placa (61.00% las dos) y dejaron 0.781 m² y
+0.859 m² en la última. El aprovechamiento de la primera placa se sigue
+reportando: es la única columna con diferencias continuas cuando dos
+configuraciones empatan en placas.
 
-Para que el acomodo importe hay que usar suficientes copias como para que el
-área total supere el 100% de una placa, forzando una segunda placa y
-obligando al empacador a decidir qué subconjunto de piezas deja en la
-primera. Con eso:
+## Peso de contacto — **cambiado: 1.0 → 4.0**
 
-- `muestra.dxf`: 12 piezas ocupan 13.56% de una placa mdf18 (1830×2600 mm) →
-  hacen falta **8 copias** para pasar el 100% (108.5%).
-- `banqueta.ai`: 40 piezas ocupan 25.34% → hacen falta **5
-  copias** para pasar el 100% (126.7%).
+`bottom_left` fijo en 1.0, resolución 2.0 mm/px.
 
-Todo lo medido en este documento usa `--copias 8` para `muestra.dxf` y
-`--copias 5` para el archivo real, salvo donde se indica lo contrario.
+### El piso funcional, primero
 
-## Alcance de esta corrida (reducido a propósito)
+`tests/engine/raster/test_raster_oracle.py::test_a_small_part_is_nested_inside_a_big_hole`
+verifica la ganancia de la spec §5.2: una pieza chica cae dentro del agujero
+de una grande en vez de plancharse aparte. Bisección con el motor híbrido:
 
-La corrida original de `bench/calibrate.py --copias 2` (Paso 4 del brief)
-se perdió: corrió en segundo plano varios minutos, pero al no usar salida sin
-buffer ni quedar bajo vigilancia activa, el proceso se perdió sin dejar
-registro antes de completarse la barrida completa (`lento` sobre el archivo
-real solo, a 12 reintentos, tarda varios minutos). Además, `--copias 2` es
-justo el caso descrito arriba donde la métrica no distingue nada, así que
-esa corrida tampoco hubiese servido.
+| contacto | ¿la pieza chica cae en el agujero? |
+|---|---|
+| 0.0, 0.25, 0.5, 0.6 | No |
+| 0.7, 0.8, 0.9, 0.95, 1.0, 2.0, 4.0 | Sí |
 
-La corrida real que sí produjo los números de este documento usó scripts
-puntuales (no interactivos, con flush inmediato a disco) contra
-`bench.run_bench.run_one`, con el mismo motor/parámetros que
-`bench/calibrate.py` sweepea, pero con alcance reducido para que terminara
-en un tiempo razonable:
+El piso bajó un escalón (antes el corte estaba entre 0.7 y 0.8) pero sigue
+ahí. **Todo candidato por debajo de 0.7 queda descartado**, y eso incluye
+`contact = 0.0`, que es entre 1.6x y 4.8x más rápido y gana en dos de los
+tres archivos.
 
-- **Peso de contacto:** barrido completo (0.0, 1.0, 4.0) sobre `muestra.dxf`
-  a `--copias 8`; confirmación en los extremos (0.0 vs. 1.0) sobre el archivo
-  real a `--copias 5`. No se corrieron 0.5 y 2.0 sobre archivos reales
-  (sí están cubiertos por `tests/test_calibration.py`, con archivo sintético
-  chico y resolución gruesa).
-- **Resolución:** barrido completo (0.5, 1.0, 2.0, 3.0) sobre `muestra.dxf`
-  a `--copias 8` — salvo 0.5, que a esa densidad hubiera sido
-  impracticable (la grilla tiene 4x más celdas por lado que a 1.0 mm/px) y
-  se midió aparte, solo el tiempo, a `--copias 2`. Confirmación en 1.0 vs.
-  2.0 sobre el archivo real a `--copias 5`.
-- **Niveles de esfuerzo:** los tres niveles sobre `muestra.dxf`, pero a
-  `--copias 2` (no 8): `EFFORT_RESTARTS` ya está calibrado (Task 19, con
-  este mismo archivo) y esta tabla es de confirmación, no de
-  recalibración — no hacía falta pagar el desborde de placa, y `lento`
-  (12 reintentos) sobre una placa ya llena hubiera sido demasiado lento para
-  el presupuesto de esta sesión.
-- **Línea de base (shelf vs. raster):** ambos archivos, a las mismas
-  copias que su barrido principal (8 y 5 respectivamente).
+### `NESTING 2.ai` — mdf15, sep 10, borde 10, 36 piezas
 
-Cada corrida es de un solo archivo (no el conjunto agregado de
-`bench/calibrate.py`), pero usa la misma semilla (`seed=0`, el default),
-el mismo material (`mdf18`) y varía un solo parámetro a la vez contra la
-misma configuración base (`sep=6.0, margin=10.0, esfuerzo=rapido` salvo
-donde se indica). `bench/calibrate.py` (Step 1) queda extendido con
-`sweep_resolution` y con soporte de `--copias`, así que una corrida futura
-con más presupuesto de tiempo puede repetir esto mismo end-to-end con
-`.venv/bin/python bench/calibrate.py --material mdf18 --copias 5`.
+Esfuerzo `rapido`:
 
-## Peso de contacto
+| contacto | placas | reparto | material última | tira libre | aprov. 1ª | seg |
+|---|---|---|---|---|---|---|
+| 0.0 | 2 | 34 / 2 | 0.0716 m² | 2365 mm | 53.61% | 15.1 |
+| 0.5 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 25.9 |
+| 0.8 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 26.2 |
+| 1.0 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 37.5 |
+| 2.0 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 24.8 |
+| **4.0** | 2 | **34 / 2** | **0.0716 m²** | 2365 mm | 53.61% | 25.4 |
+| 8.0 | 2 | 31 / 5 | 0.1789 m² | 2365 mm | 51.35% | 28.2 |
+| 16.0 | 2 | 33 / 3 | 0.1172 m² | 2220 mm | 52.65% | 27.9 |
 
-`bottom_left` fijo en 1.0, esfuerzo `rapido`, resolución 1.0 mm/px.
+Esfuerzo `normal` (el default):
 
-### `muestra.dxf`, `--copias 8` (96 piezas, 2 placas en los tres casos)
+| contacto | reparto | material última | seg |
+|---|---|---|---|
+| 0.7 | 33 / 3 | 0.1106 m² | 48.9 |
+| 0.8 | 33 / 3 | 0.1106 m² | 48.4 |
+| 1.0 | 33 / 3 | 0.1106 m² | 48.8 |
+| 2.0 | 32 / 4 | 0.1432 m² | 46.6 |
+| **4.0** | **34 / 2** | **0.0716 m²** | 48.8 |
+
+Esfuerzo `lento`:
+
+| contacto | reparto | material última | seg |
+|---|---|---|---|
+| 0.8 | 35 / 1 | 0.1061 m² | 144.3 |
+| 1.0 | 35 / 1 | 0.1061 m² | 140.1 |
+| **4.0** | 34 / 2 | **0.0716 m²** | 177.8 |
+
+(La última fila es el caso que muestra para qué sirve el criterio nuevo:
+`4.0` deja **dos** piezas arriba contra **una** de `1.0`, y aun así gana,
+porque esas dos piezas suman menos material que la única que deja `1.0`.
+Lo que acerca a tirar la placa es el área, no el conteo.)
+
+### `muestra.dxf` — mdf18, sep 6, borde 10, esfuerzo `rapido`
+
+`--copias 8` (96 piezas):
+
+| contacto | placas | reparto | material última | tira libre | aprov. 1ª | seg |
+|---|---|---|---|---|---|---|
+| 0.0 | 2 | 52 / 44 | 2.0284 m² | 466 mm | 65.83% | 47.7 |
+| 0.5 | 2 | 51 / 45 | 2.0745 m² | 466 mm | 64.86% | 68.5 |
+| 0.8 | 2 | 50 / 46 | 2.1206 m² | 466 mm | 63.90% | 99.2 |
+| 1.0 | 2 | 50 / 46 | 2.1206 m² | 466 mm | 63.90% | 69.1 |
+| 2.0 | 2 | 49 / 47 | 2.1667 m² | 370 mm | 62.93% | 69.7 |
+| 4.0 | 2 | 50 / 46 | 2.1206 m² | 466 mm | 63.90% | 69.9 |
+
+`--copias 6` (72 piezas):
+
+| contacto | placas | reparto | material última | seg |
+|---|---|---|---|---|
+| 0.8 | 2 | 54 / 18 | 0.8298 m² | 38.0 |
+| 1.0 | 2 | 52 / 20 | 0.9220 m² | 38.7 |
+| 2.0 | 2 | 52 / 20 | 0.9220 m² | 60.2 |
+| 4.0 | 2 | 52 / 20 | 0.9220 m² | 60.4 |
+
+### `banqueta final raulo.ai` — mdf18, sep 6, borde 10, esfuerzo `rapido`
+
+`--copias 5` (200 piezas):
+
+| contacto | placas | reparto | material última | tira libre | aprov. 1ª | seg |
+|---|---|---|---|---|---|---|
+| 0.0 | 3 | 138 / 40 / 22 | 0.8167 m² | 1679 mm | 60.25% | 93.8 |
+| 0.5 | 3 | 139 / 40 / 21 | 0.7809 m² | 1683 mm | 61.00% | 240.5 |
+| 0.8 | 3 | 139 / 38 / 23 | 0.8591 m² | 1653 mm | 61.00% | 279.9 |
+| 1.0 | 3 | 141 / 38 / 21 | 0.7842 m² | 1683 mm | 62.50% | 450.6 |
+| 2.0 | 3 | 136 / 40 / 24 | 0.9014 m² | 1553 mm | 60.08% | 395.0 |
+| **4.0** | 3 | 136 / 44 / 20 | **0.7582 m²** | 1703 mm | 61.36% | 398.3 |
+
+`--copias 4` (160 piezas):
+
+| contacto | placas | reparto | material última | seg |
+|---|---|---|---|---|
+| **0.8** | 2 | 116 / 44 | **2.0724 m²** | 227.8 |
+| 1.0 | 2 | 113 / 47 | 2.1164 m² | 230.7 |
+| 4.0 | 2 | 115 / 45 | 2.1147 m² | 308.0 |
+
+### Cara a cara 4.0 contra 1.0 — las siete celdas
+
+| celda | 1.0 | 4.0 | |
+|---|---|---|---|
+| `NESTING 2.ai` rapido | 0.1432 m² | **0.0716 m²** | gana 4.0 |
+| `NESTING 2.ai` normal | 0.1106 m² | **0.0716 m²** | gana 4.0 |
+| `NESTING 2.ai` lento | 0.1061 m² | **0.0716 m²** | gana 4.0 |
+| `muestra.dxf` x8 | 2.1206 m² | 2.1206 m² | empate |
+| `muestra.dxf` x6 | 0.9220 m² | 0.9220 m² | empate |
+| `banqueta...` x5 | 0.7842 m² | **0.7582 m²** | gana 4.0 |
+| `banqueta...` x4 | 2.1164 m² | **2.1147 m²** | gana 4.0 (apenas) |
+
+Cinco victorias, dos empates, **ninguna derrota**. Y el tiempo es un empate:
+el costo de la correlación FFT de contacto se paga o no según
+`contact != 0.0` (ver `raster/scoring.py::best_position`), no según el valor
+del peso; las diferencias de segundos de las tablas son del layout que salió,
+no del peso.
+
+### Un caso sintético donde sí decidió placas
+
+El fixture de
+`tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+(rectángulos variados, material 1000x1000, sep 8, borde 15, esfuerzo
+`normal`), con 48 piezas:
+
+| contacto | semilla 1 | semilla 2 | semilla 3 | semilla 4 |
+|---|---|---|---|---|
+| 1.0 | 2 placas | 2 placas | 2 placas | 2 placas |
+| 4.0 | **1 placa** | **1 placa** | 2 placas | 2 placas |
+
+Es sintético, pero es la única celda medida donde este peso cambió lo que le
+cuesta al usuario.
+
+### Lo que NO dicen estas tablas
+
+No dicen que «más contacto es mejor». La respuesta **no es monótona**: 2.0
+fue el peor de los candidatos que pasan el piso en 3 de las 5 celdas donde
+se lo midió; sobre `NESTING 2.ai`, 8.0 y 16.0 son peores que 4.0; y 0.8 le
+gana a 4.0 en dos celdas (`muestra.dxf` x6 y `banqueta...` x4), empata en
+una (`muestra.dxf` x8) y pierde en cuatro. La cantidad de placas sobre
+archivos reales fue idéntica con todos los pesos en las siete celdas.
+
+Es decir: este peso no decide placas sobre los archivos medidos, decide
+cuánto material queda arriba en la última, y ahí la respuesta parece una
+lotería con un ganador consistente antes que una pendiente.
+
+**Elegido: `contact = 4.0`** (antes 1.0). Es el mejor medido contra el
+criterio que el motor realmente minimiza, no perdió nunca contra el valor
+anterior, conserva el anidado en agujeros y no cuesta tiempo. No se sube más
+porque 8.0 ya empeora.
+
+## Resolución del raster — **sin cambios: 2.0 mm/px**
+
+Contacto 1.0 (el vigente al momento de medir), esfuerzo `rapido`.
+
+**Qué compra hoy.** Ya no compra separación: la decide `ArbitroExacto` sobre
+los polígonos exactos, así que pedir 10 mm entrega 10.00 mm a cualquier
+resolución. Lo único que queda en manos de la resolución es la finura de la
+retícula de candidatos.
+
+### `NESTING 2.ai` — mdf15, sep 10, borde 10
+
+| mm/px | placas | reparto | material última | tira libre | aprov. 1ª | seg |
+|---|---|---|---|---|---|---|
+| 3.0 | 2 | 29 / 7 | 0.2538 m² | 2292 mm | 49.78% | 9.6 |
+| **2.0** | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 36.8 |
+| 1.0 | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 52.10% | 110.4 |
+| 0.5 | 2 | 31 / 5 | 0.1789 m² | 2365 mm | 51.35% | 646.2 |
+
+### `muestra.dxf` — mdf18, `--copias 8`, sep 6, borde 10
+
+| mm/px | placas | reparto | material última | aprov. 1ª | seg |
+|---|---|---|---|---|---|
+| 3.0 | 2 | 50 / 46 | 2.1206 m² | 63.90% | 51.7 |
+| **2.0** | 2 | 50 / 46 | 2.1206 m² | 63.90% | 70.2 |
+| 1.0 | 2 | 53 / 43 | 1.9823 m² | 66.80% | 413.5 |
+
+### `banqueta final raulo.ai` — mdf18, `--copias 4`, sep 6, borde 10
+
+| mm/px | placas | reparto | material última | aprov. 1ª | seg |
+|---|---|---|---|---|---|
+| 3.0 | 2 | 113 / 47 | 2.1229 m² | 56.76% | 74.6 |
+| **2.0** | 2 | 113 / 47 | 2.1164 m² | 56.90% | 230.7 |
+| 1.0 | 2 | 116 / 44 | 2.0090 m² | 59.15% | 1077.2 |
+
+### La hipótesis del plan, confirmada a medias
+
+El plan decía: «con el motor híbrido, 1 mm/px da el MISMO layout que 2 mm/px
+y tarda 5x más». **Sobre `NESTING 2.ai` es exacto** — mismas cifras, mismo
+reparto 32/4, 3.0x el tiempo. **Sobre los dos archivos del banco es falso**:
+1.0 mm/px compra un 5-7% menos de material en la última placa, al precio de
+4.7-5.9x el tiempo. Lo que no compra en ningún lado es una placa menos.
+
+Y afinar no es un dial monótono: 0.5 mm/px sobre `NESTING 2.ai` dio **peor**
+que 2.0 (31/5 contra 32/4) y 17.6x más lento. Una retícula más fina propone
+candidatos distintos, no mejores.
+
+**Elegido: se queda en `2.0 mm/px`.** Es la rodilla medida: engrosar a 3.0
+empata en los dos archivos del banco pero se desploma en el de referencia
+(29/7 contra 32/4), que es el caso apretado para el que se usa el programa;
+afinar a 1.0 paga 5x el tiempo por un 5% de material en la última placa que
+no cambia ninguna placa. Quien tenga un trabajo pegado a un salto de placa y
+tiempo de sobra puede bajar a 1.0 a mano con `--resolucion`.
+
+## Niveles de esfuerzo — **sin cambios: `{rapido: 1, normal: 3, lento: 12}`**
+
+Contacto 1.0, resolución 2.0 mm/px.
+
+### `NESTING 2.ai` — mdf15, sep 10, borde 10
+
+| nivel | reintentos | reparto | material última | alto última | seg |
+|---|---|---|---|---|---|
+| rapido | 1 | 32 / 4 | 0.1432 m² | 235 mm | 37.7 |
+| normal | 3 | 33 / 3 | 0.1106 m² | 308 mm | 48.3 |
+| lento | 12 | 35 / 1 | 0.1061 m² | 491 mm | 136.2 |
+
+**Esta tabla es la prueba de que el desempate viejo hacía daño.** Los
+reintentos mejoran de forma monótona — de 4 piezas varadas a 1 — pero el
+**alto** de la última placa **crece** con cada mejora. Con el costo viejo
+`(placas, alto)`, `normal` y `lento` encontraban esos layouts y después los
+tiraban, porque 308 mm y 491 mm puntúan peor que 235 mm. Parte del «empate»
+que documentaba `EFFORT_RESTARTS` («normal empata con rapido en 5 de 7
+escenarios») era eso: el esfuerzo extra sí encontraba algo y el costo lo
+descartaba.
+
+### `muestra.dxf` — mdf18, `--copias 8`
+
+| nivel | reparto | material última | seg |
+|---|---|---|---|
+| rapido | 50 / 46 | 2.1206 m² | 70.1 |
+| normal | 50 / 46 | 2.1206 m² | 132.1 |
+| lento | 50 / 46 | 2.1206 m² | 401.9 |
+
+Idénticos. La regla vieja se sostiene: el esfuerzo extra rinde cerca de un
+salto de placa — donde está el archivo de referencia, con 1 a 4 piezas
+varadas en la segunda placa — y no rinde lejos de uno. Lo que cambió es que
+ahora, cuando rinde, se nota.
+
+**No se tocó la tabla.** Los tiempos de la Task 19 que la fijaron no
+cambiaron de signo, y el presupuesto de 5 minutos para `normal` se cumple
+con holgura en los trabajos del tamaño contra el que se calibró (48.3 s en
+el archivo de referencia, 132.1 s en `muestra.dxf --copias 8`). Lo que hay
+que decir sin adornos es que ese presupuesto **no es universal**: una sola
+pasada sobre `banqueta final raulo.ai --copias 5` (200 piezas) tarda
+450.6 s, así que `normal` ahí se va muy por encima de los 5 minutos. Subir
+`normal` a 4 o más empeoraría eso sin una ganancia medida que lo pague.
+
+## El trabajo de referencia, de punta a punta
+
+`NESTING 2.ai`, mdf15, sep 10, borde 10, esfuerzo `rapido`, resolución
+2.0 mm/px, **cero violaciones** del verificador exacto:
+
+| contacto | placas | reparto | material última | tira libre | seg |
+|---|---|---|---|---|---|
+| 1.0 (antes) | 2 | 32 / 4 | 0.1432 m² | 2365 mm | 37.5 |
+| **4.0 (ahora)** | 2 | **34 / 2** | **0.0716 m²** | 2365 mm | 25.4 |
+
+(Las dos filas salen de la misma corrida del barrido de contacto, para que
+los segundos sean comparables entre sí.)
+
+Y por la CLI, con los valores por omisión ya cambiados:
+
+```
+$ .venv/bin/nest "NESTING 2.ai" --material mdf15 --sep 10 --borde 10 \
+      --esfuerzo rapido -o cortado.dxf
+Placa 1/2   aprovechamiento  53.6%
+Placa 2/2   aprovechamiento   1.5%   <- sobrante útil ~1830x2365 mm
+----------------------------------
+36 piezas - 2 placas - 27.6% total - 24.8s
+  material en la última placa: 0.072 m²  ·  tira libre: 2365 mm
+```
+
+El techo del plan (3.010 m² de piezas infladas contra 4.670 m² de área útil:
+una sola placa exigiría empaquetar al 64.4%) sigue lejos: la placa 1 llega
+al 53.61%.
+
+## Resumen de valores fijados
+
+| Parámetro | Antes | Ahora | ¿Cambió? |
+|---|---|---|---|
+| `Weights.contact` | 1.0 | **4.0** | Sí — nunca perdió contra 1.0 en 7 celdas, gana 5 |
+| `Weights.bottom_left` | 1.0 | 1.0 | No — no se barrió, es la referencia contra la que se mide el contacto |
+| `NestConfig.resolution` / `NestParams.resolucion` / `--resolucion` | 2.0 mm/px | 2.0 mm/px | No — 1.0 compra 5-7% de material en la última al precio de 5x el tiempo, y 0.5 empeora |
+| `EFFORT_RESTARTS` | 1 / 3 / 12 | 1 / 3 / 12 | No — los tiempos que la fijaron no cambiaron de signo |
+| Métrica de `bench/calibrate.py` | aprov. 1ª placa | `(placas, material última, seg)` | Sí — el orden de `layout_cost` |
+
+---
+
+# Anexo — corrida 2026-09-18 (Task 24), motor conservador
+
+Se conserva porque explica de dónde salió `resolucion = 2.0` y porque su
+razonamiento sobre el piso del anidado en agujeros sigue vigente en forma
+(el umbral se volvió a medir arriba y bajó de ~0.8 a ~0.7).
+
+Medido sobre `bench/files/` con el motor en el que la grilla decidía las
+colisiones sola, ordenando por aprovechamiento de la primera placa.
+
+## Peso de contacto (entonces)
+
+`muestra.dxf`, `--copias 8`, resolución 1.0 mm/px:
 
 | contacto | aprov. 1ª placa | segundos |
 |---|---|---|
 | 0.0 | 63.90% | 109.7 |
-| 1.0 (default) | 62.93% | 175.6 |
+| 1.0 | 62.93% | 175.6 |
 | 4.0 | 60.99% | 179.8 |
 
-### `banqueta.ai`, `--copias 5` (200 piezas, 3 placas en ambos casos)
+`banqueta final raulo.ai`, `--copias 5`:
 
 | contacto | aprov. 1ª placa | segundos |
 |---|---|---|
 | 0.0 | 60.25% | 206.1 |
-| 1.0 (default) | 60.25% (idéntico) | 312.5 |
+| 1.0 | 60.25% (idéntico) | 312.5 |
 
-**Hallazgo, con los números en la mano:** subir el peso de contacto **no
-mejora** el aprovechamiento de la primera placa en ninguno de los dos
-archivos reales — en `muestra.dxf` lo empeora de forma monótona (63.9% →
-62.9% → 61.0% al ir de 0.0 a 1.0 a 4.0) y en el archivo real da exactamente
-igual. Además `contact=0.0` es más rápido en ambos (34-46% menos tiempo),
-porque salta por completo la correlación de contacto
-(`raster/scoring.py::best_position`, `if weights.contact != 0.0 and
-sheet.any() and band.any()`). Tomado en aislado, esto diría "apagar el
-término".
+Conclusión de entonces: el promedio favorecía `0.0`, pero el anidado en
+agujeros lo descartaba, y entre los que pasaban el piso `1.0` era el mejor
+en aprovechamiento de primera placa. Con el motor híbrido y el criterio
+nuevo esa comparación se rehízo entera y dio 4.0.
 
-Pero hay una segunda medición que pesa más que el promedio agregado:
-`tests/engine/raster/test_raster_oracle.py::test_a_small_part_is_nested_inside_a_big_hole`
-verifica la ganancia concreta de la spec §5.2 (una pieza chica cae dentro
-del agujero de una grande en vez de plancharse aparte). Se hizo una
-bisección del peso de contacto sobre ese mismo caso:
+## Resolución (entonces)
 
-| contacto | ¿la pieza chica cae en el agujero? |
-|---|---|
-| 0.0, 0.5 | No |
-| 0.6, 0.7 | No |
-| 0.8, 0.9, 0.95, 1.0, 2.0, 4.0 | Sí |
-
-Por debajo de ~0.8, `bottom_left` solo le gana el argmax al término de
-contacto y la pieza chica se va al fondo-izquierda de la placa vacía en vez
-de meterse en el agujero — geométricamente válido, pero desperdicia
-exactamente el espacio que el hito 3 promete recuperar. Esa capacidad pesa
-más que un par de puntos de aprovechamiento agregado, así que **cualquier
-candidato por debajo de 1.0 queda descartado**, sin importar lo que diga la
-tabla de arriba.
-
-**Elegido: `contact = 1.0`.** Es el candidato más chico que no rompe el
-anidado en agujeros, y entre los que no lo rompen (1.0, 2.0, 4.0) es también
-el mejor medido en `muestra.dxf` (62.9% contra 61.0% de `4.0`; `2.0` no se
-midió sobre archivo real, pero la tendencia monótona de 1.0 a 4.0 no da
-ninguna razón para esperar que le gane a 1.0). Se mantiene el valor
-provisorio original — ahora por una razón medida, no por una elegida a
-criterio.
-
-## Resolución del raster
-
-`contact = 1.0` (el elegido arriba), esfuerzo `rapido`.
-
-### `muestra.dxf`, `--copias 8` (96 piezas, 2 placas en los cuatro casos salvo donde se indica)
-
-| mm/px | aprov. 1ª placa | segundos | nota |
-|---|---|---|---|
-| 0.5 | (no medido a esta densidad) | 160.9 | medido solo el tiempo, a `--copias 2` (1 placa); ver más abajo |
-| 1.0 (default anterior) | 62.93% | 175.6 | |
-| 2.0 | 62.93% (idéntico) | 36.5 | 4.8× más rápido |
-| 3.0 | 60.02% | 15.0 | 11.7× más rápido, pero pierde 2.9 puntos |
-
-Para 0.5 mm/px la grilla tiene 4× más celdas por lado que a 1.0 (16× más
-celdas en total), y sobre las 96 piezas de `muestra.dxf --copias 8` hubiera
-sido impracticable dentro del presupuesto de esta sesión. Se midió el costo
-en tiempo por separado, a `--copias 2` (24 piezas, cabe todo en 1 placa, no
-sensible a la calidad del acomodo pero sí válido para el costo): 160.9 s
-contra 33.0 s a 1.0 mm/px en la misma configuración — **4.9× más lento**,
-consistente con la grilla más fina.
-
-### `banqueta.ai`, `--copias 5` (200 piezas, 3 placas en ambos casos)
+`muestra.dxf`, `--copias 8`:
 
 | mm/px | aprov. 1ª placa | segundos |
 |---|---|---|
-| 1.0 (default anterior) | 60.25% | 312.5 |
-| 2.0 | 59.49% | 68.7 (4.5× más rápido) |
+| 0.5 | (sólo tiempo, a `--copias 2`) | 160.9 |
+| 1.0 | 62.93% | 175.6 |
+| 2.0 | 62.93% (idéntico) | 36.5 |
+| 3.0 | 60.02% | 15.0 |
 
-**Elegido: `resolucion = 2.0` mm/px** (antes 1.0). Pasar de 1.0 a 2.0 no
-costó nada en `muestra.dxf` (idéntico al 16ª cifra) y costó 0.76 puntos en
-el archivo real, a cambio de un 4.5-4.8× menos tiempo en los dos. Pasar a
-3.0 pierde mucho más (2.9 puntos en `muestra.dxf`) por una ganancia de
-velocidad que no hace falta. Ir más fino que 1.0 (0.5) sale 4.9× más caro en
-tiempo por una ganancia de densidad que, según lo ya medido en la Task 15
-(rasterizar conservador infla el área en +2% para una pieza de 300 mm y +9%
-para una de 100×50 mm), es marginal en comparación. El verificador exacto
-(`geometry/verify.py`) dio **cero violaciones** en todas las resoluciones
-medidas: la resolución más gruesa cuesta densidad, nunca corrección, porque
-la separación se valida sobre los polígonos exactos, no sobre la grilla.
+`banqueta final raulo.ai`, `--copias 5`:
 
-Este cambio de default también deja el presupuesto de `EFFORT_RESTARTS`
-(calibrado a 1.0 mm/px, ver `packer.py`) como una cota más floja de lo
-necesario en vez de una ajustada: a 2.0 mm/px, cada nivel corre más rápido
-que lo que se midió ahí, nunca más lento, así que el objetivo de 5 minutos
-para `normal` sigue cumplido con más margen todavía.
+| mm/px | aprov. 1ª placa | segundos |
+|---|---|---|
+| 1.0 | 60.25% | 312.5 |
+| 2.0 | 59.49% | 68.7 |
 
-## Niveles de esfuerzo
+Eso fijó `2.0 mm/px`, con el argumento de que rasterizar conservador infla
+el área y una grilla fina compra densidad. Ese argumento ya no aplica —la
+separación la decide el árbitro exacto— pero el valor sobrevivió a la
+remedición.
 
-`EFFORT_RESTARTS` **no se tocó** — ya está calibrado con mediciones reales en
-la Task 19 (ver `packer.py` y `.superpowers/sdd/task-19-report.md`), contra
-un objetivo de ≤ 5 minutos para `normal`. Esta tabla es una confirmación
-liviana, no una recalibración: se corrió sobre `muestra.dxf` a `--copias 2`
-(no 8) para que `lento` no se comiera el presupuesto de esta sesión — a esa
-cantidad de copias todo entra en una placa, así que el aprovechamiento no
-distingue nada entre niveles (es exactamente el caso descrito en la nota de
-método); lo que sí importa acá es el tiempo y que más esfuerzo nunca use más
-placas.
+## Comparación contra la línea de base (entonces)
 
-| nivel | reintentos | aprov. 1ª placa | segundos | placas |
-|---|---|---|---|---|
-| rapido | 1 | 27.12% | 34.2 | 1 |
-| normal | 3 | 27.12% (igual) | 66.9 | 1 |
-| lento | 12 | 27.12% (igual) | 220.1 | 1 |
-
-**Conclusión sobre la estimación original.** La spec §5.6 estimaba ~15-30 s
-por pasada y `normal` en 3-5 min. La Task 19 (con el archivo real, no esta
-tabla liviana) midió `normal = 3` en 182-236 s según la cantidad de copias —
-dentro de la estimación, con margen. Lo medido acá (34.2 s / 66.9 s / 220.1 s
-a `--copias 2`) es consistente con esa relación de tiempos (`normal` ≈ 2×
-`rapido`, `lento` ≈ 6.4× `rapido`, algo por debajo del 12× nominal de
-reintentos porque `lento` reusa el prefijo de reintentos de `normal` en vez
-de volver a perturbar desde cero, ver el comentario de `pack()`). No cambia
-la conclusión de la Task 19: `normal` es el punto donde el tiempo extra deja
-de ser gratis, y `lento` solo se justifica cuando el layout está cerca de un
-salto de placa.
-
-## Comparación contra la línea de base
-
-Mismos `--copias` que el barrido principal de cada archivo (8 para
-`muestra.dxf`, 5 para el real), `contact = 1.0`, `resolucion = 1.0 mm/px`
-(el valor vigente al momento de esta comparación), esfuerzo `rapido`.
+Resolución 1.0 mm/px, contacto 1.0, esfuerzo `rapido`.
 
 | archivo | motor | placas | aprov. 1ª placa | aprov. total |
 |---|---|---|---|---|
-| `muestra.dxf` | shelf (bounding box) | 3 | 56.14% | 36.15% |
-| `muestra.dxf` | raster | 2 | 62.93% | 54.23% |
-| `banqueta.ai` | shelf (bounding box) | 3 | 54.87% | 42.24% |
-| `banqueta.ai` | raster | 3 | 60.25% | 42.24% |
-
-**Ganancia del motor raster:**
-
-- `muestra.dxf`: +6.79 puntos en la primera placa, y además **una placa
-  menos** (2 contra 3) — por eso el aprovechamiento *total* también sube
-  18.08 puntos ahí (54.23% contra 36.15%), aunque esa métrica en general no
-  sirva para comparar configuraciones a igualdad de placas.
-- `banqueta.ai`: +5.38 puntos en la primera placa. Acá ambos
-  motores necesitaron 3 placas, así que el aprovechamiento total queda
-  idéntico (42.24%) por construcción — es exactamente el caso que
-  `first_sheet_utilization` existe para no perder de vista.
-
-## Resumen de valores fijados
-
-| Parámetro | Provisorio | Medido | Cambiado |
-|---|---|---|---|
-| `Weights.contact` | 1.0 | 1.0 | No — confirmado con datos, no era una adivinanza |
-| `NestConfig.resolution` / `--resolucion` | 1.0 mm/px | 2.0 mm/px | Sí |
-| `EFFORT_RESTARTS` | — | — | No — fuera de alcance, ya calibrado en la Task 19 |
+| `muestra.dxf` (x8) | shelf (bounding box) | 3 | 56.14% | 36.15% |
+| `muestra.dxf` (x8) | raster | 2 | 62.93% | 54.23% |
+| `banqueta final raulo.ai` (x5) | shelf (bounding box) | 3 | 54.87% | 42.24% |
+| `banqueta final raulo.ai` (x5) | raster | 3 | 60.25% | 42.24% |

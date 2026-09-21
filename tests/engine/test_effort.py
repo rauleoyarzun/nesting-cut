@@ -149,22 +149,28 @@ def test_the_same_seed_gives_the_same_result():
 
 
 def test_different_seeds_can_give_different_results():
-    """Piezas variadas, en una cantidad justo antes del quiebre a dos placas.
+    """Piezas variadas, en una cantidad pasada apenas el quiebre a dos placas.
 
-    Con 43 piezas de estos tamanios, una placa alcanza si el orden de
-    inserccion es bueno y no alcanza si es malo (medido: con este material,
-    sep y margen, sembrar la busqueda con distintas semillas efectivamente
-    hace que algunas corridas usen 1 placa y otras 2). Eso es justo donde el
-    orden de insercion importa, a diferencia del fixture anterior (18
-    rectangulos identicos), donde cualquier orden produce el mismo resultado
-    y la aserccion `a.placements != b.placements or a.total_utilization ==
-    b.total_utilization` se cumplia trivialmente por la segunda mitad del
-    `or`, sin probar nada sobre la sensibilidad a la semilla.
+    El fixture tiene que caer donde el orden de insercion importa. El
+    anterior (18 rectangulos identicos) no lo hacia: cualquier orden daba el
+    mismo resultado y la asercion se cumplia trivialmente. El que lo
+    reemplazo (43 piezas de estos tamanios) si lo hacia con el peso de
+    contacto de entonces, pero dejo de hacerlo cuando la Tarea 6 recalibro
+    `Weights.contact` a 4.0: medido con 4 semillas (1, 2, 3, 4) sobre este
+    mismo material, sep y margen, 43 piezas dan 3 layouts distintos con
+    contacto 1.0 y UNO SOLO con contacto 4.0 -- ninguna perturbacion mejora
+    al orden por area, asi que `best` nunca se reemplaza.
+
+    52 es la cantidad medida que sigue siendo sensible con los dos pesos: 4
+    layouts distintos entre esas 4 semillas tanto a contacto 1.0 como a 4.0.
+    No se baja la exigencia de la asercion -- sigue siendo que dos semillas
+    dan placements distintos -- se corrige el fixture para que vuelva a
+    estar donde el orden decide.
     """
     sizes = [(120.0, 90.0), (200.0, 60.0), (150.0, 150.0), (80.0, 200.0),
              (250.0, 40.0), (100.0, 100.0), (170.0, 110.0), (60.0, 300.0),
              (140.0, 140.0), (90.0, 220.0)]
-    parts = [rect_part(i, *sizes[i % len(sizes)]) for i in range(43)]
+    parts = [rect_part(i, *sizes[i % len(sizes)]) for i in range(52)]
     a = pack(parts, MATERIAL, base_config(effort="normal", seed=1), RasterOracle)
     b = pack(parts, MATERIAL, base_config(effort="normal", seed=2), RasterOracle)
     assert a.placements != b.placements
