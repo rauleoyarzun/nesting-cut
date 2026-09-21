@@ -1316,3 +1316,20 @@ Task 8: completa (commits f466da3..722270b, dos commits, revisión limpia). Desp
       uso genuino para °, que no depende del sistema operativo como sí pasa con un
       emoji. El revisor sugiere, si se quiere aflojar, permitir un puñado de símbolos
       tipográficos concretos en vez de sacar la categoría entera.
+Task 9: completa (commits 0d32407..54e1d2f, revisión limpia + un Importante arreglado).
+  Revisión a la izquierda, Previsualización renombrada a Resultado, zoom de rueda
+  continuo. 1107 passed (verificado por el controlador, no sólo reportado: el informe
+  del implementador se degeneró al final en texto repetido, un glitch de generación).
+  El revisor tradujo la matemática del anclaje al cursor a código ejecutable y
+  confirmó que el punto bajo el cursor queda exacto donde estaba, y que un gesto de
+  ida y vuelta NO deriva: antes·exp(0.15)·exp(-0.15) = antes salvo ruido de 1e-16. La
+  asimetría +16.18%/-13.93% es inherente a la escala exponencial (simetría en log, no
+  en porcentaje), no un defecto.
+  IMPORTANTE ENCONTRADO Y ARREGLADO (54e1d2f), en infraestructura de tests compartida:
+  _cuerpo_de_handler no contemplaba un tercer argumento de addEventListener, así que
+  para `wheel` -- registrado con `, { passive: false })` -- no encontraba el cierre y
+  seguía capturando hacia abajo, tragándose los handlers de ondblclick y pointerdown.
+  El test seguía detectando su regresión, pero acoplado a código ajeno: un `acercar(`
+  legítimo en el handler del arrastre lo habría puesto en rojo culpando a la rueda.
+  Capturado para wheel: 963 -> 289 caracteres. click y keydown devuelven idéntico.
+  Se agregó un test del helper mismo para que la sobrecaptura no vuelva.
