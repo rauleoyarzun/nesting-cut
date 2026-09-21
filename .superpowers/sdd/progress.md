@@ -1190,3 +1190,39 @@ Task 3: completa (commits c5bae27..5e39728, revisión limpia tras una vuelta de 
     (c) El except de _compact_last_sheet queda sin test. De acuerdo en dejarlo: es
         inalcanzable (la factibilidad es monótona en la ocupación) y está declarado
         como defensa en profundidad sin afirmar lo contrario.
+Task 4: completa (commits 0fcdbe3..e7ee740, revisión limpia + dos menores arreglados).
+  verify/write_dxf/write_preview reciben la lista de placas y trabajan placa por placa;
+  offsets acumulados; el preview alinea las placas ABAJO. 1061 passed, y +2 tests del
+  arreglo.
+  El implementador y el revisor, por separado, compararon los dos escritores contra un
+  worktree del commit anterior con escenas deterministas: PNG IDÉNTICO BYTE A BYTE y
+  DXF idéntico salvo los GUID y timestamps que genera ezdxf. El revisor además midió la
+  alineación al píxel: con 600x800 y 1830x2600, las dos placas apoyan en la fila 402
+  (= gap_px + alto_max_px) y las etiquetas quedan en una sola banda.
+  Fuera de la lista del brief, todos adaptación de firma: bench/run_bench.py,
+  tests/test_cli.py y seis de tests/engine/.
+  Arreglado en el acto (e7ee740), porque era mentir callado: write_preview no validaba
+  placement.sheet, así que un índice NEGATIVO indexaba desde el final y dibujaba la
+  pieza en OTRA placa sin un aviso -- el único de los tres consumidores que podía
+  hacerlo. Y el IndexError del índice pasado del final no era ValueError, que es lo que
+  cli.py y corredor.py atrapan a propósito para degradar un fallo de preview a aviso
+  (el DXF ya está escrito; matar el trabajo por una imagen le haría creer al usuario
+  que no salió nada). Ahora levanta ValueError con guardia 0 <= i < len. También el
+  docstring de UnknownPartError, que ya no nombraba los dos casos.
+  Menores pendientes para la revisión final:
+    (a) Identificadores en español en io/ y geometry/ (anchos_px, piso, izquierdas,
+        hoja, fuera_de_rango). Vienen textuales del brief. Este commit es el primero
+        que los mete ahí: en 0fcdbe3 esos tres archivos tenían CERO. Deuda del plan.
+    (b) COSMÉTICO PERO NUEVO CON RECORTES: con un recorte angosto la etiqueta de la
+        placa es más ancha que la placa y las etiquetas se pisan. Medido: un recorte de
+        300x400 a 0.15 px/mm da 45 px de ancho y "Placa 1   50.0%" ocupa ~56. Con
+        [300x400, 1830x2600] la tinta sale continua y no se lee. No pasaba antes
+        porque todas las placas tenían el ancho del Material. La previsualización
+        existe para que un mal resultado se note de un vistazo, así que con recortes
+        chicos -- que son el caso de uso -- pierde parte de su razón de ser.
+    (c) write_preview dejó de mirar len(utilization) para dimensionar el lienzo. La
+        conducta nueva es la correcta y es inalcanzable desde pack, pero el informe
+        del implementador enumera cuatro diferencias de borde y esta no estaba.
+    (d) bench/run_bench.py sigue calculando tira_libre_mm con material.sheet_h, el
+        mismo patrón que _print_summary sí arregló. Inocuo hoy (el bench nunca arma
+        recortes). Fuera del alcance de la tarea 4.
