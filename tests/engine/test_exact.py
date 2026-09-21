@@ -57,6 +57,17 @@ def test_limpiar_olvida_todo_lo_colocado():
     assert arbitro.entra(cuadrado(100.0, part_id=1), 0.0, False, 115.0, 10.0)
 
 
+def test_una_pieza_muy_superpuesta_con_sep_cero_no_entra():
+    """`sep=0.0` es un valor legítimo (el CLI lo acepta), y con `distance`
+    solo, `0.0 < 0.0 - EPS` es siempre falso -- el árbitro aprobaría
+    cualquier superposición, por grande que sea, apenas alguien pidiera
+    separación cero. `verify.py` nunca tiene ese agujero porque primero
+    mira el área de la intersección; el árbitro tiene que mirar lo mismo."""
+    arbitro = ArbitroExacto(sheet_w=1000.0, sheet_h=1000.0, sep=0.0, margin=10.0)
+    arbitro.agregar(cuadrado(100.0, part_id=0), 0.0, False, 10.0, 10.0)
+    assert not arbitro.entra(cuadrado(100.0, part_id=1), 0.0, False, 10.0, 10.0)
+
+
 def test_una_pieza_puede_entrar_en_el_agujero_de_otra():
     """Es el caso 'with concave': el hueco interno de una pieza es espacio
     libre real, no material."""

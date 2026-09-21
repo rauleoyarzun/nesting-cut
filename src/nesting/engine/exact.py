@@ -15,7 +15,7 @@ arbitra -- es toda la arquitectura del motor híbrido.
 
 from shapely.geometry import Polygon
 
-from nesting.geometry.verify import placed_polygon
+from nesting.geometry.verify import OVERLAP_AREA_THRESHOLD_MM2, placed_polygon
 from nesting.model.entities import Transform
 from nesting.model.part import Part
 
@@ -79,6 +79,16 @@ class ArbitroExacto:
                 continue
             if maxy + s < omin_y or omax_y + s < miny:
                 continue
+            # `distance` sola no alcanza: shapely la devuelve 0.0 tanto para
+            # "apenas se tocan" como para "una pieza atropella a la otra", y
+            # con sep=0.0 (valor legítimo, el CLI lo acepta) la comparación
+            # `0.0 < 0.0 - EPS` es siempre falsa -- cualquier superposición,
+            # por grande que sea, pasaría. Por eso primero se mira el área de
+            # la intersección, igual que `verify.py`: si de verdad se pisan,
+            # no entra, sin importar `sep`.
+            if poly.intersects(otro):
+                if poly.intersection(otro).area > OVERLAP_AREA_THRESHOLD_MM2:
+                    return False
             if poly.distance(otro) < s - EPS:
                 return False
         return True
