@@ -286,3 +286,15 @@ select.control {
   background: var(--lienzo); border-radius: var(--radio);
   font-size: 11px; white-space: pre-wrap;
 }
+
+/* --- el globo de ayuda --- */
+/* `fixed` y no `absolute`: `.panel-opciones` tiene `overflow-y: auto`, y un
+   globo absoluto adentro se recorta contra su borde justo cuando el campo
+   está abajo de todo. Las coordenadas las pone `info.js` con el rect del
+   botón. */
+.globo-info {
+  position: fixed; max-width: 280px; padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: var(--radio); box-shadow: var(--sombra);
+  font-size: 13px; line-height: 1.45; color: var(--texto-2);
+}

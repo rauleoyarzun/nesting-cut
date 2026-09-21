@@ -682,3 +682,49 @@ def test_cada_boton_del_html_tiene_su_texto_y_al_reves(html, js_info):
         f"sólo en el HTML: {sorted(del_html - del_js)}; "
         f"sólo en info.js: {sorted(del_js - del_html)}"
     )
+
+
+def test_el_globo_se_cierra_de_las_cuatro_formas(js_info):
+    """Un globo que sólo cierra con el mismo botón queda tapando el panel en
+    cuanto el usuario sigue trabajando. Escape y el clic afuera son lo que
+    todo el mundo prueba; el scroll y el resize son los que lo dejarían
+    flotando lejos del campo que explica, porque está posicionado en fijo
+    contra coordenadas de pantalla."""
+    for señal in ('"Escape"', '"scroll"', '"resize"', '"click"'):
+        assert señal in js_info, f"info.js no contempla {señal}"
+
+
+def test_el_scroll_se_escucha_en_captura(js_info):
+    """El que scrollea es `.panel-opciones`, no la ventana, y un evento de
+    scroll de un elemento no burbujea hasta document. En captura sí pasa por
+    ahí. Sin el `true` el globo se queda flotando mientras el campo se va."""
+    assert re.search(r'addEventListener\(\s*"scroll".*,\s*true\s*\)', js_info), (
+        "el scroll no se escucha en la fase de captura"
+    )
+
+
+def test_el_globo_se_ubica_contra_el_boton(js_info):
+    """Si no lee el rect del botón, el globo sale siempre en el mismo lado
+    de la pantalla y no se sabe de qué campo habla."""
+    assert "getBoundingClientRect" in js_info
+
+
+def test_el_globo_no_se_sale_de_la_ventana(js_info):
+    """El panel mide 336 px y la ventana no siempre es ancha: si no se mide
+    contra `innerWidth` / `innerHeight`, el globo de las opciones avanzadas
+    --que están abajo de todo-- sale cortado por el borde."""
+    assert "innerWidth" in js_info and "innerHeight" in js_info
+
+
+def test_el_boton_anuncia_si_esta_abierto(js_info):
+    """`aria-expanded` es lo único que le dice a un lector de pantalla que
+    ese botón abrió algo, y `aria-describedby` es lo que hace que le lea el
+    texto sin tener que ir a buscarlo."""
+    assert "aria-expanded" in js_info
+    assert "aria-describedby" in js_info
+
+
+def test_escape_devuelve_el_foco_al_boton(js_info):
+    """Si el foco se pierde, el siguiente Tab arranca del principio de la
+    página y el que navega con teclado tiene que recorrer todo de nuevo."""
+    assert ".focus()" in js_info

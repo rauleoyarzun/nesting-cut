@@ -339,3 +339,12 @@ def test_el_globo_no_atrapa_el_foco(html):
     """Es un texto de ayuda, no un diálogo: `role="tooltip"` y nada más."""
     globo = re.search(r'<div[^>]*id="globo-info"[^>]*>', html).group(0)
     assert 'role="tooltip"' in globo
+
+
+def test_el_globo_flota_y_no_se_recorta(css):
+    """`.panel-opciones` tiene `overflow-y: auto`: un globo posicionado en
+    absoluto adentro de ese panel se recorta contra el borde justo cuando el
+    campo está abajo de todo -- que es donde están las avanzadas, las que más
+    falta hacen."""
+    globo = next(c for s, c in _reglas(css) if s == ".globo-info")
+    assert "position: fixed" in globo
