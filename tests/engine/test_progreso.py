@@ -147,6 +147,32 @@ def test_el_avance_nombra_la_placa_en_curso():
     assert min(placas) == 1
 
 
+def test_cancelar_durante_la_recuperacion_levanta():
+    """`_recuperar_de_la_ultima_placa` es la parte más lenta del tramo
+    final (un `_pack_once` completo por placa anterior, ~24s sobre el job
+    de referencia) y hoy corre con `aviso=None`: nadie puede cancelarla.
+
+    Dejamos pasar el primer aviso de `compactando` -- el que anuncia que
+    se entró al tramo final -- y cortamos en el segundo, que sólo puede
+    venir de dentro de la recuperación (`_compact_last_sheet` corre
+    después y todavía no se instrumenta)."""
+    piezas = [cuadrado(i, lado=400.0) for i in range(12)]
+    vistos = []
+
+    def cortar(avance):
+        vistos.append(avance)
+        compactando_vistos = sum(1 for a in vistos if a.compactando)
+        if avance.compactando and compactando_vistos > 1:
+            return False
+        return True
+
+    with pytest.raises(Cancelado):
+        pack(piezas, MATERIAL, config(), fabrica(), progreso=cortar)
+
+    compactando_vistos = sum(1 for a in vistos if a.compactando)
+    assert compactando_vistos == 2, "tiene que cortar en el segundo aviso de compactando"
+
+
 def test_sin_piezas_no_se_llama_al_callback():
     llamadas = []
 

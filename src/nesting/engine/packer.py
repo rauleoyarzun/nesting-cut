@@ -413,7 +413,21 @@ def pack(
     # `_pack_once` por placa anterior), así que quien mire la barra ya la ve
     # en "compactando" en vez de quedarse mirando el último aviso de la
     # pasada golosa.
-    best = _recuperar_de_la_ultima_placa(best, parts, material, config, oracle_factory)
+    #
+    # La recuperación reporta como "compactando" y no con una fase propia
+    # a propósito: `Avance` no tiene un campo para distinguirla (agregar
+    # uno es una decisión de UI aparte, no algo que este aviso deba forzar)
+    # y, para quien mira la barra, "compactando" ya es verdad -- es
+    # reempaque de placas ya armadas, no la pasada golosa inicial. Lo único
+    # que le faltaba a esa fase era poder cancelarse; el rótulo no cambia.
+    def aviso_recuperacion(ubicadas: int, placa: int) -> None:
+        if not progreso(Avance(intentos, intentos, totales, totales, 0, compactando=True)):
+            raise Cancelado("el trabajo se canceló")
+
+    best = _recuperar_de_la_ultima_placa(
+        best, parts, material, config, oracle_factory,
+        aviso_recuperacion if progreso is not None else None,
+    )
     best = _compact_last_sheet(best, parts, material, config, oracle_factory)
     best.seconds = time.perf_counter() - started
     return best
@@ -436,8 +450,16 @@ def _recuperar_de_la_ultima_placa(
     material: Material,
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
+    aviso: Callable[[int, int], None] | None = None,
 ) -> PackResult:
     """Reintentar en las placas anteriores lo que quedó en la última.
+
+    `aviso` se reenvía tal cual a cada `_pack_once` interno -- misma forma
+    que la de `_pack_once`, ver su docstring -- así que puede levantar para
+    abandonar a mitad de un reintento. Sin esto el tramo más lento de todo
+    `pack` (un `_pack_once` completo por placa anterior, ver "CUÁNTO CUESTA"
+    abajo) corría sordo: ni la barra de progreso se movía ni el botón de
+    cancelar hacía nada durante esos segundos.
 
     Es literalmente lo que el usuario hizo a mano: sacar un disco de la
     placa 2 y meterlo en un hueco de la placa 1.
@@ -516,7 +538,7 @@ def _recuperar_de_la_ultima_placa(
         en_placa = [by_id[p.part_id] for p in anteriores]
         while pendientes:
             orden = [pendientes[0], *en_placa, *pendientes[1:]]
-            redone = _pack_once(orden, material, config, oracle_factory)
+            redone = _pack_once(orden, material, config, oracle_factory, aviso)
 
             en_primera = [p for p in redone.placements if p.sheet == 0]
             ids_primera = {p.part_id for p in en_primera}
