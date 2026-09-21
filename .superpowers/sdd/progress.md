@@ -905,3 +905,12 @@ con un modelo capaz en vez del barato. No se bloquea el plan por esto.
 
 ## Tareas
 
+Task 1: completa (commits 34e6d4d..adce827, revisión limpia).
+  `layout_cost` devuelve `CostoLayout(placas, material_ultima, alto_ultima)`, un dataclass
+  frozen con `order=True`. Los tres consumidores migrados a acceso por atributo:
+  `packer.py` (_compact_last_sheet), `cli.py`, `corredor.py`. 1009 passed (1007 + 2 nuevos),
+  verificado por el controlador aparte del informe del implementador.
+  Menor pendiente p/revisión final: en `tests/engine/test_effort.py`, el comentario
+  "gana en alto" de `test_el_costo_prefiere_dejar_menos_material_en_la_ultima_placa`
+  exagera: los dos altos empatan en 100.0 y la asercion usa `<=`. Texto mio del plan,
+  no del implementador. Arreglar la redaccion si alguien vuelve a tocar ese test.
