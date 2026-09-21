@@ -635,6 +635,25 @@ def test_el_texto_del_globo_entra_en_un_globo(js_info, clave):
     assert len(texto) <= 300, f"{clave}: {len(texto)} caracteres"
 
 
+def _cuerpo_de_funcion(js_info: str, nombre: str) -> str:
+    """El cuerpo de `function <nombre>(...) { ... }`, delimitado igual que
+    en el resto del archivo: desde la declaración hasta el primer `}` que
+    arranca una línea (ninguna de las funciones de `info.js` tiene un bloque
+    anidado que cierre así antes de su propio final)."""
+    inicio = js_info.index(f"function {nombre}(")
+    return js_info[inicio:js_info.index("\n}", inicio)]
+
+
+def _cuerpo_de_handler(js_info: str, evento: str) -> str:
+    """El cuerpo del `addEventListener(<evento>, ...)` que registra un
+    handler en línea (una función flecha), limpio de comentarios y textos:
+    lo que hay que mirar para saber qué hace de verdad ese handler, no qué
+    palabras aparecen en algún comentario cerca."""
+    inicio = js_info.index(f'addEventListener("{evento}"')
+    cuerpo = js_info[inicio:js_info.index("\n});", inicio)]
+    return _sin_comentarios_ni_textos(cuerpo)
+
+
 def test_la_pagina_carga_info_js(html):
     assert '<script src="info.js">' in html
 
@@ -694,6 +713,77 @@ def test_el_globo_se_cierra_de_las_cuatro_formas(js_info):
         assert señal in js_info, f"info.js no contempla {señal}"
 
 
+def test_el_click_en_un_boton_llama_a_abrir(js_info):
+    """`test_el_globo_se_cierra_de_las_cuatro_formas` sólo verifica que la
+    palabra `"click"` esté en algún lado del archivo -- ni siquiera que sea
+    un `addEventListener`. Borrar `if (boton) abrir(boton);` del handler de
+    click no toca ese literal ni ningún otro que las pruebas de este archivo
+    miren: el globo deja de abrirse para siempre y las seis pruebas
+    originales pasan igual.
+
+    Verificación manual: borrando la línea `if (boton) abrir(boton);` de
+    `info.js`, este test falla."""
+    cuerpo = _cuerpo_de_handler(js_info, "click")
+    assert re.search(r"\babrir\(\s*boton\s*\)", cuerpo), (
+        "el handler de click ya no llama a abrir(boton): ningún clic abre "
+        "el globo"
+    )
+
+
+def test_abrir_registra_el_boton_como_el_globo_abierto(js_info):
+    """`abierto` es lo único que le permite a `cerrar()`, al clic repetido
+    sobre el mismo botón y a Escape saber cuál botón tiene el globo abierto.
+    Borrar `abierto = boton;` de `abrir()` no toca ningún literal de los que
+    las demás pruebas verifican -- el globo todavía abre la primera vez,
+    con el texto y la posición correctos -- pero el toggle (apretar el mismo
+    botón dos veces) y las cuatro formas de cerrar, que miran `abierto`,
+    quedan rotas.
+
+    Verificación manual: borrando `abierto = boton;` de `abrir()`, este test
+    falla."""
+    cuerpo = _cuerpo_de_funcion(js_info, "abrir")
+    assert re.search(r"\babierto\s*=\s*boton\b", cuerpo), (
+        "abrir() ya no guarda el botón en `abierto`"
+    )
+
+
+def test_cerrar_oculta_el_globo_y_limpia_los_atributos(js_info):
+    """Reducir el cuerpo de `cerrar()` a sólo `abierto = null;` deja pasar
+    las demás pruebas -- ninguna mira adentro de la función -- pero el
+    globo, que ya estaba en pantalla, no vuelve a ocultarse nunca: nada le
+    agrega la clase `oculto` ni le saca los atributos ARIA al botón que lo
+    tenía abierto.
+
+    Verificación manual: reemplazando el cuerpo de `cerrar()` por
+    `abierto = null;`, este test falla."""
+    cuerpo = _cuerpo_de_funcion(js_info, "cerrar")
+    assert 'classList.add("oculto")' in cuerpo, (
+        "cerrar() ya no oculta el globo"
+    )
+    assert 'removeAttribute("aria-describedby")' in cuerpo, (
+        "cerrar() ya no le saca aria-describedby al botón: un lector de "
+        "pantalla lo sigue anunciando como si el globo siguiera abierto"
+    )
+    assert "abierto = null" in cuerpo, (
+        "cerrar() ya no vacía `abierto`: el botón anterior sigue "
+        "considerándose el que tiene el globo abierto"
+    )
+
+
+def test_el_scroll_y_el_resize_cierran_llamando_a_cerrar(js_info):
+    """El scroll y el resize tienen que *cerrar* el globo, no sólo mencionar
+    esas palabras en algún lado del archivo. Si en vez de la referencia a
+    `cerrar` quedara otra función (o una que sólo hace `abierto = null`),
+    las pruebas de arriba -- que buscan los literales `"scroll"`/`"resize"`
+    sueltos -- no lo notarían."""
+    assert re.search(r'addEventListener\(\s*"scroll"\s*,\s*cerrar\s*,\s*true\s*\)', js_info), (
+        "el scroll ya no cierra el globo llamando a cerrar"
+    )
+    assert re.search(r'addEventListener\(\s*"resize"\s*,\s*cerrar\s*\)', js_info), (
+        "el resize ya no cierra el globo llamando a cerrar"
+    )
+
+
 def test_el_scroll_se_escucha_en_captura(js_info):
     """El que scrollea es `.panel-opciones`, no la ventana, y un evento de
     scroll de un elemento no burbujea hasta document. En captura sí pasa por
@@ -724,7 +814,39 @@ def test_el_boton_anuncia_si_esta_abierto(js_info):
     assert "aria-describedby" in js_info
 
 
+def test_los_valores_de_aria_expanded_no_estan_invertidos(js_info):
+    """`test_el_boton_anuncia_si_esta_abierto` sólo comprueba que la palabra
+    `aria-expanded` aparezca en el archivo, en cualquier lado y con
+    cualquier valor. Intercambiar los literales `"true"`/`"false"` de los
+    dos `setAttribute("aria-expanded", ...)` -- abrir anuncia `"false"`,
+    cerrar anuncia `"true"` -- deja pasar esa prueba igual, y un lector de
+    pantalla le informa al usuario justo lo contrario de lo que está
+    pasando.
+
+    Verificación manual: intercambiando los dos literales `"true"`/`"false"`
+    en `info.js`, este test falla."""
+    abrir = _cuerpo_de_funcion(js_info, "abrir")
+    cerrar = _cuerpo_de_funcion(js_info, "cerrar")
+    assert 'setAttribute("aria-expanded", "true")' in abrir, (
+        "abrir() no anuncia aria-expanded en true"
+    )
+    assert 'setAttribute("aria-expanded", "false")' in cerrar, (
+        "cerrar() no anuncia aria-expanded en false"
+    )
+
+
 def test_escape_devuelve_el_foco_al_boton(js_info):
     """Si el foco se pierde, el siguiente Tab arranca del principio de la
-    página y el que navega con teclado tiene que recorrer todo de nuevo."""
-    assert ".focus()" in js_info
+    página y el que navega con teclado tiene que recorrer todo de nuevo.
+
+    `".focus()" in js_info` es un grep sobre el archivo entero: un
+    `.focus()` metido en un comentario (`// boton.focus();`) lo hace pasar
+    sin que el handler de Escape devuelva nada. Se busca puntualmente
+    adentro del cuerpo de ese handler, ya limpio de comentarios y textos.
+
+    Verificación manual: comentando la línea `boton.focus();` en `info.js`,
+    este test falla."""
+    cuerpo = _cuerpo_de_handler(js_info, "keydown")
+    assert re.search(r"\bboton\.focus\(\)", cuerpo), (
+        "el handler de keydown ya no devuelve el foco al botón"
+    )
