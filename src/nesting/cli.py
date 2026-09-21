@@ -229,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         violations = verify(
-            parts, result.placements, material.sheet_w, material.sheet_h,
+            parts, result.placements, result.sheets,
             sep=config.sep, margin=config.margin,
         )
     except ValueError as error:
@@ -259,10 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_VERIFICATION_FAILED
 
     try:
-        write_dxf(
-            args.salida, drawing, parts, result.placements,
-            material.sheet_w, material.sheet_h,
-        )
+        write_dxf(args.salida, drawing, parts, result.placements, result.sheets)
     except OSError as error:
         print(
             f"error: no se pudo escribir la salida en {args.salida}: {error}. "
@@ -275,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             write_preview(
                 args.preview, parts, result.placements,
-                material.sheet_w, material.sheet_h, result.utilization,
+                result.sheets, result.utilization,
                 colors=_colors_by_part(drawing, parts),
             )
         except (ValueError, OSError) as error:
@@ -302,7 +299,8 @@ def _print_summary(
 ) -> None:
     costo = layout_cost(result, parts)
     used_height = costo.alto_ultima
-    free_height = material.sheet_h - used_height
+    ultima = result.sheets[-1] if result.sheets else material.stock_sheet()
+    free_height = ultima.height - used_height
 
     for index, utilisation in enumerate(result.utilization):
         line = (
@@ -311,7 +309,7 @@ def _print_summary(
         )
         if index == result.sheets_used - 1 and free_height > 100.0:
             line += (
-                f"   <- sobrante útil ~{material.sheet_w:.0f}x{free_height:.0f} mm"
+                f"   <- sobrante útil ~{ultima.width:.0f}x{free_height:.0f} mm"
             )
         print(line)
 

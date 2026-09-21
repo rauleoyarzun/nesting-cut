@@ -204,7 +204,7 @@ def test_every_effort_level_produces_a_valid_layout():
     for effort in ("rapido", "normal", "lento"):
         config = base_config(effort=effort, seed=5)
         result = pack(parts, PLAN_LIBRE, config, RasterOracle)
-        violations = verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
+        violations = verify(parts, result.placements, result.sheets,
                             sep=config.sep, margin=config.margin)
         assert violations == [], f"el nivel {effort} produjo una salida invalida"
 

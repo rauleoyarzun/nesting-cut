@@ -4,6 +4,10 @@ from PIL import Image
 from nesting.io.preview import LABEL_BAND_PX, MAX_CANVAS_PIXELS, write_preview
 from nesting.model.entities import Transform
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet
+
+
+HOJA = Sheet(1000.0, 1000.0, grain_tolerance=180.0)
 
 
 def rect_part(part_id, w, h):
@@ -24,7 +28,7 @@ def test_writes_a_png(tmp_path):
     out = tmp_path / "preview.png"
     write_preview(out, [rect_part(0, 200.0, 100.0)],
                   [Placement(0, 0, Transform(0.0, False, 50.0, 50.0))],
-                  1000.0, 1000.0, [0.02])
+                  [HOJA], [0.02])
 
     assert out.exists()
     assert Image.open(out).format == "PNG"
@@ -37,8 +41,8 @@ def test_the_image_widens_with_more_sheets(tmp_path):
 
     one = tmp_path / "one.png"
     two = tmp_path / "two.png"
-    write_preview(one, parts, placements_one, 1000.0, 1000.0, [0.01])
-    write_preview(two, parts, placements_two, 1000.0, 1000.0, [0.01, 0.01])
+    write_preview(one, parts, placements_one, [HOJA], [0.01])
+    write_preview(two, parts, placements_two, [HOJA] * 2, [0.01, 0.01])
 
     assert Image.open(two).width > Image.open(one).width
 
@@ -47,7 +51,7 @@ def test_a_part_is_actually_drawn(tmp_path):
     out = tmp_path / "preview.png"
     write_preview(out, [rect_part(0, 800.0, 800.0)],
                   [Placement(0, 0, Transform(0.0, False, 100.0, 100.0))],
-                  1000.0, 1000.0, [0.64], colors={0: (255, 0, 0)})
+                  [HOJA], [0.64], colors={0: (255, 0, 0)})
 
     image = Image.open(out).convert("RGB")
     reds = sum(1 for pixel in image.getdata() if pixel == (255, 0, 0))
@@ -59,7 +63,7 @@ def test_the_y_axis_is_not_flipped(tmp_path):
     out = tmp_path / "preview.png"
     write_preview(out, [rect_part(0, 900.0, 200.0)],
                   [Placement(0, 0, Transform(0.0, False, 50.0, 50.0))],
-                  1000.0, 1000.0, [0.18], colors={0: (255, 0, 0)})
+                  [HOJA], [0.18], colors={0: (255, 0, 0)})
 
     image = Image.open(out).convert("RGB")
     rows = [y for y in range(image.height)
@@ -72,7 +76,7 @@ def test_a_hole_is_drawn_as_a_hole(tmp_path):
     out = tmp_path / "preview.png"
     write_preview(out, [ring_part(0, 800.0, 200.0)],
                   [Placement(0, 0, Transform(0.0, False, 100.0, 100.0))],
-                  1000.0, 1000.0, [0.48], colors={0: (255, 0, 0)})
+                  [HOJA], [0.48], colors={0: (255, 0, 0)})
 
     image = Image.open(out).convert("RGB")
     # El centro de la pieza cae en el agujero y no debe estar pintado.
@@ -82,7 +86,7 @@ def test_a_hole_is_drawn_as_a_hole(tmp_path):
 
 def test_an_empty_layout_still_writes_an_image(tmp_path):
     out = tmp_path / "preview.png"
-    write_preview(out, [], [], 1000.0, 1000.0, [])
+    write_preview(out, [], [], [HOJA], [])
     assert out.exists()
 
 
@@ -92,8 +96,8 @@ def test_a_finer_scale_produces_a_bigger_image(tmp_path):
 
     small = tmp_path / "small.png"
     large = tmp_path / "large.png"
-    write_preview(small, [part], placement, 1000.0, 1000.0, [0.01], px_per_mm=0.1)
-    write_preview(large, [part], placement, 1000.0, 1000.0, [0.01], px_per_mm=0.4)
+    write_preview(small, [part], placement, [HOJA], [0.01], px_per_mm=0.1)
+    write_preview(large, [part], placement, [HOJA], [0.01], px_per_mm=0.4)
 
     assert Image.open(large).width > Image.open(small).width
 
@@ -125,7 +129,7 @@ def test_a_part_nested_in_a_hole_is_drawn_small_before_big(tmp_path):
     parts, ring_placement, small_placement = _nested_in_hole_scene()
     out = tmp_path / "preview.png"
     write_preview(out, parts, [small_placement, ring_placement],
-                  1000.0, 1000.0, [0.48], colors={0: (255, 0, 0), 1: (0, 0, 255)})
+                  [HOJA], [0.48], colors={0: (255, 0, 0), 1: (0, 0, 255)})
 
     image = Image.open(out).convert("RGB")
     centre = image.getpixel(_sheet_centre_pixel(image))
@@ -139,7 +143,7 @@ def test_a_part_nested_in_a_hole_is_drawn_big_before_small(tmp_path):
     parts, ring_placement, small_placement = _nested_in_hole_scene()
     out = tmp_path / "preview.png"
     write_preview(out, parts, [ring_placement, small_placement],
-                  1000.0, 1000.0, [0.48], colors={0: (255, 0, 0), 1: (0, 0, 255)})
+                  [HOJA], [0.48], colors={0: (255, 0, 0), 1: (0, 0, 255)})
 
     image = Image.open(out).convert("RGB")
     centre = image.getpixel(_sheet_centre_pixel(image))
@@ -154,7 +158,7 @@ def test_an_unknown_part_id_warns_but_still_draws_the_rest(tmp_path):
 
     with pytest.warns(UserWarning, match="99"):
         write_preview(out, [part], [known, unknown],
-                      1000.0, 1000.0, [0.64], colors={0: (255, 0, 0)})
+                      [HOJA], [0.64], colors={0: (255, 0, 0)})
 
     image = Image.open(out).convert("RGB")
     reds = sum(1 for pixel in image.getdata() if pixel == (255, 0, 0))
@@ -164,15 +168,36 @@ def test_an_unknown_part_id_warns_but_still_draws_the_rest(tmp_path):
 def test_a_scale_over_the_pixel_cap_raises(tmp_path):
     out = tmp_path / "preview.png"
     with pytest.raises(ValueError, match="px_per_mm"):
-        write_preview(out, [], [], 1000.0, 1000.0, [], px_per_mm=50.0)
+        write_preview(out, [], [], [HOJA], [], px_per_mm=50.0)
 
 
 def test_a_reasonable_scale_is_not_blocked_by_the_cap(tmp_path):
     out = tmp_path / "preview.png"
     write_preview(out, [rect_part(0, 200.0, 100.0)],
                   [Placement(0, 0, Transform(0.0, False, 50.0, 50.0))],
-                  1000.0, 1000.0, [0.02])
+                  [HOJA], [0.02])
 
     assert out.exists()
     image = Image.open(out)
     assert image.width * image.height <= MAX_CANVAS_PIXELS
+
+
+def test_el_lienzo_acomoda_placas_de_medidas_distintas(tmp_path):
+    from PIL import Image
+
+    from nesting.model.sheet import Sheet
+
+    hojas = [
+        Sheet(600.0, 800.0, grain_tolerance=180.0, scrap=True),
+        Sheet(1830.0, 2600.0, grain_tolerance=180.0),
+    ]
+    salida = tmp_path / "preview.png"
+    write_preview(salida, [], [], hojas, [0.0, 0.0], px_per_mm=0.1)
+
+    with Image.open(salida) as imagen:
+        ancho, alto = imagen.size
+
+    # El ancho suma los dos anchos más tres separaciones; el alto lo pone la
+    # placa más alta, no la primera.
+    assert ancho == pytest.approx(round(600 * 0.1) + round(1830 * 0.1) + 3 * 8, abs=4)
+    assert alto > round(2600 * 0.1)

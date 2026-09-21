@@ -11,7 +11,7 @@ from nesting.geometry.verify import verify
 from nesting.model.entities import Transform
 from nesting.model.material import Material
 from nesting.model.part import Part, Placement
-from nesting.model.sheet import SheetSupply
+from nesting.model.sheet import Sheet, SheetSupply
 
 MATERIAL = Material("test", 1000.0, 1000.0, grain_tolerance=180.0)
 PLAN_LIBRE = SheetSupply(stock=MATERIAL.stock_sheet(), material_name=MATERIAL.name)
@@ -94,7 +94,8 @@ def test_a_full_layout_passes_the_verifier():
         placements.append(Placement(part.id, 0, Transform(0.0, False, x, y)))
 
     assert len(placements) >= 15
-    assert verify(parts, placements, 1000.0, 1000.0, sep=CONFIG.sep, margin=CONFIG.margin) == []
+    assert verify(parts, placements, [Sheet(1000.0, 1000.0, grain_tolerance=180.0)],
+                  sep=CONFIG.sep, margin=CONFIG.margin) == []
 
 
 def test_rotated_and_mirrored_layouts_pass_the_verifier():
@@ -102,14 +103,14 @@ def test_rotated_and_mirrored_layouts_pass_the_verifier():
     parts = [rect_part(i, 200.0, 70.0) for i in range(12)]
     result = pack(parts, PLAN_LIBRE, config, RasterOracle)
 
-    assert verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
+    assert verify(parts, result.placements, result.sheets,
                   sep=config.sep, margin=config.margin) == []
 
 
 def test_curved_parts_pass_the_verifier():
     parts = [circle_part(i, 90.0) for i in range(12)]
     result = pack(parts, PLAN_LIBRE, CONFIG, RasterOracle)
-    assert verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
+    assert verify(parts, result.placements, result.sheets,
                   sep=CONFIG.sep, margin=CONFIG.margin) == []
 
 
@@ -120,7 +121,7 @@ def test_a_small_part_is_nested_inside_a_big_hole():
 
     assert result.sheets_used == 1
     assert len(result.placements) == 2
-    assert verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
+    assert verify(parts, result.placements, result.sheets,
                   sep=CONFIG.sep, margin=CONFIG.margin) == []
 
     # La pieza chica tiene que haber caido adentro del agujero de la grande.
@@ -233,7 +234,7 @@ def test_a_finer_resolution_does_not_break_the_verifier():
     parts = [circle_part(i, 80.0) for i in range(8)]
     config = NestConfig(sep=6.0, margin=10.0, angles=(0.0,), mirror=False, resolution=0.5)
     result = pack(parts, PLAN_LIBRE, config, RasterOracle)
-    assert verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
+    assert verify(parts, result.placements, result.sheets,
                   sep=config.sep, margin=config.margin) == []
 
 
@@ -331,7 +332,7 @@ def test_la_separacion_real_es_la_pedida_no_la_inflada():
         "estaría notando"
     )
 
-    assert verify(parts, placements, material.sheet_w, material.sheet_h,
+    assert verify(parts, placements, [material.stock_sheet()],
                   sep=config.sep, margin=config.margin) == []
 
 

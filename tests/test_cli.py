@@ -229,7 +229,7 @@ def test_verification_failure_exits_with_two_and_writes_nothing(tmp_path, capsys
 
     forced_detail = "pieza 0 y 1 se superponen (forzado para prueba)"
 
-    def fake_verify(parts, placements, sheet_w, sheet_h, sep, margin):
+    def fake_verify(parts, placements, sheets, sep, margin):
         return [Violation(kind="overlap", part_a=0, part_b=1, sheet=0, detail=forced_detail)]
 
     monkeypatch.setattr(cli_module, "verify", fake_verify)
@@ -401,7 +401,7 @@ def test_verification_failure_warns_about_a_pre_existing_output_file(
     import nesting.cli as cli_module
     from nesting.geometry.verify import Violation
 
-    def fake_verify(parts, placements, sheet_w, sheet_h, sep, margin):
+    def fake_verify(parts, placements, sheets, sep, margin):
         return [Violation(kind="overlap", part_a=0, part_b=1, sheet=0, detail="forzado")]
 
     monkeypatch.setattr(cli_module, "verify", fake_verify)

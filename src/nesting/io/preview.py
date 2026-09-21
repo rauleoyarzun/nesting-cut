@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 from nesting.geometry.transform import apply_points
 from nesting.model.entities import Point
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet
 
 BACKGROUND = (250, 250, 250)
 SHEET_FILL = (232, 232, 232)
@@ -29,47 +30,57 @@ def write_preview(
     path: str | Path,
     parts: Sequence[Part],
     placements: Sequence[Placement],
-    sheet_w: float,
-    sheet_h: float,
+    sheets: Sequence[Sheet],
     utilization: Sequence[float],
     colors: dict[int, tuple[int, int, int]] | None = None,
     px_per_mm: float = 0.15,
 ) -> None:
-    """Draw every sheet side by side, with its utilisation underneath."""
+    """Dibuja cada placa una al lado de la otra, con su aprovechamiento abajo."""
     colors = colors or {}
-    sheets = max(len(utilization), max((p.sheet for p in placements), default=-1) + 1, 1)
 
-    sheet_px_w = max(1, round(sheet_w * px_per_mm))
-    sheet_px_h = max(1, round(sheet_h * px_per_mm))
+    anchos_px = [max(1, round(h.width * px_per_mm)) for h in sheets]
+    altos_px = [max(1, round(h.height * px_per_mm)) for h in sheets]
     gap_px = max(1, round(GAP_MM * px_per_mm))
+    alto_max_px = max(altos_px, default=1)
 
-    width = sheets * sheet_px_w + (sheets + 1) * gap_px
-    height = sheet_px_h + 2 * gap_px + LABEL_BAND_PX
+    width = sum(anchos_px) + (len(sheets) + 1) * gap_px
+    height = alto_max_px + 2 * gap_px + LABEL_BAND_PX
 
     total_pixels = width * height
     if total_pixels > MAX_CANVAS_PIXELS:
         suggested = px_per_mm * (MAX_CANVAS_PIXELS / total_pixels) ** 0.5
         raise ValueError(
-            f"la placa de {sheet_w:.0f}x{sheet_h:.0f} mm con px_per_mm={px_per_mm} "
-            f"generaría un lienzo de {width}x{height} px (~{total_pixels / 1e6:.1f} Mpx), "
-            f"por encima del límite de {MAX_CANVAS_PIXELS / 1e6:.1f} Mpx que admite esta "
-            f"función (Pillow luego se niega a abrir imágenes más grandes que eso). "
-            f"Use un px_per_mm de a lo sumo {suggested:.4f} para esta placa."
+            f"las {len(sheets)} placa(s) con px_per_mm={px_per_mm} generarían un "
+            f"lienzo de {width}x{height} px (~{total_pixels / 1e6:.1f} Mpx), por "
+            f"encima del límite de {MAX_CANVAS_PIXELS / 1e6:.1f} Mpx que admite "
+            f"esta función (Pillow luego se niega a abrir imágenes más grandes "
+            f"que eso). Use un px_per_mm de a lo sumo {suggested:.4f}."
         )
 
     image = Image.new("RGB", (width, height), BACKGROUND)
     draw = ImageDraw.Draw(image)
 
-    for index in range(sheets):
-        left = gap_px + index * (sheet_px_w + gap_px)
-        top = gap_px
+    # Las placas se alinean ABAJO y no arriba: el motor apoya las piezas
+    # contra el borde inferior, y con placas de altos distintos alinearlas
+    # arriba las dejaría flotando sobre nada. Con todas iguales da
+    # exactamente lo mismo que antes.
+    piso = gap_px + alto_max_px
+    izquierdas: list[int] = []
+    x = gap_px
+    for ancho_px in anchos_px:
+        izquierdas.append(x)
+        x += ancho_px + gap_px
+
+    for index, (left, ancho_px, alto_px) in enumerate(
+        zip(izquierdas, anchos_px, altos_px)
+    ):
         draw.rectangle(
-            [left, top, left + sheet_px_w, top + sheet_px_h],
+            [left, piso - alto_px, left + ancho_px, piso],
             fill=SHEET_FILL, outline=SHEET_EDGE,
         )
         if index < len(utilization):
             draw.text(
-                (left, top + sheet_px_h + 4),
+                (left, piso + 4),
                 f"Placa {index + 1}   {utilization[index] * 100:.1f}%",
                 fill=(60, 60, 60),
             )
@@ -95,8 +106,8 @@ def write_preview(
             missing_ids.append(placement.part_id)
             continue
 
-        origin_x = gap_px + placement.sheet * (sheet_px_w + gap_px)
-        origin_y = gap_px + sheet_px_h
+        origin_x = izquierdas[placement.sheet]
+        origin_y = piso
 
         def to_pixels(points: tuple[Point, ...]) -> list[tuple[float, float]]:
             # Image rows grow downwards while model y grows upwards, so the row

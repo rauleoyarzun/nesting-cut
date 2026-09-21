@@ -13,6 +13,7 @@ from nesting.engine.exact import ArbitroExacto
 from nesting.geometry.verify import verify
 from nesting.model.entities import Transform
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet
 
 
 def cuadrado(lado: float, part_id: int = 0) -> Part:
@@ -173,7 +174,11 @@ def test_el_arbitro_exacto_coincide_con_el_verificador():
                 Placement(b.id, 0, Transform(0.0, False, x2, y2)),
             ]
             violaciones = verify(
-                [a, b], placements, sheet_w, sheet_h, sep=sep, margin=margin
+                [a, b],
+                placements,
+                [Sheet(sheet_w, sheet_h, grain_tolerance=180.0)],
+                sep=sep,
+                margin=margin,
             )
             sin_violaciones = violaciones == []
 

@@ -14,6 +14,7 @@ from shapely.strtree import STRtree
 from nesting.geometry.transform import apply_points
 from nesting.model.entities import Transform
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet
 
 EPS = 1e-6
 """Numeric slack in mm, so a part placed at exactly `sep` is not flagged."""
@@ -61,12 +62,18 @@ def placed_polygon(part: Part, t: Transform) -> Polygon:
 def verify(
     parts: Sequence[Part],
     placements: Sequence[Placement],
-    sheet_w: float,
-    sheet_h: float,
+    sheets: Sequence[Sheet],
     sep: float,
     margin: float,
 ) -> list[Violation]:
-    """Check a finished layout. An empty list means the layout is sound."""
+    """Revisa un layout terminado. Una lista vacía significa que está sano.
+
+    `sheets` tiene que cubrir cada índice que usen las colocaciones: es lo
+    que permite que cada pieza se verifique contra SU placa. Un recorte de
+    600x800 y una placa de 1830x2600 aceptan piezas distintas, y verificar
+    la primera contra la medida de la segunda es exactamente el "todo bien"
+    equivocado que esta función existe para impedir.
+    """
     if sep < 0 or margin < 0:
         # This is the arbiter: it must not trust whoever calls it. A negative
         # `sep` would silently disable the separation check below (a real
@@ -88,20 +95,30 @@ def verify(
     for placement in placements:
         by_sheet.setdefault(placement.sheet, []).append(placement)
 
-    # box() silently swaps inverted min/max bounds instead of raising or
-    # producing an empty region, so a margin that consumes more than half of
-    # either sheet dimension would otherwise yield a phantom "usable" strip in
-    # the middle of the sheet. Guard for that explicitly: with no positive
-    # usable area on either axis, the whole sheet is out of bounds.
-    usable_w = sheet_w - 2 * margin
-    usable_h = sheet_h - 2 * margin
-    usable = (
-        box(margin, margin, sheet_w - margin, sheet_h - margin)
-        if usable_w > 0 and usable_h > 0
-        else None
-    )
+    fuera_de_rango = [i for i in by_sheet if not (0 <= i < len(sheets))]
+    if fuera_de_rango:
+        raise ValueError(
+            f"verify: hay colocaciones en la(s) placa(s) {sorted(fuera_de_rango)}, "
+            f"pero se recibieron {len(sheets)} placa(s). No se puede verificar una "
+            "pieza contra una placa que no se sabe qué medida tiene."
+        )
 
     for sheet, sheet_placements in sorted(by_sheet.items()):
+        hoja = sheets[sheet]
+        # box() silently swaps inverted min/max bounds instead of raising or
+        # producing an empty region, so a margin that consumes more than half
+        # of either sheet dimension would otherwise yield a phantom "usable"
+        # strip in the middle of the sheet. Guard for that explicitly: with no
+        # positive usable area on either axis, the whole sheet is out of
+        # bounds.
+        usable_w = hoja.width - 2 * margin
+        usable_h = hoja.height - 2 * margin
+        usable = (
+            box(margin, margin, hoja.width - margin, hoja.height - margin)
+            if usable_w > 0 and usable_h > 0
+            else None
+        )
+
         polygons = [placed_polygon(by_id[p.part_id], p.transform) for p in sheet_placements]
 
         valid_placements: list[Placement] = []
@@ -129,8 +146,9 @@ def verify(
                 if usable is None:
                     detail = (
                         f"la pieza {placement.part_id} no se puede verificar contra el margen: "
-                        f"con margen {margin} mm en una placa de {sheet_w}x{sheet_h} mm no queda "
-                        f"área útil (ancho útil {usable_w} mm, alto útil {usable_h} mm)"
+                        f"con margen {margin} mm en una placa de {hoja.width}x{hoja.height} mm "
+                        f"no queda área útil (ancho útil {usable_w} mm, alto útil "
+                        f"{usable_h} mm)"
                     )
                 else:
                     detail = (

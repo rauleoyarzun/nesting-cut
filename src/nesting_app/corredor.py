@@ -260,7 +260,7 @@ def acomodar(
         )
 
         violaciones = verify(
-            piezas, resultado.placements, material.sheet_w, material.sheet_h,
+            piezas, resultado.placements, resultado.sheets,
             sep=config.sep, margin=config.margin,
         )
         if violaciones:
@@ -271,7 +271,7 @@ def acomodar(
         try:
             write_dxf(
                 carpeta / NOMBRE_DXF, drawing, piezas, resultado.placements,
-                material.sheet_w, material.sheet_h,
+                resultado.sheets,
             )
         except OSError as error:
             raise OSError(
@@ -282,7 +282,7 @@ def acomodar(
         try:
             write_preview(
                 carpeta / NOMBRE_PREVIEW, piezas, resultado.placements,
-                material.sheet_w, material.sheet_h, resultado.utilization,
+                resultado.sheets, resultado.utilization,
                 colors=_colores(drawing, piezas),
             )
         except (ValueError, OSError) as error:
@@ -310,7 +310,10 @@ def acomodar(
         aprovechamiento=list(resultado.utilization),
         total=resultado.total_utilization,
         segundos=resultado.seconds,
-        sobrante_mm=material.sheet_h - costo.alto_ultima,
+        sobrante_mm=(
+            resultado.sheets[-1].height - costo.alto_ultima
+            if resultado.sheets else 0.0
+        ),
         material_ultima_placa_m2=costo.material_ultima / 1e6,
         carpeta=carpeta,
         avisos=list(avisos),

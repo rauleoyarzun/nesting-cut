@@ -5,8 +5,10 @@ from nesting.io.dxf_reader import read_dxf
 from nesting.io.dxf_writer import SHEET_LAYER, write_dxf
 from nesting.model.entities import Arc, Bezier, Circle, Line, Polyline, Style, Transform
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet
 
 STYLE = Style(aci=3, rgb=(0, 255, 0), layer="CORTE")
+HOJA = Sheet(1000.0, 1000.0, grain_tolerance=180.0)
 
 
 def drawing_with(entities):
@@ -36,7 +38,8 @@ def read_back(path):
 
 def test_writes_a_sheet_rectangle_on_its_own_layer(tmp_path):
     out = tmp_path / "out.dxf"
-    write_dxf(out, drawing_with([]), [], [], sheet_w=1830.0, sheet_h=2600.0)
+    write_dxf(out, drawing_with([]), [], [],
+              [Sheet(1830.0, 2600.0, grain_tolerance=180.0)])
 
     msp = read_back(out).modelspace()
     rectangles = [e for e in msp if e.dxf.layer == SHEET_LAYER]
@@ -50,7 +53,7 @@ def test_one_rectangle_per_sheet_used(tmp_path):
         Placement(0, 0, Transform(0.0, False, 10.0, 10.0)),
         Placement(1, 2, Transform(0.0, False, 10.0, 10.0)),
     ]
-    write_dxf(out, drawing_with(square_entities(100.0)), parts, placements, 1000.0, 1000.0)
+    write_dxf(out, drawing_with(square_entities(100.0)), parts, placements, [HOJA] * 3)
 
     msp = read_back(out).modelspace()
     rectangles = [e for e in msp if e.dxf.layer == SHEET_LAYER]
@@ -61,7 +64,7 @@ def test_parts_are_translated_to_their_placement(tmp_path):
     out = tmp_path / "out.dxf"
     entities = square_entities(100.0)
     placements = [Placement(0, 0, Transform(0.0, False, 500.0, 300.0))]
-    write_dxf(out, drawing_with(entities), [square_part(0, 100.0)], placements, 1000.0, 1000.0)
+    write_dxf(out, drawing_with(entities), [square_part(0, 100.0)], placements, [HOJA])
 
     msp = read_back(out).modelspace()
     lines = [e for e in msp if e.dxftype() == "LINE"]
@@ -79,7 +82,7 @@ def test_sheets_are_laid_out_side_by_side(tmp_path):
         Placement(1, 1, Transform(0.0, False, 0.0, 0.0)),
     ]
     write_dxf(out, drawing_with(entities), parts, placements,
-              sheet_w=1000.0, sheet_h=1000.0, gap=100.0)
+              [HOJA] * 2, gap=100.0)
 
     msp = read_back(out).modelspace()
     xs = sorted(e.dxf.start[0] for e in msp if e.dxftype() == "LINE")
@@ -91,7 +94,7 @@ def test_colour_and_layer_survive_the_round_trip(tmp_path):
     out = tmp_path / "out.dxf"
     entities = square_entities(100.0)
     placements = [Placement(0, 0, Transform(0.0, False, 0.0, 0.0))]
-    write_dxf(out, drawing_with(entities), [square_part(0, 100.0)], placements, 1000.0, 1000.0)
+    write_dxf(out, drawing_with(entities), [square_part(0, 100.0)], placements, [HOJA])
 
     msp = read_back(out).modelspace()
     lines = [e for e in msp if e.dxftype() == "LINE"]
@@ -105,7 +108,7 @@ def test_circles_stay_circles(tmp_path):
     part = Part(0, ((-300.0, -300.0), (300.0, -300.0), (300.0, 300.0), (-300.0, 300.0)),
                 (), (0,))
     placements = [Placement(0, 0, Transform(0.0, False, 400.0, 400.0))]
-    write_dxf(out, drawing_with(entities), [part], placements, 1000.0, 1000.0)
+    write_dxf(out, drawing_with(entities), [part], placements, [HOJA])
 
     msp = read_back(out).modelspace()
     circles = [e for e in msp if e.dxftype() == "CIRCLE"]
@@ -116,7 +119,7 @@ def test_circles_stay_circles(tmp_path):
 
 def test_output_declares_millimetres(tmp_path):
     out = tmp_path / "out.dxf"
-    write_dxf(out, drawing_with([]), [], [], 1000.0, 1000.0)
+    write_dxf(out, drawing_with([]), [], [], [HOJA])
     assert read_back(out).units == 4
 
 
@@ -125,7 +128,7 @@ def test_the_output_can_be_read_back_by_our_own_reader(tmp_path):
     out = tmp_path / "out.dxf"
     entities = square_entities(100.0)
     placements = [Placement(0, 0, Transform(0.0, False, 50.0, 50.0))]
-    write_dxf(out, drawing_with(entities), [square_part(0, 100.0)], placements, 1000.0, 1000.0)
+    write_dxf(out, drawing_with(entities), [square_part(0, 100.0)], placements, [HOJA])
 
     reread = read_dxf(out)
     lines = [e for e in reread.entities if isinstance(e, Line)]
@@ -138,7 +141,7 @@ def test_only_the_entities_of_placed_parts_are_written(tmp_path):
     entities = square_entities(100.0) + [Line((900.0, 900.0), (950.0, 950.0), STYLE)]
     part = Part(0, ((0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)), (), (0, 1, 2, 3))
     placements = [Placement(0, 0, Transform(0.0, False, 0.0, 0.0))]
-    write_dxf(out, drawing_with(entities), [part], placements, 1000.0, 1000.0)
+    write_dxf(out, drawing_with(entities), [part], placements, [HOJA])
 
     msp = read_back(out).modelspace()
     assert len([e for e in msp if e.dxftype() == "LINE"]) == 4
@@ -152,7 +155,7 @@ def test_unknown_part_id_raises_a_clear_error(tmp_path):
     placements = [Placement(99, 0, Transform(0.0, False, 0.0, 0.0))]
     with pytest.raises(UnknownPartError) as info:
         write_dxf(out, drawing_with(entities), [square_part(0, 100.0)], placements,
-                  1000.0, 1000.0)
+                  [HOJA])
     assert "99" in str(info.value)
 
 
@@ -164,7 +167,7 @@ def test_out_of_range_entity_id_raises_a_clear_error(tmp_path):
     part = Part(0, ((0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)), (), (0, 1, 2, 42))
     placements = [Placement(0, 0, Transform(0.0, False, 0.0, 0.0))]
     with pytest.raises(InvalidEntityIdError) as info:
-        write_dxf(out, drawing_with(entities), [part], placements, 1000.0, 1000.0)
+        write_dxf(out, drawing_with(entities), [part], placements, [HOJA])
     assert "42" in str(info.value)
 
 
@@ -197,7 +200,7 @@ def test_a_bezier_round_trips_with_the_same_control_points(tmp_path):
     bezier = Bezier((0.0, 0.0), (10.0, 40.0), (30.0, 40.0), (40.0, 0.0), STYLE)
     part, placement = one_entity_part_and_placement(bezier)
 
-    write_dxf(out, drawing_with([bezier]), [part], [placement], 1000.0, 1000.0)
+    write_dxf(out, drawing_with([bezier]), [part], [placement], [HOJA])
 
     reread = read_dxf(out)
     beziers = [e for e in reread.entities if isinstance(e, Bezier)]
@@ -214,7 +217,7 @@ def test_an_arc_round_trips_with_the_same_geometry(tmp_path):
     arc = Arc(center=(50.0, 50.0), radius=30.0, start_angle=10.0, end_angle=100.0, style=STYLE)
     part, placement = one_entity_part_and_placement(arc)
 
-    write_dxf(out, drawing_with([arc]), [part], [placement], 1000.0, 1000.0)
+    write_dxf(out, drawing_with([arc]), [part], [placement], [HOJA])
 
     reread = read_dxf(out)
     arcs = [e for e in reread.entities if isinstance(e, Arc)]
@@ -237,7 +240,7 @@ def test_a_mirrored_arc_round_trips_with_the_swapped_endpoints(tmp_path):
     mirrored = Transform(angle_deg=0.0, mirror=True, dx=200.0, dy=200.0)
     part, placement = one_entity_part_and_placement(arc, transform=mirrored)
 
-    write_dxf(out, drawing_with([arc]), [part], [placement], 1000.0, 1000.0)
+    write_dxf(out, drawing_with([arc]), [part], [placement], [HOJA])
 
     from nesting.geometry.transform import apply_entity
     expected = apply_entity(mirrored, arc)
@@ -257,7 +260,7 @@ def test_a_closed_polyline_round_trips(tmp_path):
     polyline = Polyline(points, closed=True, style=STYLE)
     part, placement = one_entity_part_and_placement(polyline)
 
-    write_dxf(out, drawing_with([polyline]), [part], [placement], 1000.0, 1000.0)
+    write_dxf(out, drawing_with([polyline]), [part], [placement], [HOJA])
 
     reread = read_dxf(out)
     polylines = [e for e in reread.entities if isinstance(e, Polyline)]
@@ -279,7 +282,7 @@ def test_a_byalyer_entity_on_a_coloured_layer_keeps_its_colour(tmp_path):
     line = Line((0.0, 0.0), (100.0, 0.0), style)
     part, placement = one_entity_part_and_placement(line)
 
-    write_dxf(out, drawing_with([line]), [part], [placement], 1000.0, 1000.0)
+    write_dxf(out, drawing_with([line]), [part], [placement], [HOJA])
 
     reread = read_dxf(out)
     lines = [e for e in reread.entities if isinstance(e, Line)]
@@ -297,7 +300,7 @@ def test_a_true_colour_entity_with_byalyer_aci_keeps_its_true_colour(tmp_path):
     line = Line((0.0, 0.0), (100.0, 0.0), style)
     part, placement = one_entity_part_and_placement(line)
 
-    write_dxf(out, drawing_with([line]), [part], [placement], 1000.0, 1000.0)
+    write_dxf(out, drawing_with([line]), [part], [placement], [HOJA])
 
     reread = read_dxf(out)
     lines = [e for e in reread.entities if isinstance(e, Line)]
@@ -320,7 +323,7 @@ def test_a_chain_of_beziers_is_written_as_one_spline(tmp_path):
 
     out = tmp_path / "out.dxf"
     write_dxf(out, drawing_with([first, second]), [part],
-              [Placement(0, 0, Transform.identity())], 1000.0, 1000.0)
+              [Placement(0, 0, Transform.identity())], [HOJA])
 
     splines = [e for e in read_back(out).modelspace() if e.dxftype() == "SPLINE"]
     assert len(splines) == 1, "los dos tramos son un solo trazo"
@@ -344,7 +347,7 @@ def test_beziers_that_do_not_meet_stay_separate(tmp_path):
 
     out = tmp_path / "out.dxf"
     write_dxf(out, drawing_with([first, apart]), [part],
-              [Placement(0, 0, Transform.identity())], 1000.0, 1000.0)
+              [Placement(0, 0, Transform.identity())], [HOJA])
 
     splines = [e for e in read_back(out).modelspace() if e.dxftype() == "SPLINE"]
     assert len(splines) == 2, "unir lo que no se toca inventaria geometria"
@@ -368,7 +371,7 @@ def arc_part():
 def written_polyline(tmp_path, transform):
     out = tmp_path / "out.dxf"
     write_dxf(out, drawing_with([ARQUEADA]), [arc_part()],
-              [Placement(0, 0, transform)], 1000.0, 1000.0)
+              [Placement(0, 0, transform)], [HOJA])
     return [
         e for e in read_back(out).modelspace()
         if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == STYLE.layer
@@ -396,7 +399,7 @@ def test_a_polyline_without_bulges_is_written_exactly_as_before(tmp_path):
     recta = Polyline(((0.0, 0.0), (100.0, 0.0), (100.0, 100.0)), True, STYLE)
     out = tmp_path / "out.dxf"
     write_dxf(out, drawing_with([recta]), [arc_part()],
-              [Placement(0, 0, Transform.identity())], 1000.0, 1000.0)
+              [Placement(0, 0, Transform.identity())], [HOJA])
 
     written = [
         e for e in read_back(out).modelspace()
@@ -404,3 +407,29 @@ def test_a_polyline_without_bulges_is_written_exactly_as_before(tmp_path):
     ]
     assert len(written) == 1
     assert all(p[4] == 0.0 for p in written[0].get_points("xyseb"))
+
+
+def test_las_placas_de_anchos_distintos_no_se_pisan(tmp_path):
+    """Con el offset viejo (indice * (ancho + gap)) la segunda placa se
+    dibujaba encima de la primera en cuanto los anchos dejaban de ser
+    iguales."""
+    import ezdxf
+
+    from nesting.io.dxf_writer import SHEET_LAYER
+    from nesting.model.sheet import Sheet
+
+    hojas = [
+        Sheet(600.0, 800.0, grain_tolerance=180.0, scrap=True),
+        Sheet(1830.0, 2600.0, grain_tolerance=180.0),
+    ]
+    salida = tmp_path / "salida.dxf"
+    write_dxf(salida, drawing_with([]), [], [], hojas)
+
+    doc = ezdxf.readfile(str(salida))
+    contornos = [
+        e for e in doc.modelspace() if e.dxf.layer == SHEET_LAYER
+    ]
+    assert len(contornos) == 2
+    xs = [[p[0] for p in c.get_points("xy")] for c in contornos]
+    assert max(xs[0]) == pytest.approx(600.0)
+    assert min(xs[1]) >= max(xs[0])

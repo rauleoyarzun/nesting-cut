@@ -3,6 +3,7 @@ import pytest
 from nesting.geometry.verify import placed_polygon, verify
 from nesting.model.entities import Transform
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet
 
 
 def square_part(part_id, side, holes=()):
@@ -19,18 +20,20 @@ def at(part_id, x, y, sheet=0, angle=0.0, mirror=False):
 
 
 SHEET_W, SHEET_H = 1000.0, 1000.0
+HOJAS = [Sheet(SHEET_W, SHEET_H, grain_tolerance=180.0)] * 2
+"""Dos placas iguales: la mayoría de los tests usa una sola, y uno usa dos."""
 
 
 def test_a_single_well_placed_part_has_no_violations():
     parts = [square_part(0, 100.0)]
     placements = [at(0, 100.0, 100.0)]
-    assert verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0) == []
+    assert verify(parts, placements, HOJAS, sep=5.0, margin=10.0) == []
 
 
 def test_overlapping_parts_are_reported():
     parts = [square_part(0, 100.0), square_part(1, 100.0)]
     placements = [at(0, 100.0, 100.0), at(1, 150.0, 150.0)]
-    violations = verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0)
+    violations = verify(parts, placements, HOJAS, sep=5.0, margin=10.0)
 
     assert len(violations) == 1
     assert violations[0].kind == "overlap"
@@ -41,7 +44,7 @@ def test_parts_closer_than_the_separation_are_reported():
     parts = [square_part(0, 100.0), square_part(1, 100.0)]
     # Hay 3 mm de luz entre ellas, pero se pidieron 5.
     placements = [at(0, 100.0, 100.0), at(1, 203.0, 100.0)]
-    violations = verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0)
+    violations = verify(parts, placements, HOJAS, sep=5.0, margin=10.0)
 
     assert len(violations) == 1
     assert violations[0].kind == "separation"
@@ -50,13 +53,13 @@ def test_parts_closer_than_the_separation_are_reported():
 def test_exactly_the_requested_separation_is_accepted():
     parts = [square_part(0, 100.0), square_part(1, 100.0)]
     placements = [at(0, 100.0, 100.0), at(1, 205.0, 100.0)]
-    assert verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0) == []
+    assert verify(parts, placements, HOJAS, sep=5.0, margin=10.0) == []
 
 
 def test_a_part_outside_the_margin_is_reported():
     parts = [square_part(0, 100.0)]
     placements = [at(0, 5.0, 100.0)]   # el margen pedido es 10
-    violations = verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0)
+    violations = verify(parts, placements, HOJAS, sep=5.0, margin=10.0)
 
     assert len(violations) == 1
     assert violations[0].kind == "out_of_bounds"
@@ -66,14 +69,14 @@ def test_a_part_outside_the_margin_is_reported():
 def test_a_part_past_the_far_edge_is_reported():
     parts = [square_part(0, 100.0)]
     placements = [at(0, 950.0, 100.0)]
-    violations = verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0)
+    violations = verify(parts, placements, HOJAS, sep=5.0, margin=10.0)
     assert [v.kind for v in violations] == ["out_of_bounds"]
 
 
 def test_parts_on_different_sheets_never_collide():
     parts = [square_part(0, 100.0), square_part(1, 100.0)]
     placements = [at(0, 100.0, 100.0, sheet=0), at(1, 100.0, 100.0, sheet=1)]
-    assert verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0) == []
+    assert verify(parts, placements, HOJAS, sep=5.0, margin=10.0) == []
 
 
 def test_a_part_nested_inside_a_hole_is_valid():
@@ -87,7 +90,7 @@ def test_a_part_nested_inside_a_hole_is_valid():
     inner = square_part(1, 100.0)
     placements = [at(0, 100.0, 100.0), at(1, 250.0, 250.0)]
 
-    assert verify([ring, inner], placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0) == []
+    assert verify([ring, inner], placements, HOJAS, sep=5.0, margin=10.0) == []
 
 
 def test_a_part_too_close_to_the_wall_of_a_hole_is_reported():
@@ -100,7 +103,7 @@ def test_a_part_too_close_to_the_wall_of_a_hole_is_reported():
     inner = square_part(1, 100.0)
     # La pieza interna queda a 2 mm de la pared del agujero.
     placements = [at(0, 100.0, 100.0), at(1, 152.0, 250.0)]
-    violations = verify([ring, inner], placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0)
+    violations = verify([ring, inner], placements, HOJAS, sep=5.0, margin=10.0)
 
     assert [v.kind for v in violations] == ["separation"]
 
@@ -109,7 +112,7 @@ def test_rotation_is_taken_into_account():
     """Rotada 45 grados, la diagonal se sale del margen."""
     parts = [square_part(0, 100.0)]
     placements = [at(0, 40.0, 500.0, angle=45.0)]
-    violations = verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0)
+    violations = verify(parts, placements, HOJAS, sep=5.0, margin=10.0)
     assert [v.kind for v in violations] == ["out_of_bounds"]
 
 
@@ -130,7 +133,7 @@ def test_placed_polygon_applies_the_transform_and_keeps_holes():
 def test_every_violation_carries_a_readable_detail():
     parts = [square_part(0, 100.0), square_part(1, 100.0)]
     placements = [at(0, 100.0, 100.0), at(1, 150.0, 150.0)]
-    violations = verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0)
+    violations = verify(parts, placements, HOJAS, sep=5.0, margin=10.0)
     assert violations[0].detail
     assert violations[0].sheet == 0
 
@@ -144,7 +147,10 @@ def test_an_excessive_margin_leaves_no_usable_area_on_a_square_sheet():
     """
     parts = [square_part(0, 20.0)]
     placements = [at(0, 90.0, 90.0)]
-    violations = verify(parts, placements, 200.0, 200.0, sep=5.0, margin=110.0)
+    violations = verify(
+        parts, placements, [Sheet(200.0, 200.0, grain_tolerance=180.0)],
+        sep=5.0, margin=110.0,
+    )
 
     assert [v.kind for v in violations] == ["out_of_bounds"]
     assert "área útil" in violations[0].detail or "area util" in violations[0].detail
@@ -160,7 +166,10 @@ def test_an_excessive_margin_on_a_single_axis_is_still_caught():
     """
     parts = [square_part(0, 10.0)]
     placements = [at(0, 500.0, 95.0)]
-    violations = verify(parts, placements, 1000.0, 200.0, sep=5.0, margin=110.0)
+    violations = verify(
+        parts, placements, [Sheet(1000.0, 200.0, grain_tolerance=180.0)],
+        sep=5.0, margin=110.0,
+    )
 
     assert [v.kind for v in violations] == ["out_of_bounds"]
 
@@ -168,7 +177,10 @@ def test_an_excessive_margin_on_a_single_axis_is_still_caught():
 def test_a_margin_exactly_half_the_sheet_dimension_leaves_zero_usable_width():
     parts = [square_part(0, 20.0)]
     placements = [at(0, 100.0, 100.0)]
-    violations = verify(parts, placements, 200.0, 200.0, sep=5.0, margin=100.0)
+    violations = verify(
+        parts, placements, [Sheet(200.0, 200.0, grain_tolerance=180.0)],
+        sep=5.0, margin=100.0,
+    )
 
     assert [v.kind for v in violations] == ["out_of_bounds"]
 
@@ -177,7 +189,7 @@ def test_a_normal_margin_with_a_well_placed_part_still_has_no_violations():
     """El arreglo del hallazgo 1 no puede convertirse en un falso positivo."""
     parts = [square_part(0, 100.0)]
     placements = [at(0, 100.0, 100.0)]
-    assert verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0) == []
+    assert verify(parts, placements, HOJAS, sep=5.0, margin=10.0) == []
 
 
 def test_a_self_intersecting_outline_is_reported_as_invalid_geometry():
@@ -188,7 +200,7 @@ def test_a_self_intersecting_outline_is_reported_as_invalid_geometry():
         entity_ids=(0,),
     )
     placements = [at(0, 100.0, 100.0)]
-    violations = verify([bowtie], placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0)
+    violations = verify([bowtie], placements, HOJAS, sep=5.0, margin=10.0)
 
     assert [v.kind for v in violations] == ["invalid_geometry"]
     assert "0" in violations[0].detail
@@ -205,7 +217,7 @@ def test_a_well_placed_part_with_holes_still_has_no_violations():
     inner = square_part(1, 100.0)
     placements = [at(0, 100.0, 100.0), at(1, 250.0, 250.0)]
 
-    assert verify([ring, inner], placements, SHEET_W, SHEET_H, sep=5.0, margin=10.0) == []
+    assert verify([ring, inner], placements, HOJAS, sep=5.0, margin=10.0) == []
 
 
 # --- Hallazgo 1b: umbral de area para el solapamiento ---
@@ -222,7 +234,7 @@ def test_two_parts_touching_on_a_shared_edge_with_zero_sep_is_not_a_violation():
     # (1e-6 mm^2) y del mismo orden que el ruido real de una rotacion de 90
     # grados sin corregir (~1e-11 mm^2).
     placements = [at(0, 100.0, 100.0), at(1, 200.0 - 1e-10, 100.0)]
-    assert verify(parts, placements, SHEET_W, SHEET_H, sep=0.0, margin=10.0) == []
+    assert verify(parts, placements, HOJAS, sep=0.0, margin=10.0) == []
 
 
 def test_a_small_but_real_overlap_is_still_reported():
@@ -231,7 +243,7 @@ def test_a_small_but_real_overlap_is_still_reported():
     parts = [square_part(0, 100.0), square_part(1, 100.0)]
     # Las piezas se superponen en una franja de 1 mm x 1 mm = 1 mm^2.
     placements = [at(0, 100.0, 100.0), at(1, 199.0, 199.0)]
-    violations = verify(parts, placements, SHEET_W, SHEET_H, sep=0.0, margin=10.0)
+    violations = verify(parts, placements, HOJAS, sep=0.0, margin=10.0)
 
     assert [v.kind for v in violations] == ["overlap"]
 
@@ -239,7 +251,7 @@ def test_a_small_but_real_overlap_is_still_reported():
 def test_a_part_fully_contained_in_another_is_still_reported():
     parts = [square_part(0, 200.0), square_part(1, 50.0)]
     placements = [at(0, 100.0, 100.0), at(1, 110.0, 110.0)]
-    violations = verify(parts, placements, SHEET_W, SHEET_H, sep=0.0, margin=10.0)
+    violations = verify(parts, placements, HOJAS, sep=0.0, margin=10.0)
 
     assert [v.kind for v in violations] == ["overlap"]
 
@@ -252,7 +264,7 @@ def test_negative_sep_raises_value_error_instead_of_being_silently_ignored():
     placements = [at(0, 100.0, 100.0)]
 
     with pytest.raises(ValueError):
-        verify(parts, placements, SHEET_W, SHEET_H, sep=-1.0, margin=10.0)
+        verify(parts, placements, HOJAS, sep=-1.0, margin=10.0)
 
 
 def test_negative_margin_raises_value_error_instead_of_extending_the_sheet():
@@ -260,4 +272,57 @@ def test_negative_margin_raises_value_error_instead_of_extending_the_sheet():
     placements = [at(0, 100.0, 100.0)]
 
     with pytest.raises(ValueError):
-        verify(parts, placements, SHEET_W, SHEET_H, sep=5.0, margin=-1.0)
+        verify(parts, placements, HOJAS, sep=5.0, margin=-1.0)
+
+
+def test_una_pieza_que_se_sale_de_su_recorte_es_violacion():
+    """El test que impide que un DXF malo llegue a la fresadora: la pieza
+    entra holgada en la placa del Material, pero está en un recorte de
+    600x800 y se le va afuera."""
+    pieza = Part(0, ((0.0, 0.0), (700.0, 0.0), (700.0, 700.0), (0.0, 700.0)), (), (0,))
+    hojas = [Sheet(600.0, 800.0, grain_tolerance=180.0, scrap=True)]
+    colocaciones = [Placement(0, 0, Transform(0.0, False, 10.0, 10.0))]
+
+    violaciones = verify([pieza], colocaciones, hojas, sep=0.0, margin=0.0)
+
+    assert len(violaciones) == 1
+    assert violaciones[0].kind == "out_of_bounds"
+
+
+def test_la_misma_pieza_en_una_placa_grande_no_es_violacion():
+    pieza = Part(0, ((0.0, 0.0), (700.0, 0.0), (700.0, 700.0), (0.0, 700.0)), (), (0,))
+    hojas = [Sheet(1830.0, 2600.0, grain_tolerance=180.0)]
+    colocaciones = [Placement(0, 0, Transform(0.0, False, 10.0, 10.0))]
+
+    assert verify([pieza], colocaciones, hojas, sep=0.0, margin=0.0) == []
+
+
+def test_cada_placa_se_verifica_contra_su_propia_medida():
+    """Dos placas distintas, la misma pieza en la misma posición: entra en
+    una y no en la otra."""
+    pieza_a = Part(0, ((0.0, 0.0), (700.0, 0.0), (700.0, 700.0), (0.0, 700.0)), (), (0,))
+    pieza_b = Part(1, ((0.0, 0.0), (700.0, 0.0), (700.0, 700.0), (0.0, 700.0)), (), (1,))
+    hojas = [
+        Sheet(1830.0, 2600.0, grain_tolerance=180.0),
+        Sheet(600.0, 800.0, grain_tolerance=180.0, scrap=True),
+    ]
+    colocaciones = [
+        Placement(0, 0, Transform(0.0, False, 10.0, 10.0)),
+        Placement(1, 1, Transform(0.0, False, 10.0, 10.0)),
+    ]
+
+    violaciones = verify([pieza_a, pieza_b], colocaciones, hojas, sep=0.0, margin=0.0)
+
+    assert [v.sheet for v in violaciones] == [1]
+
+
+def test_verify_rechaza_una_lista_de_placas_que_no_cubre_las_colocaciones():
+    """El árbitro no confía en quien lo llama: verificar la placa 3 contra
+    una lista de dos es un `IndexError` en el mejor caso y un 'todo bien'
+    equivocado en el peor."""
+    pieza = Part(0, ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)), (), (0,))
+    hojas = [Sheet(1000.0, 1000.0, grain_tolerance=180.0)]
+    colocaciones = [Placement(0, 3, Transform(0.0, False, 10.0, 10.0))]
+
+    with pytest.raises(ValueError, match="placa"):
+        verify([pieza], colocaciones, hojas, sep=0.0, margin=0.0)

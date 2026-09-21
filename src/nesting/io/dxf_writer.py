@@ -14,6 +14,7 @@ from nesting.geometry.transform import apply_entity
 from nesting.io.dxf_reader import SHEET_LAYER, Drawing
 from nesting.model.entities import Arc, Bezier, Circle, Entity, Line, Polyline, Style, Transform
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet
 
 # SHEET_LAYER (the layer holding the sheet outlines, kept apart from the cut
 # geometry) is re-exported here from `dxf_reader`, which is where `read_dxf`
@@ -37,11 +38,10 @@ def write_dxf(
     drawing: Drawing,
     parts: Sequence[Part],
     placements: Sequence[Placement],
-    sheet_w: float,
-    sheet_h: float,
+    sheets: Sequence[Sheet],
     gap: float = DEFAULT_GAP,
 ) -> None:
-    """Write every placed part into one DXF, sheets in a horizontal row."""
+    """Escribe cada pieza colocada en un DXF, las placas en una fila horizontal."""
     doc = ezdxf.new("R2010", setup=True)
     doc.units = 4  # millimetres
     msp = doc.modelspace()
@@ -49,9 +49,16 @@ def write_dxf(
     if SHEET_LAYER not in doc.layers:
         doc.layers.add(SHEET_LAYER, color=8)
 
-    sheet_count = max((p.sheet for p in placements), default=0) + 1
-    for index in range(sheet_count):
-        _draw_sheet_outline(msp, index * (sheet_w + gap), sheet_w, sheet_h)
+    # Acumulado y no `indice * (ancho + gap)`: con anchos distintos, esa
+    # multiplicación pone la placa 1 encima de la 0.
+    offsets: list[float] = []
+    x = 0.0
+    for hoja in sheets:
+        offsets.append(x)
+        x += hoja.width + gap
+
+    for hoja, x0 in zip(sheets, offsets):
+        _draw_sheet_outline(msp, x0, hoja.width, hoja.height)
 
     by_id = {p.id: p for p in parts}
     for placement in placements:
@@ -62,7 +69,12 @@ def write_dxf(
                 f"está en la lista de piezas recibida ({len(parts)} pieza(s); "
                 f"ids válidos: {sorted(by_id)})"
             )
-        offset_x = placement.sheet * (sheet_w + gap)
+        if not (0 <= placement.sheet < len(offsets)):
+            raise UnknownPartError(
+                f"la colocación de la pieza {placement.part_id} dice estar en la "
+                f"placa {placement.sheet}, pero se recibieron {len(sheets)} placa(s)."
+            )
+        offset_x = offsets[placement.sheet]
         moved = Transform(
             angle_deg=placement.transform.angle_deg,
             mirror=placement.transform.mirror,

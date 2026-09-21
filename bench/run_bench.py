@@ -160,7 +160,7 @@ def run_one(
     costo = layout_cost(result, parts)
 
     violations = verify(
-        parts, result.placements, material.sheet_w, material.sheet_h,
+        parts, result.placements, result.sheets,
         sep=config.sep, margin=config.margin,
     )
 

@@ -5,6 +5,7 @@ from nesting.engine.shelf_oracle import ShelfOracle
 from nesting.geometry.verify import verify
 from nesting.model.entities import Transform
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet
 
 
 def rect_part(part_id, w, h):
@@ -139,7 +140,8 @@ def test_a_full_shelf_layout_passes_the_verifier():
         placements.append(Placement(part.id, 0, Transform(0.0, False, x, y)))
 
     assert len(placements) >= 8
-    assert verify(parts, placements, 1000.0, 1000.0, sep=10.0, margin=20.0) == []
+    assert verify(parts, placements, [Sheet(1000.0, 1000.0, grain_tolerance=180.0)],
+                  sep=10.0, margin=20.0) == []
 
 
 def test_rotated_parts_also_pass_the_verifier():
@@ -158,7 +160,8 @@ def test_rotated_parts_also_pass_the_verifier():
         placements.append(Placement(part.id, 0, Transform(angle, False, x, y)))
 
     assert placements
-    assert verify(parts, placements, 1000.0, 1000.0, sep=10.0, margin=20.0) == []
+    assert verify(parts, placements, [Sheet(1000.0, 1000.0, grain_tolerance=180.0)],
+                  sep=10.0, margin=20.0) == []
 
 
 def test_place_rejects_a_position_from_a_different_angle():
@@ -219,7 +222,8 @@ def test_a_long_mixed_sequence_placed_correctly_still_passes_the_verifier():
         placements.append(Placement(part.id, 0, Transform(angle, mirror, x, y)))
 
     assert len(placements) == 40
-    assert verify(parts, placements, 2000.0, 4000.0, sep=10.0, margin=20.0) == []
+    assert verify(parts, placements, [Sheet(2000.0, 4000.0, grain_tolerance=180.0)],
+                  sep=10.0, margin=20.0) == []
 
 
 def test_shelf_oracle_satisfies_the_oracle_protocol():

@@ -110,7 +110,7 @@ def test_the_result_always_passes_the_verifier():
     result = pack(parts, PLAN_LIBRE, CONFIG, ShelfOracle)
 
     violations = verify(
-        parts, result.placements, FREE.sheet_w, FREE.sheet_h,
+        parts, result.placements, result.sheets,
         sep=CONFIG.sep, margin=CONFIG.margin,
     )
     assert violations == []
@@ -142,7 +142,7 @@ def test_90_degree_rotation_with_zero_separation_passes_verify():
     result = pack(parts, PLAN_LIBRE, config, ShelfOracle)
 
     violations = verify(
-        parts, result.placements, FREE.sheet_w, FREE.sheet_h,
+        parts, result.placements, result.sheets,
         sep=config.sep, margin=config.margin,
     )
     assert violations == []
@@ -161,7 +161,7 @@ def test_a_wide_sweep_of_sep_and_angle_combinations_passes_verify():
                 )
                 result = pack(parts, PLAN_LIBRE, config, ShelfOracle)
                 violations = verify(
-                    parts, result.placements, FREE.sheet_w, FREE.sheet_h,
+                    parts, result.placements, result.sheets,
                     sep=config.sep, margin=config.margin,
                 )
                 assert violations == [], (sep, angle, mirror, violations)

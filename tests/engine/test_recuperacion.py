@@ -71,7 +71,7 @@ def test_una_pieza_de_la_ultima_placa_vuelve_a_la_primera_si_entra():
     assert [p.sheet for p in recuperado.placements if p.part_id == ANGOSTA.id] == [0]
     assert {p.part_id for p in recuperado.placements} == {p.id for p in TRES}
     assert verify(
-        TRES, recuperado.placements, PLACA.sheet_w, PLACA.sheet_h,
+        TRES, recuperado.placements, recuperado.sheets,
         sep=CONFIG.sep, margin=CONFIG.margin,
     ) == []
 
@@ -153,7 +153,7 @@ def test_la_recuperacion_nunca_empeora_el_costo():
             assert ids == sorted(p.id for p in parts), caso
             assert despues.sheets_used == len({p.sheet for p in despues.placements}), caso
             assert verify(
-                parts, despues.placements, material.sheet_w, material.sheet_h,
+                parts, despues.placements, despues.sheets,
                 sep=config.sep, margin=config.margin,
             ) == [], caso
 
