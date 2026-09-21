@@ -256,3 +256,16 @@ def test_los_recortes_llegan_al_params():
     assert len(recortes) == 1
     assert recortes[0].cantidad == 2
     assert recortes[0].veta_cruzada is True
+
+
+def test_el_json_del_trabajo_trae_el_reparto_de_placas():
+    from pathlib import Path
+
+    from nesting_app.jobs import Resultado
+
+    resultado = Resultado(
+        placas=3, aprovechamiento=[0.5, 0.5, 0.5], total=0.5, segundos=1.0,
+        sobrante_mm=100.0, material_ultima_placa_m2=0.1,
+        carpeta=Path("/tmp"), recortes_usados=2,
+    )
+    assert resultado.recortes_usados == 2

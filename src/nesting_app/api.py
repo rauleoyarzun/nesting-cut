@@ -397,6 +397,7 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
                 "segundos": trabajo.resultado.segundos,
                 "sobrante_mm": trabajo.resultado.sobrante_mm,
                 "material_ultima_placa_m2": trabajo.resultado.material_ultima_placa_m2,
+                "recortes_usados": trabajo.resultado.recortes_usados,
             }
         return {
             "estado": str(trabajo.estado),

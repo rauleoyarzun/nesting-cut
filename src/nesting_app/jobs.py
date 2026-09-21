@@ -56,6 +56,17 @@ class Resultado:
     """
     carpeta: Path
     avisos: list[str] = field(default_factory=list)
+    recortes_usados: int = 0
+    """Cuántas de las placas del acomodo eran recortes.
+
+    Va acá y no se recalcula en la pantalla porque el motor ya lo sabe:
+    `PackResult.sheets` dice qué fue cada placa. Contarlo dos veces sería
+    tener dos fuentes de verdad para el mismo número.
+
+    Va último por la regla de los dataclass -- los campos con valor por
+    omisión van después de los que no lo tienen -- y no porque importe
+    menos que `placas`.
+    """
 
 
 @dataclass

@@ -5,7 +5,7 @@ import time
 import ezdxf
 import pytest
 
-from nesting.params import NestParams
+from nesting.params import NestParams, Recorte
 from nesting_app import corredor, materials_store
 from nesting_app.archivos import Deposito
 from nesting_app.jobs import Estado, Registro
@@ -418,6 +418,69 @@ def test_acomodar_con_un_material_que_desaparecio_de_la_cola_da_un_error_del_usu
         )
 
     assert "fantasma" in str(capturado.value)
+
+
+def test_el_resultado_cuenta_cuantos_recortes_se_usaron(tmp_path, deposito):
+    """El reparto lo cuenta el motor, que ya sabe qué placa fue cada una.
+    Si lo recontara la pantalla, serían dos fuentes de verdad para el mismo
+    número."""
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200), (300, 0, 200)]))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(
+        fuente,
+        params(recortes=(Recorte(700.0, 700.0),), resolucion=4.0),
+        lambda a: True,
+        salida,
+    )
+
+    assert resultado.placas == 1
+    assert resultado.recortes_usados == 1
+
+
+def test_sin_recortes_el_reparto_es_cero(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(
+        fuente, params(resolucion=4.0), lambda a: True, salida
+    )
+
+    assert resultado.recortes_usados == 0
+
+
+def test_una_pieza_del_tamano_de_un_recorte_no_se_descarta(tmp_path, deposito):
+    """`discard_plate_outline` tira los rectángulos del tamaño exacto de la
+    placa, porque son la previsualización que alguien dibujó en su CAD.
+    Mirar también las medidas de los recortes parece consistente y es una
+    trampa: con 1830x2600 el choque es improbable, pero una medida de
+    recorte ES una medida de pieza. Esta pieza de 600x800 tiene que
+    sobrevivir a que haya un recorte de 600x800 cargado."""
+    ruta = dxf_con(tmp_path, [])
+    import ezdxf
+
+    doc = ezdxf.readfile(str(ruta))
+    doc.modelspace().add_lwpolyline(
+        [(0, 0), (600, 0), (600, 800), (0, 800)], close=True
+    )
+    doc.saveas(ruta)
+
+    fuente = deposito.registrar_local(ruta)
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(
+        fuente,
+        params(recortes=(Recorte(600.0, 800.0),), resolucion=4.0),
+        lambda a: True,
+        salida,
+    )
+
+    # Si se hubiera descartado, no quedaría ninguna pieza y `acomodar`
+    # habría levantado "no se encontró ninguna pieza".
+    assert resultado.placas == 1
 
 
 def test_el_material_desaparecido_llega_al_trabajo_como_error_del_usuario_no_bug(
