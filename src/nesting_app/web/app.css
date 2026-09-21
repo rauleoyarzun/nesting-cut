@@ -126,6 +126,20 @@ body {
   display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
 }
 
+/* La etiqueta y su ícono de ayuda, pegados. Va como hijo directo del
+   `.campo` --que ya es una columna flex-- salvo en Material, donde entra
+   adentro del `.renglon-etiqueta` para que el botón del catálogo siga
+   yéndose al margen. `baseline` por lo mismo que arriba: son dos cosas de
+   alturas distintas y centrarlas por caja las deja corridas. */
+.titulo-campo { display: flex; align-items: baseline; gap: 6px; }
+
+/* `line-height: 0` para que la caja del botón sea la del SVG y no le sume
+   el interlineado de un texto que no tiene. */
+.boton-info {
+  border: 0; background: none; padding: 0; line-height: 0; cursor: pointer;
+}
+.boton-info:hover .icono, .boton-info:focus-visible .icono { stroke: var(--texto); }
+
 .control, select.control, .caja-archivo {
   display: flex; align-items: center; height: var(--alto-control);
   padding: 0 12px; background: var(--panel);

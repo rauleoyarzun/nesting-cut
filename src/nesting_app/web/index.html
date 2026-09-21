@@ -16,7 +16,10 @@
 <main id="pantalla-principal">
   <section class="panel-opciones">
     <div class="campo">
-      <span class="etiqueta">Archivo</span>
+      <div class="titulo-campo">
+        <span class="etiqueta">Archivo</span>
+        <button type="button" class="boton-info" data-info="archivo" aria-label="Qué es Archivo" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+      </div>
       <div class="caja-archivo">
         <svg viewBox="0 0 16 16" class="icono" aria-hidden="true"><path d="M9 1.5H4.5A1.5 1.5 0 0 0 3 3v10a1.5 1.5 0 0 0 1.5 1.5h7A1.5 1.5 0 0 0 13 13V5.5z"></path><path d="M9 1.5V5.5H13"></path></svg>
         <span id="nombre-archivo" class="nombre-archivo">Ningún archivo elegido</span>
@@ -34,7 +37,10 @@
            momento en que a alguien le falta un material es el momento en que
            está eligiendo uno de esta lista, y ahí es donde mira. -->
       <div class="renglon-etiqueta">
-        <label class="etiqueta" for="material">Material</label>
+        <span class="titulo-campo">
+          <label class="etiqueta" for="material">Material</label>
+          <button type="button" class="boton-info" data-info="material" aria-label="Qué es Material" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+        </span>
         <button type="button" id="btn-materiales" class="enlace">Agregar o editar</button>
       </div>
       <div class="desplegable">
@@ -44,7 +50,10 @@
     </div>
 
     <div class="campo">
-      <label class="etiqueta" for="sep">Separación</label>
+      <div class="titulo-campo">
+        <label class="etiqueta" for="sep">Separación</label>
+        <button type="button" class="boton-info" data-info="sep" aria-label="Qué es Separación" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+      </div>
       <div class="control con-unidad">
         <input id="sep" type="number" min="0" step="0.5" value="5" class="medida">
         <span class="unidad">mm</span>
@@ -53,7 +62,10 @@
     </div>
 
     <div class="campo">
-      <label class="etiqueta" for="borde">Borde</label>
+      <div class="titulo-campo">
+        <label class="etiqueta" for="borde">Borde</label>
+        <button type="button" class="boton-info" data-info="borde" aria-label="Qué es Borde" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+      </div>
       <div class="control con-unidad">
         <input id="borde" type="number" min="0" step="1" value="10" class="medida">
         <span class="unidad">mm</span>
@@ -62,7 +74,10 @@
     </div>
 
     <div class="campo">
-      <label class="etiqueta" for="copias">Copias</label>
+      <div class="titulo-campo">
+        <label class="etiqueta" for="copias">Copias</label>
+        <button type="button" class="boton-info" data-info="copias" aria-label="Qué es Copias" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+      </div>
       <div class="control">
         <input id="copias" type="number" min="1" step="1" value="1" class="medida">
       </div>
@@ -70,7 +85,10 @@
     </div>
 
     <div class="campo">
-      <label class="etiqueta" for="esfuerzo">Esfuerzo</label>
+      <div class="titulo-campo">
+        <label class="etiqueta" for="esfuerzo">Esfuerzo</label>
+        <button type="button" class="boton-info" data-info="esfuerzo" aria-label="Qué es Esfuerzo" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+      </div>
       <div class="desplegable">
         <select id="esfuerzo" class="control">
           <option value="rapido">Rápido — una pasada</option>
@@ -86,12 +104,18 @@
     <details id="avanzadas" class="avanzadas">
       <summary>Opciones avanzadas</summary>
       <div class="campo">
-        <label class="etiqueta" for="angulos">Ángulos</label>
+        <div class="titulo-campo">
+          <label class="etiqueta" for="angulos">Ángulos</label>
+          <button type="button" class="boton-info" data-info="angulos" aria-label="Qué es Ángulos" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+        </div>
         <div class="control"><input id="angulos" type="text" value="0,90,180,270"></div>
         <p class="error-campo oculto" data-error-de="angulos"></p>
       </div>
       <div class="campo">
-        <label class="etiqueta" for="tol-cierre">Tolerancia de cierre</label>
+        <div class="titulo-campo">
+          <label class="etiqueta" for="tol-cierre">Tolerancia de cierre</label>
+          <button type="button" class="boton-info" data-info="tol-cierre" aria-label="Qué es Tolerancia de cierre" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+        </div>
         <div class="control con-unidad">
           <input id="tol-cierre" type="number" min="0.001" step="any" value="0.1" class="medida">
           <span class="unidad">mm</span>
@@ -99,14 +123,20 @@
         <p class="error-campo oculto" data-error-de="tol_cierre"></p>
       </div>
       <div class="campo">
-        <label class="etiqueta" for="resolucion">Resolución</label>
+        <div class="titulo-campo">
+          <label class="etiqueta" for="resolucion">Resolución</label>
+          <button type="button" class="boton-info" data-info="resolucion" aria-label="Qué es Resolución" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+        </div>
         <div class="control con-unidad">
           <input id="resolucion" type="number" min="0.1" step="any" value="2" class="medida">
           <span class="unidad">mm/px</span>
         </div>
         <p class="error-campo oculto" data-error-de="resolucion"></p>
       </div>
-      <label class="casilla"><input id="espejo" type="checkbox" checked> Permitir piezas espejadas</label>
+      <div class="titulo-campo">
+        <label class="casilla"><input id="espejo" type="checkbox" checked> Permitir piezas espejadas</label>
+        <button type="button" class="boton-info" data-info="espejo" aria-label="Qué es Permitir piezas espejadas" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+      </div>
     </details>
   </section>
 
@@ -199,6 +229,12 @@
     </form>
   </div>
 </section>
+
+<!-- Antes de los carteles y no al final del body: `app.css` no usa z-index
+     en ninguna regla, así que entre posicionados manda el orden del
+     documento. Acá el globo queda arriba del panel y abajo de los carteles,
+     sin un z-index que después haya que mantener en dos lados. -->
+<div id="globo-info" class="globo-info oculto" role="tooltip"></div>
 
 <div id="cartel-unidades" class="cartel oculto">
   <div class="cartel-caja">

@@ -26,7 +26,7 @@ IDS_OBLIGATORIOS = [
     # y no falla en ningún lado hasta que alguien lo aprieta.
     "btn-materiales", "cuenta-piezas", "pista-avance", "titulo-error",
     "btn-copiar-error", "btn-cerrar-error", "titulo-form", "error-material",
-    "angulos", "tol-cierre", "resolucion", "espejo",
+    "angulos", "tol-cierre", "resolucion", "espejo", "globo-info",
 ]
 
 
@@ -289,3 +289,53 @@ def test_viaja_la_licencia_de_la_fuente():
     texto = licencia.read_text(encoding="utf-8")
     assert "SIL OPEN FONT LICENSE" in texto.upper()
     assert "Copyright" in texto
+
+
+# --- los globos de ayuda ---------------------------------------------------
+
+CLAVES_CON_GLOBO = [
+    "archivo", "material", "sep", "borde", "copias", "esfuerzo",
+    "angulos", "tol-cierre", "resolucion", "espejo",
+]
+
+
+@pytest.mark.parametrize("clave", CLAVES_CON_GLOBO)
+def test_cada_opcion_tiene_su_boton_de_ayuda(html, clave):
+    assert f'data-info="{clave}"' in html
+
+
+@pytest.mark.parametrize("clave", CLAVES_CON_GLOBO)
+def test_el_boton_de_ayuda_es_un_boton_y_se_anuncia(html, clave):
+    """Adentro sólo hay un SVG con `aria-hidden`: sin `aria-label` un lector
+    de pantalla anuncia un botón sin nombre. Y un `<span>` con onclick no
+    recibe foco con Tab ni se activa con Enter."""
+    etiqueta = re.search(rf'<button[^>]*data-info="{re.escape(clave)}"[^>]*>', html)
+    assert etiqueta, f"el botón de {clave} no es un <button>"
+    assert "aria-label=" in etiqueta.group(0), f"el botón de {clave} no tiene aria-label"
+    assert 'aria-expanded="false"' in etiqueta.group(0), (
+        f"el botón de {clave} arranca sin aria-expanded"
+    )
+
+
+def test_el_boton_de_espejadas_esta_afuera_de_su_casilla(html):
+    """Un `<button>` adentro de un `<label>` hereda su clic: abrir la ayuda
+    daría vuelta la casilla, que es justo lo contrario de lo que el usuario
+    pidió al apretarla."""
+    inicio = html.index('<label class="casilla">')
+    cierre = html.index("</label>", inicio)
+    assert 'data-info="espejo"' not in html[inicio:cierre], (
+        "el botón de ayuda de las espejadas quedó adentro del <label>"
+    )
+
+
+def test_el_globo_se_dibuja_abajo_de_los_carteles(html):
+    """`app.css` no usa `z-index` en ninguna regla: entre posicionados
+    manda el orden del documento. Con el globo después de los carteles, uno
+    abierto quedaría flotando por encima del cartel de error."""
+    assert html.index('id="globo-info"') < html.index('id="cartel-unidades"')
+
+
+def test_el_globo_no_atrapa_el_foco(html):
+    """Es un texto de ayuda, no un diálogo: `role="tooltip"` y nada más."""
+    globo = re.search(r'<div[^>]*id="globo-info"[^>]*>', html).group(0)
+    assert 'role="tooltip"' in globo

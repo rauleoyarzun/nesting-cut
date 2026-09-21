@@ -672,3 +672,13 @@ def test_ningun_script_declara_un_nombre_que_otro_ya_declaro(a, b):
         "Dos <script> clásicos comparten ámbito, así que eso es un SyntaxError "
         "que mata el segundo archivo entero."
     )
+
+
+def test_cada_boton_del_html_tiene_su_texto_y_al_reves(html, js_info):
+    del_html = set(re.findall(r'data-info="([^"]+)"', html))
+    del_js = set(claves_y_textos(js_info))
+
+    assert del_html == del_js, (
+        f"sólo en el HTML: {sorted(del_html - del_js)}; "
+        f"sólo en info.js: {sorted(del_js - del_html)}"
+    )
