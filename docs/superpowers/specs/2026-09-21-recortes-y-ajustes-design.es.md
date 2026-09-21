@@ -35,6 +35,8 @@ está apoyado contra la pared.
   no registra qué quedó después de cortar. Sólo acepta una lista para la
   corrida que viene.
 - **Elegir a mano en qué placa va cada pieza.** El motor sigue decidiendo solo.
+- **Recortes desde la CLI.** Se cargan mirando los pedazos apoyados contra la
+  pared, y eso pasa frente a la pantalla. La CLI queda como está.
 - **Recortes de forma irregular.** Un recorte es un rectángulo. Un pedazo en L
   se carga como el rectángulo más grande que entra adentro.
 
@@ -333,9 +335,15 @@ En `nesting_app/api.py`, `ParamsEntrada` suma `recortes: list[RecorteEntrada]`
 chequeando sólo tipos; los rangos los pone `validar()`, que es el mismo código
 que corre la CLI.
 
-En la CLI, `--recorte ANCHOxALTO[xCANTIDAD][,cruzada]`, repetible. Ejemplos:
-`--recorte 600x800`, `--recorte 600x800x2`, `--recorte 600x800x2,cruzada`. Un
-formato mal escrito da un error de parseo que muestra el formato esperado.
+La CLI **no** gana una bandera para recortes. Son una comodidad de taller que
+se carga mirando los pedazos apoyados contra la pared, y eso pasa frente a la
+pantalla, no en una terminal. `NestParams.recortes` queda vacía cuando la
+corrida viene de la CLI, y `a_supply()` devuelve entonces un plan de una sola
+placa infinita -- exactamente el comportamiento de hoy.
+
+La CLI igual cambia: arma el `SheetSupply` para llamar a `pack()`, pasa
+`result.sheets` a `verify`, `write_dxf` y `write_preview`, y su
+`--resolucion` por omisión pasa a 1.0.
 
 ### 3.6 La pantalla
 
@@ -445,8 +453,9 @@ Al terminar, en la barra de abajo:
 - `a_supply()` expande la cantidad, ordena por área y hereda la veta del
   material.
 - El default de `resolucion` es 1.0 en `NestParams` y en `ParamsEntrada`.
-- `--recorte` parsea las tres formas y rechaza la basura con el formato
-  esperado en el mensaje.
+- Una corrida de CLI sin recortes produce el mismo layout que antes del
+  cambio sobre un escenario fijo: es la prueba de que `a_supply()` con la
+  lista vacía no altera nada.
 
 **Interfaz** (`tests/app/test_web_javascript.py`, con su estilo de aserciones
 sobre el texto del archivo):
@@ -473,12 +482,12 @@ sobre el texto del archivo):
 | `src/nesting/io/dxf_writer.py` | Offsets acumulados, medida por placa. |
 | `src/nesting/io/preview.py` | Offsets acumulados, alto del lienzo por la placa más alta. |
 | `src/nesting/params.py` | `Recorte`, `NestParams.recortes`, `a_supply()`, tres reglas nuevas, `resolucion = 1.0`. |
-| `src/nesting/cli.py` | `--recorte` repetible, default de `--resolucion`, arma el `SheetSupply`. |
+| `src/nesting/cli.py` | Default de `--resolucion`, arma el `SheetSupply` (sin recortes) y pasa `sheets` a verify/DXF/preview. Sin bandera nueva. |
 | `src/nesting_app/api.py` | `RecorteEntrada`, `ParamsEntrada.recortes`, default de resolución. |
 | `src/nesting_app/corredor.py` | Arma el `SheetSupply`, pasa `sheets` a `verify`/`write_dxf`/`write_preview`, `sobrante_mm` contra la última placa, reparta recortes/nuevas en el `Resultado`. |
 | `src/nesting_app/web/index.html` | Bloque de recortes, desplegable de posiciones, `value="1"`, solapas dadas vuelta. |
 | `src/nesting_app/web/app.js` | `estado.recortes`, lista, `angulosElegidos()`, rueda continua, reparto en `terminar()`. |
 | `src/nesting_app/web/app.css` | Reglas para la lista de recortes y la fila de carga. |
 | `src/nesting_app/web/info.js` | Dos globos nuevos, uno reescrito. |
-| `README.md` / `README.es.md` | Fila de Recortes en la tabla de opciones, `--recorte`, nuevo default de resolución. |
+| `README.md` / `README.es.md` | Fila de Recortes en la tabla de opciones (marcada como sólo de la interfaz), nuevo default de resolución. |
 | `packaging/` | Nada: el `.spec` declara la carpeta `web` entera. |

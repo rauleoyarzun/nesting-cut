@@ -36,6 +36,9 @@ and is leaning against the wall.
   the run about to happen.
 - **Choosing by hand which sheet each part goes on.** The engine still
   decides.
+- **Offcuts from the CLI.** They are entered while looking at the pieces
+  leaning against the wall, and that happens in front of the screen. The CLI
+  stays as it is.
 - **Irregularly shaped offcuts.** An offcut is a rectangle. An L-shaped piece
   is entered as the largest rectangle that fits inside it.
 
@@ -335,10 +338,15 @@ In `nesting_app/api.py`, `ParamsEntrada` gains `recortes: list[RecorteEntrada]`
 checks only types; the ranges come from `validar()`, the same code the CLI
 runs.
 
-In the CLI, `--recorte WIDTHxHEIGHT[xQUANTITY][,cruzada]`, repeatable.
-Examples: `--recorte 600x800`, `--recorte 600x800x2`,
-`--recorte 600x800x2,cruzada`. A malformed value gives a parse error that
-shows the expected format.
+The CLI does **not** gain a flag for offcuts. They are a workshop convenience
+entered while looking at the pieces leaning against the wall, and that happens
+in front of the screen, not in a terminal. `NestParams.recortes` stays empty
+when the run comes from the CLI, and `a_supply()` then returns a plan of one
+infinite sheet -- exactly today's behaviour.
+
+The CLI still changes: it builds the `SheetSupply` to call `pack()`, passes
+`result.sheets` to `verify`, `write_dxf` and `write_preview`, and its
+`--resolucion` default becomes 1.0.
 
 ### 3.6 The screen
 
@@ -449,8 +457,9 @@ On completion, in the bottom bar:
 - `a_supply()` expands the quantity, sorts by area and inherits the material's
   grain.
 - The `resolucion` default is 1.0 in `NestParams` and in `ParamsEntrada`.
-- `--recorte` parses all three forms and rejects garbage with the expected
-  format in the message.
+- A CLI run with no offcuts produces the same layout as before the change on
+  a fixed scenario: this is the proof that `a_supply()` with an empty list
+  changes nothing.
 
 **Interface** (`tests/app/test_web_javascript.py`, in its style of asserting
 on the file's text):
@@ -478,12 +487,12 @@ on the file's text):
 | `src/nesting/io/dxf_writer.py` | Accumulated offsets, per-sheet size. |
 | `src/nesting/io/preview.py` | Accumulated offsets, canvas height from the tallest sheet. |
 | `src/nesting/params.py` | `Recorte`, `NestParams.recortes`, `a_supply()`, three new rules, `resolucion = 1.0`. |
-| `src/nesting/cli.py` | Repeatable `--recorte`, `--resolucion` default, builds the `SheetSupply`. |
+| `src/nesting/cli.py` | `--resolucion` default, builds the `SheetSupply` (no offcuts) and passes `sheets` to verify/DXF/preview. No new flag. |
 | `src/nesting_app/api.py` | `RecorteEntrada`, `ParamsEntrada.recortes`, resolution default. |
 | `src/nesting_app/corredor.py` | Builds the `SheetSupply`, passes `sheets` to `verify`/`write_dxf`/`write_preview`, `sobrante_mm` against the last sheet, offcut/new split in `Resultado`. |
 | `src/nesting_app/web/index.html` | Offcuts block, positions dropdown, `value="1"`, tabs swapped. |
 | `src/nesting_app/web/app.js` | `estado.recortes`, the list, `angulosElegidos()`, continuous wheel, split in `terminar()`. |
 | `src/nesting_app/web/app.css` | Rules for the offcut list and the entry row. |
 | `src/nesting_app/web/info.js` | Two new bubbles, one reworded. |
-| `README.md` / `README.es.md` | Offcuts row in the options table, `--recorte`, new resolution default. |
+| `README.md` / `README.es.md` | Offcuts row in the options table (marked interface-only), new resolution default. |
 | `packaging/` | Nothing: the `.spec` declares the whole `web` folder. |
