@@ -676,13 +676,14 @@ $("btn-guardar").onclick = async () => {
 // Las dos mitades del cambio de pantalla viven juntas a propósito. Cuando
 // "mostrar" estaba acá y "volver" en materiales.js, cada cosa que se apagaba
 // al entrar había que acordarse de prenderla en el otro archivo -- y no pasó:
-// el botón "Materiales" se quedaba visible adentro de la pantalla de
-// materiales, ofreciendo ir a donde el usuario ya estaba.
+// el botón que abre el catálogo se quedaba visible adentro de la pantalla de
+// materiales, ofreciendo ir a donde el usuario ya estaba. Hoy ese botón vive
+// al lado del selector de material, o sea adentro de la pantalla principal:
+// se apaga con ella y no hay una tercera cosa que acordarse de apagar.
 function mostrarPantalla(cual) {
   const enMateriales = cual === "materiales";
   $("pantalla-principal").classList.toggle("oculto", enMateriales);
   $("pantalla-materiales").classList.toggle("oculto", !enMateriales);
-  $("btn-materiales").classList.toggle("oculto", enMateriales);
 }
 
 const mostrarMateriales = () => mostrarPantalla("materiales");

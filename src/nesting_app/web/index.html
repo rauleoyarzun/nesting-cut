@@ -11,8 +11,6 @@
 
 <header class="barra-superior">
   <span class="marca">Nesting</span>
-  <span class="espaciador"></span>
-  <button type="button" id="btn-materiales" class="boton secundario">Materiales</button>
 </header>
 
 <main id="pantalla-principal">
@@ -32,7 +30,13 @@
     </div>
 
     <div class="campo">
-      <label class="etiqueta" for="material">Material</label>
+      <!-- El catálogo se abre desde acá y no desde la barra de arriba: el
+           momento en que a alguien le falta un material es el momento en que
+           está eligiendo uno de esta lista, y ahí es donde mira. -->
+      <div class="renglon-etiqueta">
+        <label class="etiqueta" for="material">Material</label>
+        <button type="button" id="btn-materiales" class="enlace">Agregar o editar</button>
+      </div>
       <div class="desplegable">
         <select id="material" class="control"></select>
         <svg viewBox="0 0 16 16" class="icono flecha" aria-hidden="true"><path d="M4 6.5l4 4 4-4"></path></svg>

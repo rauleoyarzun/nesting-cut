@@ -64,6 +64,21 @@ def test_todo_campo_tiene_su_etiqueta(html):
         assert f'for="{campo}"' in html, f"falta el label de {campo}"
 
 
+def test_el_catalogo_se_abre_desde_el_campo_material(html):
+    """Arriba a la derecha, separado de todo, nadie lo encuentra: lo reportó
+    el usuario. El momento en que a alguien le falta un material es el
+    momento en que está eligiendo uno del selector, así que el botón va ahí.
+
+    Que esté adentro de la pantalla principal además es lo que hace que se
+    apague solo al entrar al catálogo, sin una línea que lo oculte aparte."""
+    principal = html[html.index('<main id="pantalla-principal"'):html.index("</main>")]
+    select = principal.index('<select id="material"')
+    campo = principal[principal.rfind('<div class="campo">', 0, select):select]
+    assert 'id="btn-materiales"' in campo, (
+        "el botón del catálogo se fue del campo Material"
+    )
+
+
 def test_los_botones_son_botones_de_verdad(html):
     """Un div con onclick no recibe foco con Tab ni se activa con Enter."""
     for boton in ("btn-acomodar", "btn-cancelar", "btn-guardar", "btn-volver"):

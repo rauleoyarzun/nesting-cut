@@ -119,6 +119,12 @@ body {
 /* --- controles --- */
 .campo { display: flex; flex-direction: column; gap: 6px; border: 0; margin: 0; padding: 0; }
 .etiqueta { font-size: 13px; font-weight: 600; color: var(--texto-2); padding: 0; }
+/* La etiqueta a la izquierda y su atajo a la derecha, sobre el control.
+   `baseline` y no `center`: los dos son texto y de tamaños distintos
+   (13 y 12 px), y centrarlos por caja los deja medio renglón corridos. */
+.renglon-etiqueta {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+}
 
 .control, select.control, .caja-archivo {
   display: flex; align-items: center; height: var(--alto-control);

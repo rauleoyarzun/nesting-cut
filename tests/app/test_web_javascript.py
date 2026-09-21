@@ -235,13 +235,15 @@ def test_la_revision_se_puede_ver_antes_de_acomodar(js):
 def test_el_cambio_de_pantalla_vive_en_un_solo_lugar(js):
     """Cuando "mostrar" estaba en app.js y "volver" en materiales.js, cada
     cosa que se apagaba al entrar había que acordarse de prenderla en el otro
-    archivo. No pasó: el botón "Materiales" seguía visible adentro de la
-    pantalla de materiales, ofreciendo ir a donde el usuario ya estaba."""
+    archivo. No pasó: el botón que abre el catálogo seguía visible adentro de
+    la pantalla de materiales, ofreciendo ir a donde el usuario ya estaba.
+    Hoy ese botón está adentro de la pantalla principal, así que se apaga con
+    ella: son dos cosas que apagar, y las dos se apagan acá."""
     inicio = js.index("function mostrarPantalla(")
     cuerpo = js[inicio:js.index("\n}", inicio)]
-    for id_ in ("pantalla-principal", "pantalla-materiales", "btn-materiales"):
+    for id_ in ("pantalla-principal", "pantalla-materiales"):
         assert id_ in cuerpo, f"mostrarPantalla ya no se ocupa de {id_}"
-    assert cuerpo.count("classList.toggle") == 3, (
+    assert cuerpo.count("classList.toggle") == 2, (
         "alguna mitad del cambio de pantalla volvió a hacerse por afuera, "
         "que es como se desincronizan"
     )
