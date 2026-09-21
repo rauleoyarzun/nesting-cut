@@ -22,7 +22,6 @@ class PartTooLargeError(Exception):
 @dataclass
 class PackResult:
     placements: list[Placement] = field(default_factory=list)
-    sheets_used: int = 0
     sheets: list[Sheet] = field(default_factory=list)
     """Qué placa concreta fue cada índice, en orden.
 
@@ -37,6 +36,24 @@ class PackResult:
 
     total_utilization: float = 0.0
     seconds: float = 0.0
+
+    @property
+    def sheets_used(self) -> int:
+        """Cuántas placas tiene el layout. DERIVADO, no un campo aparte.
+
+        Era un campo, y dos nociones de "última placa" convivían: este
+        archivo usa `sheets_used - 1` en tres lugares y `layout_cost` usa
+        `len(sheets) - 1`. Cuando no coincidían, `layout_cost` no fallaba:
+        no encontraba ninguna colocación en su "última placa" y devolvía
+        `CostoLayout(0, 0.0, 0.0)` en silencio, que empata con cualquier
+        otro layout igual de roto. Unos fixtures de `test_effort.py` con
+        `sheets_used=2` y `sheets=[]` ya hicieron exactamente eso.
+
+        Derivarlo hace que las dos nociones sean una sola por construcción,
+        y que un `PackResult` armado a mano no pueda mentir: quien quiera
+        dos placas tiene que dar las dos placas.
+        """
+        return len(self.sheets)
 
 
 @dataclass(frozen=True)
@@ -193,7 +210,6 @@ def _pack_once(
         remaining = still_pending
 
     result.sheets = usadas
-    result.sheets_used = len(usadas)
     result.utilization = [
         area / hoja.area for area, hoja in zip(placed_area_per_sheet, usadas)
     ]
@@ -717,7 +733,6 @@ def _recuperar_de_la_ultima_placa(
 
     recuperado = PackResult(
         placements=placements,
-        sheets_used=len(sheets_finales),
         sheets=sheets_finales,
         utilization=[
             area / hoja.area for area, hoja in zip(areas, sheets_finales)

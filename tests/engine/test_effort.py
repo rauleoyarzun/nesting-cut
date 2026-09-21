@@ -109,7 +109,6 @@ def test_el_costo_prefiere_dejar_menos_material_en_la_ultima_placa():
             Placement(2, 0, Transform(0.0, False, 0.0, 400.0)),
             Placement(3, 1, Transform(0.0, False, 0.0, 0.0)),
         ],
-        sheets_used=2,
         sheets=dos_placas(),
     )
     mucho = PackResult(
@@ -119,7 +118,6 @@ def test_el_costo_prefiere_dejar_menos_material_en_la_ultima_placa():
             Placement(2, 1, Transform(0.0, False, 200.0, 0.0)),
             Placement(3, 1, Transform(0.0, False, 400.0, 0.0)),
         ],
-        sheets_used=2,
         sheets=dos_placas(),
     )
     # `mucho` deja las tres piezas en una fila baja: gana en alto.
@@ -137,7 +135,6 @@ def test_el_alto_sigue_desempatando_con_el_mismo_material():
             Placement(0, 0, Transform(0.0, False, 0.0, 0.0)),
             Placement(1, 1, Transform(0.0, False, 0.0, 0.0)),
         ],
-        sheets_used=2,
         sheets=dos_placas(),
     )
     alta = PackResult(
@@ -145,7 +142,6 @@ def test_el_alto_sigue_desempatando_con_el_mismo_material():
             Placement(0, 0, Transform(0.0, False, 0.0, 0.0)),
             Placement(1, 1, Transform(0.0, False, 0.0, 500.0)),
         ],
-        sheets_used=2,
         sheets=dos_placas(),
     )
     assert layout_cost(baja, parts).material_ultima == layout_cost(alta, parts).material_ultima

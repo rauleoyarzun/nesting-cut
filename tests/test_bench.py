@@ -171,7 +171,7 @@ def test_run_one_reports_the_seconds_from_pack_result(tmp_path, monkeypatch):
 
     def fake_pack(parts, supply, config, oracle_factory):
         return PackResult(
-            placements=[], sheets_used=1, utilization=[0.5],
+            placements=[], sheets=[MATERIAL.stock_sheet()], utilization=[0.5],
             total_utilization=0.5, seconds=recognizable_seconds,
         )
 

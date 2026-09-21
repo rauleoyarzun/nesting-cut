@@ -257,3 +257,21 @@ def test_orientations_mira_la_veta_de_cada_placa_y_no_la_del_material():
     assert (0.0, False) in orientations(derecha, CONFIG)
     assert (0.0, False) not in orientations(cruzada, CONFIG)
     assert (90.0, False) in orientations(cruzada, CONFIG)
+
+
+def test_sheets_used_sale_de_las_placas_y_no_se_puede_desincronizar():
+    """Las dos nociones de "última placa" tienen que ser una sola.
+
+    `packer.py` usa `sheets_used - 1` y `layout_cost` usa
+    `len(sheets) - 1`. Mientras `sheets_used` fue un campo, un `PackResult`
+    podía decir dos placas con `sheets` vacío, y ahí `layout_cost` no
+    fallaba: devolvía `CostoLayout(0, 0.0, 0.0)` en silencio y empataba con
+    cualquier otro layout igual de roto.
+    """
+    from nesting.engine.packer import PackResult
+
+    assert PackResult().sheets_used == 0
+    assert PackResult(sheets=[FREE.stock_sheet(), FREE.stock_sheet()]).sheets_used == 2
+
+    with pytest.raises(AttributeError):
+        PackResult().sheets_used = 2

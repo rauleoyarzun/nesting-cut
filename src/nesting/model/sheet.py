@@ -62,9 +62,17 @@ class SheetSupply:
     material_name: str = "del material"
     """Sólo para el mensaje de "esta pieza no entra en una placa vacía".
 
-    `Sheet` no tiene nombre a propósito -- un recorte no lo tiene -- pero
-    ese mensaje nombra el material, y siempre se levanta contra la placa
-    del Material, así que el nombre siempre corresponde.
+    `Sheet` no tiene nombre a propósito -- un recorte no lo tiene -- así que
+    el mensaje nombra al material y no a la placa concreta que lo disparó.
+
+    EN EL PLAN QUE ARMA QUIEN LLAMA AL MOTOR las dos cosas coinciden: un
+    recorte vacío se saltea, así que el error sólo puede salir contra la
+    placa del Material. NO COINCIDEN en los planes de una sola placa que
+    `packer.py` se arma adentro para reempacar (la recuperación y la
+    compactación): ahí el stock es una placa concreta del resultado, que
+    puede ser un recorte de cualquier medida, y el mensaje describiría ESE
+    recorte llamándolo el material. Por eso el motor no deja salir esos
+    errores: los atrapa y trata el reempaque como un intento que no sirvió.
     """
 
     def sheet(self, index: int) -> Sheet:

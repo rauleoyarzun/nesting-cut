@@ -173,7 +173,6 @@ def test_la_recuperacion_no_acepta_un_layout_mas_caro():
             Placement(0, 0, Transform(0.0, False, 20.0, 20.0)),
             Placement(1, 1, Transform(0.0, False, 20.0, 20.0)),
         ],
-        sheets_used=2,
         sheets=[nueva, sobra],
         utilization=[810_000.0 / nueva.area, 10_000.0 / sobra.area],
     )
