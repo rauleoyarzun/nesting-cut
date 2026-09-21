@@ -1270,3 +1270,26 @@ Task 6: completa (commits 625d7d5..7f20777, revisión limpia, CERO hallazgos).
   ancho/alto como float pelado sin Field(gt=0). El docstring de ParamsEntrada dice que
   Pydantic sólo verifica tipos y que las reglas de rango viven en validar(), que es el
   mismo código que corre la CLI. Una sola fuente de verdad para la regla.
+Task 7: completa (commits b2da092..5cf3b3a, revisión limpia). Bloque de recortes en
+  pantalla: fila de alta (ancho, alto, cantidad, veta cruzada), lista con botón de
+  quitar, estado.recortes que sobrevive a cambiar de archivo. 1090 passed.
+  El revisor levantó un worktree en el commit anterior para verificar que los tests
+  nuevos ejerzan: 6 de 8 fallan contra el código viejo. (Detalle que anotó y vale
+  guardar: el venv tiene el paquete instalado en editable apuntando al repo original,
+  así que sin PYTHONPATH al worktree, una corrida "contra el commit viejo" en realidad
+  lee los archivos NUEVOS. Cualquier revisión futura que use worktrees tiene que
+  corregir eso o se está mintiendo a sí misma.)
+  El único test que pasa contra el código viejo es test_registrar_no_borra_los_recortes,
+  por vacuidad (la palabra no existía en app.js). Es guardián para el futuro, no
+  cobertura de este cambio.
+  Verificado sin bug: el botón de quitar no tiene el problema clásico de clausuras con
+  índice viejo, porque dibujarRecortes() reconstruye la lista entera en cada llamada.
+  Dos desvíos forzados y bien justificados: hubo que adelantar el globo de ayuda de
+  "recortes" en info.js (trabajo de la tarea 10) porque un test preexistente exige que
+  todo data-info tenga su texto; y el ✕ pasó a SVG porque unicodedata lo clasifica So
+  y el test de emojis lo rechaza.
+  >>> SE ARREGLA EN LA TAREA 8 (no se difiere a la revisión final): el reparto dice
+      "1 placas (1 recorte + 0 nuevas)" cuando todo entra en un solo recorte. Plural
+      mal en "placas", y es el caso estrella de la función -- un trabajo chico que
+      cabe entero en un pedazo que sobró. El código es literal al de mi brief, así que
+      el defecto es mío. La tarea 8 toca el mismo archivo.
