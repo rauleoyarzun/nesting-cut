@@ -307,10 +307,26 @@ class RasterOracle:
 
         Al revés no vale: el test optimista también admite posiciones que
         violan la separación real. O sea que el conjunto de candidatos es un
-        SUPERCONJUNTO estricto del factible real -- no se pierde ninguna
-        posición buena, y las malas las tiene que filtrar alguien más. Ese
-        alguien es `self._arbitro`, que mide sobre los polígonos exactos con
-        el mismo criterio que el verificador final.
+        SUPERCONJUNTO del factible real -- no se pierde ninguna posición
+        buena, y las malas las tiene que filtrar alguien más. Ese alguien es
+        `self._arbitro`, que mide sobre los polígonos exactos con el mismo
+        criterio que el verificador final.
+
+        EL HUECO HONESTO DEL ARGUMENTO. La cota `INFLACION_MAX_PX` es por
+        eje (L∞: a lo sumo `e` de más en x, a lo sumo `e` de más en y, cada
+        uno medido por separado -- ver su docstring en `masks.py`), porque
+        así es como se mide sobre una grilla cuadriculada. Pero el halo que
+        arma `radio_optimista` a partir de `e` se aplica sobre
+        `disk_kernel`, que es una dilatación EUCLÍDEA (un disco, no un
+        cuadrado). En una esquina, una posición podría en principio necesitar
+        hasta `2√2 * e` de inflación en vez de los `2 * e` que da la cota por
+        eje -- el argumento de arriba no cierra ese caso por aritmética pura,
+        y no conviene fingir que sí. Lo que sostiene la conclusión es
+        empírico, no una demostración: miles de posiciones factibles
+        barridas a 2 mm/px y a 1 mm/px, sin encontrar un solo caso donde se
+        pierda una posición buena por esa esquina. La conclusión (no se
+        pierde nada, en la práctica) se sostiene; lo que no se sostiene es
+        llamarla una prueba.
 
         De ahí sale, además, que esta pasada nunca elige peor que la
         conservadora: la mejor posición conservadora también es candidata acá

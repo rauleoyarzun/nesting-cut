@@ -299,6 +299,8 @@ def test_la_separacion_real_es_la_pedida_no_la_inflada():
 
     oracle = RasterOracle(MaskCache())
     oracle.reset(material.sheet_w, material.sheet_h, config)
+    parts = []
+    placements = []
     polys = []
     for i in range(2):
         part = Part(id=i, outer=pts, holes=(), entity_ids=())
@@ -306,12 +308,29 @@ def test_la_separacion_real_es_la_pedida_no_la_inflada():
         assert spot is not None
         x, y, _ = spot
         oracle.place(part, 0.0, False, x, y)
+        parts.append(part)
+        placements.append(Placement(part.id, 0, Transform(0.0, False, x, y)))
         polys.append(placed_polygon(part, Transform(0.0, False, x, y)))
 
+    # Dos asserts, no uno de dos lados: sólo el piso es un requisito -- por
+    # debajo de 10.00 mm es una violación real de la separación pedida, y el
+    # test tiene que reprobar sin importar qué tan cerca del techo quede eso.
+    # El techo (mucho más flojo) es la métrica de densidad: cuánto se acerca
+    # el motor híbrido a los 10 mm exactos en vez de los 16 que dejaba la
+    # grilla conservadora, no un límite de corrección.
     real = polys[0].distance(polys[1])
-    assert real == pytest.approx(10.0, abs=0.51), (
-        f"la separación real quedó en {real:.2f} mm y se pidieron 10.00"
+    assert real >= 10.0 - 1e-6, (
+        f"la separación real quedó en {real:.2f} mm: por debajo de los 10.00 mm "
+        "pedidos, una violación real de la separación"
     )
+    assert real <= 10.51, (
+        f"la separación real quedó en {real:.2f} mm: muy por encima de los "
+        "10.00 mm pedidos, la ganancia de densidad del motor híbrido no se "
+        "estaría notando"
+    )
+
+    assert verify(parts, placements, material.sheet_w, material.sheet_h,
+                  sep=config.sep, margin=config.margin) == []
 
 
 def test_si_se_agota_el_presupuesto_de_candidatos_se_cae_al_camino_conservador(

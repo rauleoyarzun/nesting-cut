@@ -364,9 +364,13 @@ def pack(
     """Place every part, trying several insertion orders and keeping the best.
 
     `progreso`, si se pasa, se llama con un `Avance` despues de cada pieza
-    ubicada y una vez mas al entrar en la compactacion final. Devolver
-    `False` pide abandonar, y `pack` levanta `Cancelado`. No pasarlo deja el
-    comportamiento exactamente como estaba: es lo que hace la CLI.
+    ubicada durante la pasada golosa, una vez con `compactando=True` al
+    entrar en la compactacion final, y ADEMAS muchas veces durante toda la
+    recuperacion cancelable que corre antes de esa compactacion -- un aviso
+    por cada pieza que `_recuperar_de_la_ultima_placa` intenta reubicar, no
+    una sola llamada (ver su docstring). Devolver `False` en cualquiera de
+    esas llamadas pide abandonar, y `pack` levanta `Cancelado`. No pasarlo
+    deja el comportamiento exactamente como estaba: es lo que hace la CLI.
     """
     if config.effort not in EFFORT_RESTARTS:
         raise UnknownEffortError(

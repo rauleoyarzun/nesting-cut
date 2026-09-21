@@ -15,18 +15,19 @@ arbitra -- es toda la arquitectura del motor híbrido.
 
 from shapely.geometry import Polygon
 
-from nesting.geometry.verify import OVERLAP_AREA_THRESHOLD_MM2, placed_polygon
+from nesting.geometry.verify import EPS, OVERLAP_AREA_THRESHOLD_MM2, placed_polygon
 from nesting.model.entities import Transform
 from nesting.model.part import Part
 
-EPS = 1e-6
-"""Tolerancia contra el ruido de punto flotante.
-
-`verify.py` usa la misma para la misma comparación. Tienen que coincidir: si
-el árbitro fuera más permisivo que el verificador, aceptaría layouts que
-después el verificador rechaza, y el usuario vería fallar un trabajo que el
-motor dio por bueno.
-"""
+# EPS y OVERLAP_AREA_THRESHOLD_MM2 se importan de `verify.py` en vez de
+# repetirse acá, por la misma razón: son la tolerancia y el umbral de la
+# MISMA comparación (separación y área de superposición) que hace el
+# verificador final, sobre las mismas piezas. Si el árbitro fuera más
+# permisivo aceptaría layouts que el verificador después rechaza, y el
+# usuario vería fallar un trabajo que el motor dio por bueno. Antes `EPS`
+# era un literal duplicado acá, con un docstring que pedía a mano que los
+# dos valores "coincidieran"; compartir la constante lo vuelve imposible de
+# violar por accidente. Ver `verify.py::EPS` para qué tolerancia es.
 
 
 class ArbitroExacto:

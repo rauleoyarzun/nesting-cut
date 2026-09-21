@@ -14,7 +14,7 @@ from calibrate import (  # noqa: E402
 )
 from make_sample import write_sample  # noqa: E402
 
-from nesting.engine.oracle import NestConfig  # noqa: E402
+from nesting.engine.oracle import NestConfig, Weights  # noqa: E402
 from nesting.model.material import Material  # noqa: E402
 
 MATERIAL = Material("mdf18", 1830.0, 2600.0, grain_tolerance=180.0)
@@ -126,3 +126,26 @@ def test_the_weight_sweep_respects_the_copies_argument(tmp_path):
 
     for row_few, row_many in zip(few, many):
         assert row_many[3] > row_few[3]
+
+
+def test_los_valores_recalibrados_no_vuelven_en_silencio_a_los_viejos():
+    """Detector de cambio, no de propiedad: ninguna regla del código exige
+    `Weights.contact == 4.0` ni `NestConfig.resolution == 2.0` -- son los
+    valores de un barrido medido (Tarea 6 del plan de densidad y colisión
+    exacta), no algo derivable del código. El único piso funcional que los
+    protege hoy es `test_a_small_part_is_nested_inside_a_big_hole` (en
+    `tests/engine/raster/test_raster_oracle.py`), que pasa con `contact`
+    desde 0.7 en adelante: un revert silencioso de 4.0 a 1.0 -- o a
+    cualquier otro valor por encima de ese piso -- es invisible para ese
+    test, aunque le cueste al archivo de referencia pasar de 32/4 a 34/2
+    piezas en la última placa (ver la tabla de `Weights.contact` en
+    `nesting/engine/oracle.py`). Lo mismo pasa con `resolution`: nada
+    revienta con 3.0 en vez de 2.0, sólo se pierde densidad.
+
+    Si este test se rompe porque alguien cambió alguno de los dos valores a
+    propósito, no hay que tocar el assert sin volver a medir: ver la tabla
+    completa y el razonamiento en `docs/superpowers/calibracion.md` y en los
+    docstrings de `Weights.contact` / `NestConfig.resolution`.
+    """
+    assert Weights().contact == 4.0
+    assert NestConfig().resolution == 2.0
