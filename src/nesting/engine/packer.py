@@ -408,6 +408,12 @@ def pack(
     ):
         raise Cancelado("el trabajo se canceló")
 
+    # Antes de compactar, y después del aviso de arriba a propósito: la
+    # recuperación es la parte más lenta de este tramo final (un
+    # `_pack_once` por placa anterior), así que quien mire la barra ya la ve
+    # en "compactando" en vez de quedarse mirando el último aviso de la
+    # pasada golosa.
+    best = _recuperar_de_la_ultima_placa(best, parts, material, config, oracle_factory)
     best = _compact_last_sheet(best, parts, material, config, oracle_factory)
     best.seconds = time.perf_counter() - started
     return best
@@ -422,6 +428,139 @@ def _perturb(order: Sequence[Part], rng: random.Random) -> list[Part]:
         j = rng.randrange(len(shuffled))
         shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
     return shuffled
+
+
+def _recuperar_de_la_ultima_placa(
+    result: PackResult,
+    parts: Sequence[Part],
+    material: Material,
+    config: NestConfig,
+    oracle_factory: Callable[[], Oracle],
+) -> PackResult:
+    """Reintentar en las placas anteriores lo que quedó en la última.
+
+    Es literalmente lo que el usuario hizo a mano: sacar un disco de la
+    placa 2 y meterlo en un hueco de la placa 1.
+
+    POR QUÉ NO ALCANZA CON VOLVER A PREGUNTARLE A LA PLACA YA ARMADA
+
+    La idea intuitiva -- reconstruir la placa anterior tal cual quedó y
+    preguntarle de nuevo si la pieza entra -- NO PUEDE RECUPERAR NADA NUNCA,
+    y conviene dejarlo escrito para que no vuelva a intentarse. `_pack_once`
+    prueba CADA pieza pendiente contra CADA placa: la que terminó en la
+    última ya fue rechazada por la placa 0 cuando le tocó su turno. El
+    estado de esa placa al final de la pasada es un superconjunto del que la
+    rechazó (colocar sólo agrega material, nunca lo saca), y los dos
+    oráculos son monótonos en ese sentido: si no entraba con menos material,
+    menos todavía entra con más. Medido, además de razonado: sobre 45
+    escenarios al azar multiplaca (30 con `ShelfOracle`, 15 con
+    `RasterOracle`) y sobre `NESTING 2.ai`, esa versión recuperó CERO
+    piezas.
+
+    Lo que sí rompe la avaricia es cambiar el ORDEN DE INSERCIÓN, que es de
+    donde salió el problema: la placa se vuelve a armar desde cero con la
+    pieza pendiente ADELANTE DE TODO, así que la placa se construye
+    alrededor de ella en vez de ofrecerle las sobras. Ahí sí aparecen
+    layouts que la pasada golosa no puede alcanzar.
+
+    QUÉ SE ACEPTA
+
+    Un reempaque se acepta sólo si en su primera placa siguen estando TODAS
+    las piezas que ya tenía y entró al menos una pendiente. Con esa regla el
+    costo del layout no puede subir: las placas anteriores conservan sus
+    piezas, la última pierde alguna (y si se queda sin ninguna, baja el
+    conteo de placas, que es el primer campo de `CostoLayout`), y las que
+    quedan en la última no se tocan, así que ni `material_ultima` ni
+    `alto_ultima` pueden crecer.
+
+    CUÁNTO CUESTA
+
+    Cada intento es un `_pack_once` completo sobre una placa -- unos 10 s
+    sobre `NESTING 2.ai` a 2 mm/px con 31 piezas, o sea del mismo orden que
+    toda la corrida. Por eso el orden de los intentos importa y la cuenta
+    está acotada: por cada placa anterior se paga un intento, y sólo se paga
+    OTRO si el anterior recuperó algo de verdad. Las pendientes van de la
+    más chica a la más grande (la chica entra en más lugares) y las que no
+    encabezan el intento igual viajan al final del orden, así que pueden
+    entrar de arrastre sin costar un intento propio. Medido sobre 15
+    escenarios raster al azar: probar una pendiente por intento recupera 4
+    piezas con 46 intentos; esta versión recupera 3 con 18. Sobre
+    `NESTING 2.ai` recupera la misma pieza que la versión cara, con 1
+    intento en vez de 5.
+    """
+    if result.sheets_used < 2:
+        return result
+
+    by_id = {p.id: p for p in parts}
+    ultima = result.sheets_used - 1
+    en_ultima = [p for p in result.placements if p.sheet == ultima]
+    if not en_ultima:
+        return result
+
+    # Las placas anteriores, cada una con sus ubicaciones EN EL ORDEN EN QUE
+    # SE COLOCARON: ese orden es el que produjo un layout que se sabe que
+    # entra, así que es el que se reusa al reempacar. Reordenar por área
+    # daría otro layout, que podría no entrar.
+    por_placa: dict[int, list[Placement]] = {}
+    for p in result.placements:
+        if p.sheet != ultima:
+            por_placa.setdefault(p.sheet, []).append(p)
+
+    pendientes = sorted((by_id[p.part_id] for p in en_ultima), key=lambda q: q.area)
+    recuperadas: set[int] = set()
+
+    for placa in range(ultima):
+        if not pendientes:
+            break
+        anteriores = por_placa.get(placa, [])
+        en_placa = [by_id[p.part_id] for p in anteriores]
+        while pendientes:
+            orden = [pendientes[0], *en_placa, *pendientes[1:]]
+            redone = _pack_once(orden, material, config, oracle_factory)
+
+            en_primera = [p for p in redone.placements if p.sheet == 0]
+            ids_primera = {p.part_id for p in en_primera}
+            ya_estaban = {p.id for p in en_placa}
+            ganadas = ids_primera - ya_estaban
+            if not ganadas or not ya_estaban <= ids_primera:
+                # O no entró ninguna pendiente, o para meterlas se cayó
+                # alguna de las que ya estaban: no es una mejora, y la placa
+                # se deja exactamente como estaba.
+                break
+
+            por_placa[placa] = [
+                Placement(p.part_id, placa, p.transform) for p in en_primera
+            ]
+            en_placa = [by_id[p.part_id] for p in en_primera]
+            recuperadas |= ganadas
+            pendientes = [q for q in pendientes if q.id not in ganadas]
+
+    if not recuperadas:
+        return result
+
+    placements: list[Placement] = []
+    for placa in range(ultima):
+        placements.extend(por_placa.get(placa, []))
+    quedan = [p for p in en_ultima if p.part_id not in recuperadas]
+    placements.extend(quedan)
+    sheets = result.sheets_used if quedan else ultima
+
+    # La misma cuenta que hace `_pack_once`: áreas por placa y UNA división
+    # al final. Si acá se sumaran fracciones ya divididas, el total podría
+    # no coincidir con el que informa una corrida normal, y el usuario vería
+    # dos números distintos para el mismo layout.
+    sheet_area = material.sheet_w * material.sheet_h
+    areas = [0.0] * sheets
+    for p in placements:
+        areas[p.sheet] += by_id[p.part_id].area
+
+    return PackResult(
+        placements=placements,
+        sheets_used=sheets,
+        utilization=[area / sheet_area for area in areas],
+        total_utilization=sum(areas) / (sheet_area * sheets) if sheets else 0.0,
+        seconds=result.seconds,
+    )
 
 
 def _compact_last_sheet(
