@@ -8,9 +8,15 @@ import math
 
 import numpy as np
 
+from nesting.engine.exact import ArbitroExacto
 from nesting.engine.oracle import NestConfig
-from nesting.engine.raster.masks import MaskCache, PartMasks, contact_band_px
-from nesting.engine.raster.scoring import best_position, contact_band
+from nesting.engine.raster.masks import (
+    MaskCache,
+    PartMasks,
+    contact_band_px,
+    radio_optimista,
+)
+from nesting.engine.raster.scoring import contact_band, position_scores
 from nesting.engine.raster.search import feasible_positions
 from nesting.model.part import Part
 
@@ -54,8 +60,57 @@ medio milímetro no cambia ningún corte, sólo consume memoria.
 """
 
 
+def _mejores(valores: np.ndarray, cuantos: int) -> np.ndarray:
+    """Los índices de los `cuantos` valores más altos, de mayor a menor.
+
+    Ignora los `-inf`, que son las posiciones no factibles o ya descartadas
+    por una tanda anterior: si quedan menos finitos que `cuantos`, devuelve
+    sólo esos, y un arreglo vacío cuando no queda ninguno.
+
+    Usa `argpartition` (O(n)) y recién después ordena la tanda (unas pocas
+    decenas de elementos): ordenar el arreglo entero sería O(n log n) sobre
+    los cientos de miles de posiciones de una placa, y se tiraría casi todo.
+    """
+    finitos = int(np.count_nonzero(valores > -np.inf))
+    cuantos = min(cuantos, finitos)
+    if cuantos <= 0:
+        return np.empty(0, dtype=np.intp)
+    if cuantos >= valores.size:
+        indices = np.arange(valores.size)
+    else:
+        indices = np.argpartition(valores, -cuantos)[-cuantos:]
+    return indices[np.argsort(-valores[indices], kind="stable")]
+
+
 class RasterOracle:
-    """Collision by bitmap overlap, position search by cross-correlation."""
+    """Collision by bitmap overlap, position search by cross-correlation.
+
+    La grilla propone y la geometría exacta dispone: la búsqueda usa una
+    holgura OPTIMISTA (admite posiciones de más) y un árbitro exacto decide
+    cuál de los candidatos vale. Ver `_buscar_con` para el argumento de por
+    qué eso no pierde ninguna posición buena.
+    """
+
+    CANDIDATOS_POR_TANDA = 64
+    """Cuántos candidatos se verifican exactamente por vez.
+
+    El árbitro cuesta ~312 µs por consulta contra cada vecino cercano, así
+    que verificar la placa entera es imposible; y verificar uno solo deja al
+    motor sin salida cuando el mejor candidato de la grilla resulta inválido.
+    Se recorren de a tandas, en orden de puntaje, hasta el tope de abajo.
+    """
+
+    MAX_CANDIDATOS = 1024
+    """Tope duro de candidatos verificados antes de rendirse y caer al
+    camino conservador.
+
+    Sin tope, una placa casi llena puede hacer que una sola pieza pague
+    cientos de miles de consultas exactas. Con tope, el peor caso es
+    acotado y además NO se pierde nada: si ninguno de los candidatos
+    optimistas pasó, se reintenta con la holgura conservadora de siempre,
+    que no necesita árbitro porque ya es segura por construcción. O sea que
+    el motor híbrido nunca coloca menos piezas que el motor viejo.
+    """
 
     def __init__(self, cache: MaskCache | None = None) -> None:
         self._cache = cache if cache is not None else MaskCache()
@@ -63,6 +118,16 @@ class RasterOracle:
         self._sheet = np.zeros((0, 0), dtype=bool)
         self._frontier = 0
         """Highest row index reached by placed material, for the active region."""
+
+        self._arbitro: ArbitroExacto | None = None
+        """La geometría exacta de lo ya colocado EN ESTA placa.
+
+        Lo crea `reset`, o sea que vive y muere con la placa: `_pack_once`
+        pide un oráculo nuevo por placa y lo resetea, así que nunca arrastra
+        piezas de la placa anterior.
+        """
+
+        self._radio_optimista = 0
 
     def reset(self, sheet_w: float, sheet_h: float, config: NestConfig) -> None:
         self._config = config
@@ -86,6 +151,8 @@ class RasterOracle:
 
         self._sheet = np.zeros((rows, cols), dtype=bool)
         self._frontier = 0
+        self._arbitro = ArbitroExacto(sheet_w, sheet_h, config.sep, config.margin)
+        self._radio_optimista = radio_optimista(config.sep, config.resolution)
 
     def best_placement(
         self, part: Part, angle: float, mirror: bool
@@ -93,9 +160,13 @@ class RasterOracle:
         masks = self._masks(part, angle, mirror)
         height = masks.clearance.shape[0]
 
-        result = self._search(masks, limit_rows=self._frontier + height)
+        result = self._search(
+            part, angle, mirror, masks, limit_rows=self._frontier + height
+        )
         if result is None and self._frontier + height < self._sheet.shape[0]:
-            result = self._search(masks, limit_rows=self._sheet.shape[0])
+            result = self._search(
+                part, angle, mirror, masks, limit_rows=self._sheet.shape[0]
+            )
         if result is None:
             return None
 
@@ -131,7 +202,21 @@ class RasterOracle:
         )
         self._frontier = max(self._frontier, py + height)
 
-    def _search(self, masks: PartMasks, limit_rows: int) -> tuple[int, int, float] | None:
+        # La grilla ya no alcanza para decidir: quien decide es el árbitro, y
+        # para eso necesita ver la geometría exacta de todo lo colocado. Va
+        # acá y no en `best_placement`, que es de sólo lectura a propósito
+        # (el empacador pregunta por varias orientaciones antes de elegir una).
+        if self._arbitro is not None:
+            self._arbitro.agregar(part, angle, mirror, x, y)
+
+    def _search(
+        self,
+        part: Part,
+        angle: float,
+        mirror: bool,
+        masks: PartMasks,
+        limit_rows: int,
+    ) -> tuple[int, int, float] | None:
         """Search within the first `limit_rows` rows of the sheet.
 
         `margin` and `sep` are different constraints: `margin` bounds the
@@ -163,23 +248,144 @@ class RasterOracle:
         `place` both work in "mask [0, 0] pixel, unpadded-window frame"
         terms - `pad` pixels before that. So (i, j) is shifted by `-pad`
         before it leaves this method.
+
+        La búsqueda se hace en dos pasadas sobre esa misma ventana: primero
+        con la holgura optimista y el árbitro exacto decidiendo, y si de ahí
+        no sale nada, con la holgura conservadora de siempre. Ver
+        `_buscar_con`.
         """
         pad = masks.pad
         rows = min(max(limit_rows, masks.clearance.shape[0]), self._sheet.shape[0])
         window = self._sheet[:rows]
         padded = np.pad(window, pad, mode="constant", constant_values=False)
 
-        feasible = feasible_positions(padded, masks.clearance)
-        if feasible.size == 0:
+        if self._arbitro is not None:
+            optimista = self._buscar_con(
+                part,
+                angle,
+                mirror,
+                masks,
+                padded,
+                masks.holgura_optimista(self._radio_optimista),
+                arbitrar=True,
+            )
+            if optimista is not None:
+                return optimista
+
+        # Red de seguridad: la holgura conservadora no necesita árbitro,
+        # porque ya es segura por construcción. Ver `MAX_CANDIDATOS`.
+        return self._buscar_con(
+            part, angle, mirror, masks, padded, masks.clearance, arbitrar=False
+        )
+
+    def _buscar_con(
+        self,
+        part: Part,
+        angle: float,
+        mirror: bool,
+        masks: PartMasks,
+        padded: np.ndarray,
+        holgura: np.ndarray,
+        *,
+        arbitrar: bool,
+    ) -> tuple[int, int, float] | None:
+        """Buscar la mejor posición usando `holgura` como máscara de colisión.
+
+        POR QUÉ LA GRILLA PUEDE SER OPTIMISTA SIN PERDER NADA
+
+        `occupied` sobre-representa el material exacto en a lo sumo
+        `masks.py::INFLACION_MAX_PX` píxeles por lado -- uno del
+        `_downsample_any` y uno de la dilatación de seguridad de 3x3. Llamemos
+        `e = INFLACION_MAX_PX * resolution` a eso, en mm.
+
+        Si la holgura usa un radio `r` con `r * resolution <= sep - 2e`,
+        entonces TODA posición realmente factible (distancia exacta entre los
+        polígonos >= `sep`) pasa el test de la grilla: las dos piezas están
+        infladas en a lo sumo `e` cada una, así que entre sus `occupied` queda
+        todavía >= `sep - 2e >= r * resolution`, que es exactamente lo que el
+        halo de radio `r` exige. Eso es lo que calcula `radio_optimista`.
+
+        Al revés no vale: el test optimista también admite posiciones que
+        violan la separación real. O sea que el conjunto de candidatos es un
+        SUPERCONJUNTO estricto del factible real -- no se pierde ninguna
+        posición buena, y las malas las tiene que filtrar alguien más. Ese
+        alguien es `self._arbitro`, que mide sobre los polígonos exactos con
+        el mismo criterio que el verificador final.
+
+        De ahí sale, además, que esta pasada nunca elige peor que la
+        conservadora: la mejor posición conservadora también es candidata acá
+        (superconjunto) y el árbitro la acepta seguro (es segura por
+        construcción), así que cualquier candidato que se devuelva antes que
+        ella puntúa al menos tan bien. Lo único que puede hacer que no se
+        llegue hasta ella es el tope `MAX_CANDIDATOS`, y para eso está la
+        pasada conservadora de `_search`.
+
+        Con `arbitrar=False` no hay nada de esto: se devuelve el máximo
+        directamente, que es el comportamiento de siempre.
+        """
+        pad = masks.pad
+        feasible = feasible_positions(padded, holgura)
+        if feasible.size == 0 or not feasible.any():
             return None
 
-        extra_px = contact_band_px(self._config.resolution)
-        band = contact_band(masks.clearance, extra_px)
-        result = best_position(feasible, padded, band, self._config.weights)
-        if result is None:
-            return None
-        px, py, score = result
-        return (px - pad, py - pad, score)
+        score = position_scores(
+            feasible, padded, self._banda_de_contacto(masks), self._config.weights
+        )
+        cols = score.shape[1]
+
+        if not arbitrar:
+            plano = int(np.argmax(score))
+            row, col = divmod(plano, cols)
+            return (col - pad, row - pad, float(score[row, col]))
+
+        # Los candidatos se recorren en orden de puntaje -- el puntaje real,
+        # con su término de contacto, que es lo que hace que las piezas
+        # curvas se encastren -- y no simplemente de abajo a la izquierda.
+        pendientes = score.ravel()
+        vistos = 0
+        while vistos < self.MAX_CANDIDATOS:
+            tanda = _mejores(
+                pendientes, min(self.CANDIDATOS_POR_TANDA, self.MAX_CANDIDATOS - vistos)
+            )
+            if tanda.size == 0:
+                return None
+            for indice in tanda:
+                row, col = divmod(int(indice), cols)
+                dx, dy = masks.translation_for(col - pad, row - pad)
+                x = dx + self._config.margin
+                y = dy + self._config.margin
+                if self._arbitro.entra(part, angle, mirror, x, y):
+                    return (col - pad, row - pad, float(pendientes[indice]))
+            # Tachados: la próxima tanda son los mejores de lo que queda.
+            pendientes[tanda] = -np.inf
+            vistos += int(tanda.size)
+        return None
+
+    def _banda_de_contacto(self, masks: PartMasks) -> np.ndarray:
+        """Dónde tiene que haber material ajeno para que la pieza cuente como
+        apoyada. Sale de `clearance` -- la conservadora -- siempre.
+
+        Es tentador armarla sobre la holgura que se esté usando para la
+        factibilidad, y es lo primero que se probó acá. Está mal, y lo agarró
+        `test_a_small_part_is_nested_inside_a_big_hole`: la holgura optimista
+        es tan fina que se TRAGA la zona de contacto. `contact_band` devuelve
+        el anillo que queda justo afuera de la máscara que recibe, o sea que
+        los píxeles de adentro no cuentan; con la holgura optimista el anillo
+        queda pegado al material y una vecina a la distancia pedida exacta se
+        vuelve invisible. Medido sobre dos rectángulos, con la banda armada
+        sobre la holgura optimista el término de contacto vale 0.239 a 0-8 mm
+        (distancias que el árbitro rechaza), 0.119 a los 10 mm pedidos y CERO
+        de 12 mm en adelante; armada sobre `clearance` vale 0.215 parejo
+        hasta los 16 mm. Con la primera, la pieza chica del test dejaba de
+        encastrar en el agujero de la grande y se iba al costado.
+
+        Lo único que hay que cuidar es la forma del arreglo, que tiene que
+        coincidir con la de la holgura para que las dos correlaciones salgan
+        del mismo tamaño (`position_scores` lo exige). Coincide siempre:
+        todas las máscaras de una `PartMasks` viven en la misma grilla y
+        dilatar no cambia el tamaño del arreglo.
+        """
+        return contact_band(masks.clearance, contact_band_px(self._config.resolution))
 
     def _masks(self, part: Part, angle: float, mirror: bool) -> PartMasks:
         return self._cache.get(

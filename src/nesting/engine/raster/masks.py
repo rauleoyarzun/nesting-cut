@@ -29,6 +29,28 @@ from nesting.model.part import Part
 # falta para pasar el barrido.
 SUPERSAMPLE = 4
 
+INFLACION_MAX_PX = 2
+"""Cuántos píxeles finales, por lado, puede `occupied` extenderse más allá
+del polígono exacto. Es el precio de que nunca sub-represente el material.
+
+Se compone de dos pasos, uno cada uno:
+
+  1. `_downsample_any`: un píxel final se marca si CUALQUIERA de sus
+     SUPERSAMPLE**2 subpíxeles está marcado, así que el borde puede
+     ganar un píxel final.
+  2. La dilatación de seguridad de 3x3 sobre `outer_mask`: exactamente uno
+     más, por construcción.
+
+No es una estimación: es la cota de esos dos pasos. Medido sobre un cuadrado
+de 100 mm, `occupied` mide 106 mm a 2 mm/px (3 mm por lado = 1.5 px, contra
+esta cota de 2 px) y 103 mm a 1 mm/px.
+
+Lo usa `radio_optimista` para saber cuánto puede recortar del halo de
+holgura sin perder posiciones factibles. Si algún día cambia el pipeline de
+rasterizado, este número tiene que cambiar con él, o el motor híbrido
+empieza a descartar posiciones buenas en silencio.
+"""
+
 # Tope de pixeles de la grilla de rasterizado, para no comernos toda la
 # memoria con una combinacion patologica de resolucion fina + pieza grande.
 #
@@ -84,6 +106,25 @@ def contact_band_px(resolution: float) -> int:
     return max(1, round(CONTACT_BAND_MM / resolution))
 
 
+def radio_optimista(sep: float, resolution: float) -> int:
+    """Radio de holgura, en píxeles, que NO pierde ninguna posición factible.
+
+    La holgura conservadora usa `ceil(sep / resolution)`, que sumada a la
+    inflación de las DOS piezas involucradas exige `sep + 2 * inflación` de
+    distancia real. Acá se recorta exactamente esa inflación doble, así el
+    conjunto de candidatos pasa a ser un superconjunto del factible real
+    -- ver el argumento completo en `RasterOracle._buscar_con`.
+
+    Nunca baja de 0: con una separación chica frente a la resolución, el
+    recorte se come el halo entero y el candidato queda a cargo del árbitro
+    exacto, que es justamente quien sabe decidir.
+    """
+    holgura_mm = sep - 2 * INFLACION_MAX_PX * resolution
+    if holgura_mm <= 0.0:
+        return 0
+    return math.floor(holgura_mm / resolution)
+
+
 @dataclass(frozen=True)
 class PartMasks:
     """The material footprint and its clearance halo, on one shared grid."""
@@ -112,6 +153,22 @@ class PartMasks:
     from `radius`/`sep` so the two modules can't quietly compute two
     different numbers for the same padding.
     """
+
+    def holgura_optimista(self, radio_px: int) -> np.ndarray:
+        """`occupied` dilatado por `radio_px`, para la búsqueda de candidatos.
+
+        Es `clearance` con el radio recortado: admite posiciones de más, que
+        el árbitro exacto descarta. Se calcula acá y no se cachea porque
+        depende del radio, y el radio depende de la config, no de la pieza.
+
+        El arreglo sale del mismo tamaño que `clearance` -- dilatar `occupied`
+        con un radio MENOR que el conservador nunca se sale de `pad`, que ya
+        está dimensionado para el conservador -- así que las dos holguras se
+        pueden usar indistintamente en la misma ventana correlacionada.
+        """
+        if radio_px <= 0:
+            return self.occupied.copy()
+        return binary_dilation(self.occupied, structure=disk_kernel(radio_px))
 
     def translation_for(self, px: int, py: int) -> Point:
         """The (dx, dy) that lands pixel [0, 0] of this mask on sheet pixel (px, py)."""

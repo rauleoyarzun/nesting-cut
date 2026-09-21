@@ -278,3 +278,80 @@ def test_la_resolucion_por_omision_sobre_la_placa_mas_grande_pasa_holgada():
         f"el uso normal consume {usados:,} de un tope de {MAX_SHEET_PIXELS:,}: "
         "el margen se achicó demasiado"
     )
+
+
+def test_la_separacion_real_es_la_pedida_no_la_inflada():
+    """La razón de ser del motor híbrido.
+
+    Antes, la grilla conservadora dejaba 16 mm reales entre dos piezas
+    cuando se le pedían 10 a 2 mm/px, porque cada pieza se rasteriza 3 mm
+    más grande por lado y las dos pagan. Medido sobre los polígonos
+    exactos, no sobre la grilla.
+    """
+    from nesting.engine.raster.masks import MaskCache
+    from nesting.geometry.verify import placed_polygon
+
+    lado = 100.0
+    pts = ((0.0, 0.0), (lado, 0.0), (lado, lado), (0.0, lado))
+    material = Material(name="t", sheet_w=1000.0, sheet_h=1000.0, grain_tolerance=180.0)
+    config = NestConfig(sep=10.0, margin=10.0, angles=(0.0,), mirror=False,
+                        resolution=2.0, effort="rapido")
+
+    oracle = RasterOracle(MaskCache())
+    oracle.reset(material.sheet_w, material.sheet_h, config)
+    polys = []
+    for i in range(2):
+        part = Part(id=i, outer=pts, holes=(), entity_ids=())
+        spot = oracle.best_placement(part, 0.0, False)
+        assert spot is not None
+        x, y, _ = spot
+        oracle.place(part, 0.0, False, x, y)
+        polys.append(placed_polygon(part, Transform(0.0, False, x, y)))
+
+    real = polys[0].distance(polys[1])
+    assert real == pytest.approx(10.0, abs=0.51), (
+        f"la separación real quedó en {real:.2f} mm y se pidieron 10.00"
+    )
+
+
+def test_si_se_agota_el_presupuesto_de_candidatos_se_cae_al_camino_conservador(
+    monkeypatch,
+):
+    """La red de seguridad del motor híbrido, ejercitada de verdad.
+
+    Con el presupuesto real (`MAX_CANDIDATOS`) esto casi no pasa, así que
+    acá se lo baja a un solo candidato: el mejor de la grilla optimista
+    queda demasiado cerca de la pieza anterior, el árbitro lo rechaza, y no
+    queda presupuesto para probar el siguiente. Lo que el tope NUNCA puede
+    hacer es dejar una pieza sin colocar -- se reintenta con la holgura
+    conservadora, que no necesita árbitro porque ya es segura. O sea que el
+    motor híbrido nunca coloca menos piezas que el viejo.
+    """
+    from nesting.engine.raster.masks import MaskCache
+    from nesting.geometry.verify import placed_polygon
+
+    monkeypatch.setattr(RasterOracle, "MAX_CANDIDATOS", 1)
+    monkeypatch.setattr(RasterOracle, "CANDIDATOS_POR_TANDA", 1)
+
+    pts = ((0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0))
+    config = NestConfig(sep=10.0, margin=10.0, angles=(0.0,), mirror=False,
+                        resolution=2.0, effort="rapido")
+    oracle = RasterOracle(MaskCache())
+    oracle.reset(1000.0, 1000.0, config)
+
+    polys = []
+    for i in range(2):
+        part = Part(id=i, outer=pts, holes=(), entity_ids=())
+        spot = oracle.best_placement(part, 0.0, False)
+        assert spot is not None, "el tope de candidatos dejó una pieza sin colocar"
+        x, y, _ = spot
+        oracle.place(part, 0.0, False, x, y)
+        polys.append(placed_polygon(part, Transform(0.0, False, x, y)))
+
+    real = polys[0].distance(polys[1])
+    assert real >= 10.0 - 1e-6, f"la separación quedó en {real:.2f} mm, se pidieron 10"
+    assert real > 12.0, (
+        f"la separación quedó en {real:.2f} mm: con un solo candidato permitido "
+        "esto tendría que haber caído al camino conservador, que deja la "
+        "separación inflada de siempre"
+    )
