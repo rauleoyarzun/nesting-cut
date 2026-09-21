@@ -21,52 +21,98 @@ from nesting.model.part import Part
 
 @dataclass(frozen=True)
 class Weights:
-    """How a candidate position is scored. Calibrated in Task 24."""
+    """How a candidate position is scored.
+
+    Recalibrated against the hybrid engine in Task 6 of the density and
+    exact-collision plan; the measurements are in
+    `docs/superpowers/calibracion.md`.
+    """
 
     bottom_left: float = 1.0
     """Pull towards the bottom-left corner, so the leftover stays in one block."""
 
-    contact: float = 1.0
+    contact: float = 4.0
     """Reward for perimeter resting against material already placed.
 
     This is the term that produces interlocking between curved parts. Without
     it, bottom-left alone just stacks and leaves gaps.
 
-    Calibrated in Task 24 (`docs/superpowers/calibracion.md`) against the
-    two real reference files (`bench/files/muestra.dxf` and the Corel
-    export), at `--esfuerzo rapido` with enough `--copias` to force a real
-    sheet-1/sheet-2 split -- otherwise `first_sheet_utilization` is pinned to
-    the raw area ratio and cannot distinguish configurations at all.
+    RECALIBRADO EN LA TAREA 6 (1.0 -> 4.0). La calibración anterior se hizo
+    contra el motor conservador y contra `first_sheet_utilization`, que ya no
+    es lo que el motor optimiza: desde la Tarea 1 el criterio es
+    `CostoLayout(placas, material_ultima, alto_ultima)`. Se volvió a medir
+    con el motor híbrido, sobre tres archivos, midiendo el material que queda
+    en la última placa. Tabla completa en
+    `docs/superpowers/calibracion.md`; lo que decidió:
 
-    Two things came out of that sweep, and they point in different
-    directions:
+    1. NO SE PUEDE APAGAR. El piso funcional sigue existiendo, apenas más
+       abajo que antes: bisecando sobre
+       `test_a_small_part_is_nested_inside_a_big_hole`, la pieza chica deja
+       de caer en el agujero de la grande con contacto en {0.0, 0.25, 0.5,
+       0.6} y vuelve a caer desde 0.7 en adelante (antes el corte estaba
+       entre 0.7 y 0.8). Así que 0.0 y 0.5 quedan descartados por el mismo
+       piso: bottom-left solo gana el argmax y la pieza chica se planta en
+       el fondo-izquierda de la placa vacía. La ventaja de velocidad es sólo
+       de 0.0 -- 1.6-4.8x más rápido y gana el barrido en dos de los tres
+       archivos -- porque el costo de la correlación FFT de contacto se paga
+       o no según `contact != 0.0` (punto 2 más abajo), no según su
+       magnitud: 0.5 tarda prácticamente lo mismo que 4.0 (25.9 s contra
+       25.4 s sobre el archivo de referencia).
 
-    1. On raw first-sheet utilisation alone, LOWER is better: on
-       `muestra.dxf` it went 63.9% (contact=0.0) -> 62.9% (1.0) -> 61.0%
-       (4.0), monotonically worse as contact grows; on the Corel file, 0.0
-       and 1.0 tied exactly (60.25%). `contact=0.0` is also cheaper (it
-       skips the whole FFT correlation per candidate position, see
-       `raster/scoring.py::best_position`): 34-46% less wall time in both
-       files. Taken alone, this would argue for turning the term OFF.
+    2. ENTRE LOS QUE PASAN EL PISO, 4.0 NUNCA PERDIÓ CONTRA 1.0. Siete
+       celdas, repartidas entre tres archivos, dos materiales, tres niveles
+       de esfuerzo y tres cantidades de copias. Material en la última placa,
+       en m²:
 
-    2. But `test_a_small_part_is_nested_inside_a_big_hole` (the spec 5.2
-       benefit) is a real functional regression once contact drops below
-       ~0.8: a bisection over the candidate set found a small part stops
-       falling into a large part's hole for contact in {0.0, 0.5} and
-       starts working again at {0.8, 0.9, 0.95, 1.0, 2.0, 4.0}. Below that
-       threshold bottom-left alone wins the position argmax and the small
-       part sits at the sheet's bottom-left instead of inside the hole --
-       geometrically valid, but wasting exactly the space `docs/.../hito 3`
-       promises to reclaim. That capability matters more than a couple of
-       points of aggregate utilisation, so any candidate under 1.0 is
-       disqualified regardless of what the first metric says.
+       | celda                          | 1.0    | 4.0    |
+       |--------------------------------|--------|--------|
+       | `NESTING 2.ai` mdf15 rapido    | 0.1432 | 0.0716 |
+       | `NESTING 2.ai` mdf15 normal    | 0.1106 | 0.0716 |
+       | `NESTING 2.ai` mdf15 lento     | 0.1061 | 0.0716 |
+       | `muestra.dxf` mdf18 x8 rapido  | 2.1206 | 2.1206 |
+       | `muestra.dxf` mdf18 x6 rapido  | 0.9220 | 0.9220 |
+       | `banqueta...ai` mdf18 x5 rap.  | 0.7842 | 0.7582 |
+       | `banqueta...ai` mdf18 x4 rap.  | 2.1164 | 2.1147 |
 
-    `1.0` is the smallest candidate that clears the hole-nesting floor, and
-    among the candidates that clear it (1.0, 2.0, 4.0) it is also the best
-    on first-sheet utilisation (62.9% vs 61.0% at 4.0; 2.0 was not measured
-    on the real files but the monotonic trend from 1.0 to 4.0 gives no
-    reason to expect it beats 1.0). So the calibration keeps the original
-    provisional value, now for a measured reason instead of a guessed one.
+       Cinco victorias y dos empates, ninguna derrota. Sobre `NESTING 2.ai`
+       eso son 34 piezas en la placa 1 y 2 en la última, contra 32/4. El
+       costo en tiempo es un empate: el barrido FFT de contacto se paga o no
+       según `contact != 0.0` (ver `raster/scoring.py::best_position`), no
+       según su valor, así que las diferencias de segundos medidas -- 25.4 s
+       contra 37.5 s a favor de 4.0 sobre `NESTING 2.ai`, 60.4 s contra
+       38.7 s en contra sobre `muestra.dxf` x6 -- son del layout que salió,
+       no del peso.
+
+    3. PERO NO ES UNA TENDENCIA, ES UNA LOTERÍA CON UN GANADOR CONSISTENTE.
+       La respuesta no es monótona: 2.0 fue el peor de los candidatos que
+       pasan el piso en 3 de las 5 celdas donde se lo midió, y subir más
+       allá de 4.0 sobre `NESTING 2.ai` empeora (8.0 deja 0.1789 m² y 16.0
+       deja 0.1172, contra 0.0716 de 4.0). 0.8 le gana a 4.0 en dos celdas,
+       empata en una y pierde en cuatro. Y la cantidad de PLACAS -- el
+       criterio que manda -- fue idéntica en las 7 celdas con todos los
+       pesos. O sea: este peso no decide placas sobre los archivos medidos,
+       decide cuánto queda arriba en la última, y ahí 4.0 es el que más
+       veces quedó adelante, no el que sigue una pendiente.
+
+    4. UNA VEZ SÍ DECIDIÓ PLACAS, en un caso sintético justo en el quiebre:
+       48 rectángulos variados, generados con el mismo patrón que el fixture
+       de
+       `tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+       (mismo material de 1000x1000, sep 8, borde 15, esfuerzo normal) --
+       NO es el fixture tal como quedó en el repo, que tiene 52 piezas,
+       elegidas por una razón distinta (que la Tarea 6 documenta en el
+       docstring del propio test: que la salida siga siendo sensible a la
+       semilla con los dos pesos). No quedó establecido, a partir de lo
+       medido en la Tarea 6, si esta corrida de 48 sigue dando el mismo
+       resultado sobre el fixture de 52 piezas que terminó commiteado; lo
+       que sí está medido es que estas 48 piezas entran en UNA placa con
+       contacto 4.0 y semillas 1 o 2, y necesitan DOS con contacto 1.0 en
+       las cuatro semillas probadas. Es una muestra sintética, no un archivo
+       real, pero es la única celda medida donde este peso cambió lo que le
+       cuesta al usuario.
+
+    Por eso 4.0 y no más: es el mejor medido, es el máximo del rango
+    barrido que todavía mejora, y el escalón siguiente ya empeora.
     """
 
     def __post_init__(self) -> None:
@@ -95,27 +141,46 @@ class NestConfig:
     resolution: float = 2.0
     """Raster resolution in mm per pixel. Ignored by non-raster oracles.
 
-    Rasterizing conservatively (see `raster/masks.py`) inflates every part's
-    effective area, and the cost is proportional to perimeter over area, so a
-    finer resolution buys density at the price of time. Task 24
-    (`docs/superpowers/calibracion.md`) swept `--resolucion` on the same two
-    real files used for `Weights.contact` (same `--copias`, forcing a real
-    sheet-1/sheet-2 split so `first_sheet_utilization` is actually
-    sensitive): 1.0 -> 2.0 mm/px cost NOTHING on `muestra.dxf` (identical
-    62.9% first-sheet utilisation) and 0.76 points on the real Corel export
-    (60.25% -> 59.49%), for a 4.5-4.8x speedup in both. 1.0 -> 3.0 loses
-    more (2.9 points on `muestra.dxf`) for a bigger, likely unnecessary,
-    speedup. 1.0 -> 0.5 was measured for time only (a full utilisation sweep
-    at 0.5 was outside this session's budget): ~4.9x SLOWER, consistent with
-    the finer grid having ~4x the cells per axis. The exact verifier
-    (`geometry/verify.py`) found zero violations at any of these -- coarser
-    rasterizing costs density, never correctness, since separation is
-    checked on the exact polygons regardless of the grid used to place them.
-    2.0 is the calibrated default: a real, close-to-free win on one
-    reference and a small, clearly-worth-it trade on the other. It also
-    leaves the `EFFORT_RESTARTS` timings (calibrated at 1.0 mm/px, see
-    `packer.py`) as a safe upper bound rather than a tight one -- every
-    level now runs faster than what was measured there, never slower.
+    QUÉ COMPRA HOY. Ya no compra separación. Hasta la Tarea 3 la grilla
+    decidía las colisiones sola, y como rasterizar conservador infla cada
+    pieza, una grilla gruesa regalaba milímetros: pedir 10 mm de separación
+    daba 16 mm reales a 2 mm/px. Ahora los candidatos los propone la grilla
+    con halo optimista y los decide `ArbitroExacto` sobre los polígonos
+    exactos (`engine/exact.py`), así que la separación entregada es la
+    pedida -- 10.00 mm -- a cualquier resolución. Lo único que queda en
+    manos de la resolución es la FINURA DE LA BÚSQUEDA: en qué retícula de
+    posiciones se proponen los candidatos, y cuántos hay que puntuar.
+
+    MEDIDO EN LA TAREA 6 (contacto 1.0, esfuerzo rapido, cero violaciones
+    del verificador exacto en las 10 celdas), material que queda en la
+    última placa y segundos:
+
+    | archivo                       | 3.0 mm/px | 2.0 mm/px | 1.0 mm/px | 0.5 mm/px |
+    |-------------------------------|-----------|-----------|-----------|-----------|
+    | `NESTING 2.ai` (mdf15, sep 10)| 0.2538 m² | 0.1432 m² | 0.1432 m² | 0.1789 m² |
+    |                               | 9.6 s     | 36.8 s    | 110.4 s   | 646.2 s   |
+    | `muestra.dxf` x8 (mdf18)      | 2.1206 m² | 2.1206 m² | 1.9823 m² | (no medido)|
+    |                               | 51.7 s    | 70.2 s    | 413.5 s   |           |
+    | `banqueta final raulo.ai` x4  | 2.1229 m² | 2.1164 m² | 2.0090 m² | (no medido)|
+    |                               | 74.6 s    | 230.7 s   | 1077.2 s  |           |
+
+    POR QUÉ 2.0 SE QUEDA. Afinar a 1.0 mm/px no cambió nada sobre
+    `NESTING 2.ai` (mismas cifras, exactamente el mismo reparto 32/4) y
+    costó 3x el tiempo; sobre los dos archivos del banco sí compró densidad
+    real (un 5-7% menos de material en la última placa) pero al precio de
+    4.7-5.9x el tiempo. En ningún archivo cambió la cantidad de PLACAS, que
+    es el criterio que manda. Y afinar más no es un dial monótono: 0.5 mm/px
+    sobre `NESTING 2.ai` salió PEOR que 2.0 (31/5 contra 32/4) y 17.6x más
+    lento -- una retícula más fina propone candidatos distintos, no
+    mejores. Del otro lado, 3.0 mm/px empata en los dos archivos del banco
+    pero se desploma en el de referencia (29/7 contra 32/4), que es
+    justamente el caso apretado para el que se usa el programa.
+
+    2.0 mm/px es entonces la rodilla medida: el punto donde engrosar ya
+    arruina un caso real y afinar sólo paga tiempo. Quien tenga tiempo de
+    sobra y un trabajo pegado a un salto de placa puede bajar a 1.0 a mano
+    con `--resolucion`; como default, 5x el tiempo por un 5% de material en
+    la última placa no se justifica.
     """
 
     effort: str = "normal"

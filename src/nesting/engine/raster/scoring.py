@@ -25,16 +25,23 @@ def contact_band(clearance: np.ndarray, extra_px: int) -> np.ndarray:
     return grown & ~clearance
 
 
-def best_position(
+def position_scores(
     feasible: np.ndarray,
     sheet: np.ndarray,
     band: np.ndarray,
     weights: Weights,
-) -> tuple[int, int, float] | None:
-    """Pick the best feasible position. Returns (column, row, score), or None."""
-    if feasible.size == 0 or not feasible.any():
-        return None
+) -> np.ndarray:
+    """The score of every position, with `-inf` where the part does not fit.
 
+    `best_position` is just the argmax of this. It is exposed on its own
+    because the hybrid engine does not stop at the best position: it walks
+    the feasible ones in descending score, asking the exact arbiter about
+    each, so it needs the whole field and not only its maximum. Both callers
+    go through this function so there is a single definition of "better
+    position" -- ranking candidates by a cheaper proxy (bottom-left alone,
+    say) would quietly throw away the contact term, which is what makes
+    curved parts interlock.
+    """
     rows, cols = feasible.shape
     row_index, col_index = np.indices((rows, cols))
     # A fixed COLUMN_TIE_BREAK constant breaks down as soon as the plate is
@@ -64,7 +71,20 @@ def best_position(
             )
         score = score + weights.contact * (counts / band.sum())
 
-    score = np.where(feasible, score, -np.inf)
+    return np.where(feasible, score, -np.inf)
+
+
+def best_position(
+    feasible: np.ndarray,
+    sheet: np.ndarray,
+    band: np.ndarray,
+    weights: Weights,
+) -> tuple[int, int, float] | None:
+    """Pick the best feasible position. Returns (column, row, score), or None."""
+    if feasible.size == 0 or not feasible.any():
+        return None
+
+    score = position_scores(feasible, sheet, band, weights)
     flat = int(np.argmax(score))
-    row, col = divmod(flat, cols)
+    row, col = divmod(flat, score.shape[1])
     return (col, row, float(score[row, col]))

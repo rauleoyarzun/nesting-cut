@@ -298,7 +298,8 @@ def _print_summary(
     result: PackResult, parts: Sequence[Part], material: Material,
     part_count: int, out_path: Path,
 ) -> None:
-    _, used_height = layout_cost(result, parts)
+    costo = layout_cost(result, parts)
+    used_height = costo.alto_ultima
     free_height = material.sheet_h - used_height
 
     for index, utilisation in enumerate(result.utilization):
@@ -316,6 +317,14 @@ def _print_summary(
     print(
         f"{part_count} piezas - {result.sheets_used} placas - "
         f"{result.total_utilization * 100:.1f}% total - {result.seconds:.1f}s"
+    )
+    # Las dos cifras compiten: el criterio elige el layout que baja el
+    # material de la última placa, y eso a veces acorta la tira libre a
+    # cambio. Mostrar las dos es lo que deja decidir si conviene para este
+    # trabajo, en vez de sólo ver la tira sin saber qué se resignó por ella.
+    print(
+        f"  material en la última placa: {costo.material_ultima / 1e6:.3f} m²"
+        f"  ·  tira libre: {free_height:.0f} mm"
     )
     print(f"Escrito en {out_path}")
 

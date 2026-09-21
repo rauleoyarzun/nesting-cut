@@ -886,3 +886,208 @@ lo ya pusheado.
 ## Plan de los globos de ayuda (2026-09-20)
 
 Ledger aparte: `.superpowers/sdd/info-opciones/progress.md`
+
+---
+
+# Progreso — Densidad de acomodo y colisión exacta
+
+Plan: docs/superpowers/plans/2026-09-20-densidad-y-colision-exacta.md
+Modo: subagent-driven-development, CON git, en worktree
+Rama: `worktree-densidad-colision-exacta`
+Base de la rama: 1d32512 (el commit del plan)
+Línea base de tests antes de empezar: **1007 passed**
+
+Nota del controlador (pre-flight): la tarea 5 trae los cuerpos de sus tres
+tests como `...` en el plan. Es un placeholder, o sea un defecto del plan
+según el estándar de writing-plans. Resolución: el implementador de la
+tarea 5 los escribe completos antes de tocar `packer.py`, y se le despacha
+con un modelo capaz en vez del barato. No se bloquea el plan por esto.
+
+## Tareas
+
+Task 1: completa (commits 34e6d4d..adce827, revisión limpia).
+  `layout_cost` devuelve `CostoLayout(placas, material_ultima, alto_ultima)`, un dataclass
+  frozen con `order=True`. Los tres consumidores migrados a acceso por atributo:
+  `packer.py` (_compact_last_sheet), `cli.py`, `corredor.py`. 1009 passed (1007 + 2 nuevos),
+  verificado por el controlador aparte del informe del implementador.
+  Menor pendiente p/revisión final: en `tests/engine/test_effort.py`, el comentario
+  "gana en alto" de `test_el_costo_prefiere_dejar_menos_material_en_la_ultima_placa`
+  exagera: los dos altos empatan en 100.0 y la asercion usa `<=`. Texto mio del plan,
+  no del implementador. Arreglar la redaccion si alguien vuelve a tocar ese test.
+Task 2: completa (commits 47e1b35..2677265, revisión limpia).
+  `Resultado.material_ultima_placa_m2` llega al motor -> API -> ventana -> CLI. 1012 passed
+  (1009 + 3), corrida por el controlador. El revisor verificó los dos riesgos nombrados:
+  (a) la cifra SÍ llega a la pantalla (`app.js` la arma en el mismo innerHTML que el
+      sobrante, y `.resultado strong` ya le da `tabular-nums`, por eso no hizo falta
+      tocar index.html ni app.css);
+  (b) `jobs.py`/`test_jobs.py` no son scope creep: `Resultado` vive en `jobs.py`, no en
+      `corredor.py` como decía el plan. ERROR DEL PLAN, corregido por el implementador.
+  Menor pendiente p/revisión final: `tests/app/test_web_javascript.py` sólo comprueba que
+  las dos cifras aparecen en el fuente de app.js, no que salgan juntas en la misma línea
+  renderizada. Un regex de proximidad lo fijaría mejor.
+Task 3: completa (commits 76c9253..5e9dbee, revisión limpia tras un arreglo).
+  Nuevo `src/nesting/engine/exact.py` con `ArbitroExacto`. 1018 passed + 1 del arreglo.
+  DEFECTO DEL PLAN encontrado por el revisor y arreglado: el árbitro sólo comparaba
+  `distance < sep - EPS`. Como `shapely.distance` da 0.0 tanto para "se tocan" como para
+  "se superponen", con `sep = 0` (valor legal: `params.py` sólo rechaza sep < 0) la
+  comparación es `0.0 < -1e-6`, siempre falsa, y el árbitro aceptaba superposiciones
+  enormes. `verify.py` hace DOS chequeos: área de intersección y después distancia.
+  Arreglo (5e9dbee): mismo doble chequeo, importando `OVERLAP_AREA_THRESHOLD_MM2` de
+  `verify.py` en vez de duplicar el número. El revisor verificó el orden de los dos
+  chequeos, el caso de caída-a-través con intersección despreciable, y que el prefiltro
+  por caja no puede saltearse un par superpuesto.
+  Menor pendiente p/revisión final: `EPS = 1e-6` sigue duplicado en `exact.py` en vez de
+  importarse de `verify.py`, aunque el arreglo ya sentó el precedente con la otra
+  constante y el propio docstring dice que "tienen que coincidir". Una línea.
+Task 4: completa (commits 4cf85ab..788c7f9, revisión aprobada). 1021 passed (1019 + 2).
+  La grilla propone con holgura optimista y `ArbitroExacto` dispone.
+  RESULTADO MEDIDO sobre NESTING 2.ai: separación real 10.00 mm (antes 16.00), 2 placas,
+  31/5, cero violaciones, 12.4 s. Los cuatro riesgos nombrados verificados por el revisor:
+  dirección de redondeo de `radio_optimista` (floor, correcta), fallback conservador real
+  y ejercitado por un test que comprueba el EFECTO (separación > 12), desviación de la
+  banda de contacto justificada y documentada en el código, y `best_placement` sin efectos.
+  Desviación deliberada del plan, con evidencia: la banda de contacto se queda sobre
+  `clearance` y no sobre la holgura optimista. El plan decía lo contrario, pero eso rompe
+  `test_a_small_part_is_nested_inside_a_big_hole` (la holgura fina se traga la zona de
+  contacto). Medido y anotado en el docstring de `_banda_de_contacto`.
+
+  >>> ENTRADA OBLIGATORIA PARA LA TASK 6 (recalibración):
+      El peso `contact` está calibrado contra el motor conservador y AHORA CUESTA PIEZAS.
+      Medido por el implementador sobre NESTING 2.ai: con `contact = 1.0` (el actual) da
+      31/5; con `contact = 0` da 34/2. También costaba antes del cambio (29/7 con, 30/6 sin).
+      No se tocó ningún peso: recalibrarlo es trabajo de la tarea 6, con el bench completo,
+      cuidando `test_a_small_part_is_nested_inside_a_big_hole`, que es la capacidad que el
+      término de contacto existe para sostener.
+
+  MENORES PENDIENTES P/REVISIÓN FINAL (varios valen la pena, van en una sola tanda al final):
+  (a) `tests/engine/raster/test_raster_oracle.py:312`: el test estrella usa
+      `pytest.approx(10.0, abs=0.51)`, una banda de DOS lados, así que un layout con 9.5 mm
+      de separación real -- una violación de verdad -- pasa el test que existe para probar
+      la separación exacta. Tolerancia mía del plan. Arreglo: cota de un solo lado más una
+      llamada a `verify(...)` en el mismo test.
+  (b) `best_position` quedó muerto en producción: la rama conservadora reimplementa su
+      argmax en línea (`oracle.py:337-339`). Duplicación y riesgo de deriva; quince
+      aserciones de `test_scoring.py` ahora cuidan un envoltorio que el motor no usa.
+  (c) La pasada conservadora corre aunque no pueda ayudar: `_buscar_con` devuelve `None`
+      por dos motivos distintos (conjunto vacío vs presupuesto agotado) y sólo el segundo
+      justifica el fallback. La instrumentación del implementador lo muestra: 48 de 48
+      fallbacks del trabajo real fueron del tipo inútil, cada uno una correlación completa
+      de placa de más.
+  (d) La afirmación de "salida sin warnings" no está respaldada: las corridas usan
+      `-p no:warnings`, que apaga el plugin. Instrucción mía. El controlador tiene que
+      correr `pytest` pelado una vez antes de cerrar.
+  (e) La desigualdad del superconjunto se cumple con IGUALDAD, no estrictamente, y el
+      docstring la enuncia como si fuera estricta. Vale una frase.
+  (f) El mismo efecto de separación fantasma sigue vigente CONTRA EL BORDE de la placa:
+      el material queda hasta `margin + 2*INFLACION_MAX_PX*resolution` del borde físico
+      aunque el árbitro lo aceptaría a `margin`. Fuera del alcance de la tarea, pero nada
+      en el código lo anota.
+  (g) Nits: `_mejores` recorre el arreglo entero por tanda; imports dentro de los cuerpos
+      de dos tests.
+Task 5: completa (commits 353177c..4bea902, aprobada tras un arreglo). 1024 passed + 1 del arreglo.
+  DEFECTO DEL PLAN, grande, encontrado y demostrado por el implementador: el algoritmo que
+  yo especifiqué era un NO-OP. `_pack_once` ya prueba cada pieza pendiente contra CADA placa
+  (`for part in remaining`, y los fallos se acumulan en `still_pending`), y colocar sólo
+  agrega material, así que volver a preguntarle a una placa congelada con la misma consulta
+  golosa no puede recuperar nada jamás. Medido con mi código tal cual: 0 recuperaciones en
+  45 escenarios al azar y 0 en el trabajo real. Verifiqué el argumento yo mismo contra el
+  bucle: es correcto.
+  Sustituto (mismo nombre, firma y punto de llamada): rompe la avaricia cambiando el ORDEN
+  DE INSERCIÓN -- la placa anterior se rearma desde cero con la pieza pendiente primero, y
+  se acepta sólo si no se cayó ninguna de las piezas originales. Esa condición de aceptación
+  es lo que impide que `layout_cost` suba.
+  RESULTADO MEDIDO sobre NESTING 2.ai: 32/4 (antes 31/5), 0 violaciones, material en la
+  última placa 0.179 -> 0.143 m2. Es exactamente el disco que el usuario movió a mano.
+  Arreglo (4bea902): la pasada era sorda -- hasta 24 s sin llamar al callback de progreso,
+  o sea barra congelada y botón de cancelar muerto, contra el contrato que el propio módulo
+  documenta con `Cancelado`. Se reenvía el `aviso` a `_pack_once` reusando `avisos_de` y el
+  campo `compactando` que ya existían. Sin campos nuevos en `Avance`, sin tocar `nesting_app`.
+  COSTO: el trabajo real pasó de 11.7 s a 35.8 s en `rapido` (3.1x). El costo es constante
+  por `pack()`, así que se diluye en `normal`/`lento`. Un tope de 1 intento por placa lo
+  bajaría a ~24 s a cambio de la mitad de la tasa de recuperación.
+  Menores pendientes p/revisión final:
+  (h) el docstring público de `pack()` sigue diciendo que `progreso` se llama "una vez más
+      al entrar en la compactación final"; ahora se llama muchas veces más durante la
+      recuperación. Una línea.
+  (i) `_recuperar_de_la_ultima_placa` devuelve un `PackResult` nuevo mientras su vecina
+      `_compact_last_sheet` muta el suyo en el lugar. Asimetría de estilo.
+  (j) dos idiomas distintos para la misma guarda `progreso is None` a pocas líneas.
+
+NOTA PARA LA TASK 6: el plan manda correr `bench/run_bench.py --resoluciones ... --esfuerzos ...`
+  y esos flags NO EXISTEN. La herramienta correcta es `bench/calibrate.py`, que ya barre peso
+  de contacto, resolución y esfuerzo, y toma sólo `--material` y `--copias`.
+Task 6: completa (commits 32fa114..a5d6238, aprobada tras un arreglo). 1028 passed.
+  `Weights.contact` 1.0 -> 4.0, medido. `resolution` se queda en 2.0 y `EFFORT_RESTARTS`
+  también, los dos con la medición escrita en el docstring. `bench/calibrate.py` ahora
+  ordena por el criterio del motor -- (placas, material última, seg) -- en vez de por
+  aprovechamiento de la primera placa, que era la métrica vieja.
+  RESULTADO FINAL sobre NESTING 2.ai (mdf15, sep 10, borde 10, rapido): 2 placas, 34/2,
+  0.0716 m2 en la última placa, tira libre 2365 mm, 0 violaciones, 25 s.
+  HIPÓTESIS REFUTADA, honestamente: la resolución fina SÍ compra algo en los archivos del
+  bench (1.0 mm/px baja 5-7% el material de la última placa por ~5x el tiempo), aunque no
+  en el archivo de referencia. 0.5 salió PEOR. 2.0 se queda como la rodilla medida.
+  Lo que NO se pudo bajar: el piso del anidado en agujero se rebisectó en ~0.7, así que
+  `contact` no se puede apagar. Refuta el "ponelo en cero" que sugería la medición cruda.
+  Arreglo (a5d6238): tres defectos de prosa en la calibración, todos del tipo que este
+  código trata como defecto aunque el número esté bien --
+  (1) la ventaja de velocidad de 1.6-4.8x atribuida a 0.0 Y 0.5, cuando es sólo de 0.0, y
+      contradiciendo al propio docstring dos párrafos más abajo;
+  (2) una cita a "48 rectángulos, el fixture de test_different_seeds..." cuando el fixture
+      tiene 52 y antes tenía 43. Era la única celda donde el peso nuevo salva una placa
+      entera, o sea la que un escéptico intenta reproducir primero. NO SE PUDO ESTABLECER
+      qué se midió (el script no sobrevivió la sesión) y quedó marcado como no establecido
+      en los dos lugares, en vez de adivinar;
+  (3) la tabla de `EFFORT_RESTARTS` sin decir que se midió con contacto 1.0, el valor que
+      este mismo commit deja de usar. Ahora lo dice y deja anotada la pregunta abierta.
+  Menores pendientes p/revisión final:
+  (k) ningún test fija `Weights.contact == 4.0`; la única guarda es el test del agujero,
+      que pasaría con cualquier valor >= 0.7.
+  (l) `test_raster_oracle.py:219-227` compara contacto 0.0 contra 1.0; ninguno es ya el
+      valor por omisión.
+  (m) `_mejor` de calibrate.py compara una columna SUMADA (placas) contra dos PROMEDIADAS
+      (material, seg); con archivos de escalas muy distintas el promedio lo domina el más
+      grande.
+  (n) los dos README fijan "1028" y "~7 min" a mano; así fue como el "856" quedó viejo.
+  (o) mezcla de idiomas dentro de una misma clase: en `Weights`, `contact` pasó a español
+      y `bottom_left` sigue en inglés. Idem en `NestConfig`.
+  (p) el fixture de `test_different_seeds_can_give_different_results` pasó de 43 a 52
+      piezas y de estar "justo antes del quiebre" a "pasado el quiebre": no borra
+      cobertura, pero perdió la razón de ser de su selección y tarda más.
+  (q) 22 warnings en la corrida pelada: 20 son `Image.getdata` (Pillow) de los propios
+      tests del proyecto y 2 de fastapi/starlette. Ninguno nuevo de este plan; las
+      corridas con `-p no:warnings` de las tareas anteriores los estaban tapando.
+
+## Revisión de rama completa
+
+Hecha sobre 4e3a275..a950c1c. Veredicto: confiable, con 5 Important de unas 30 líneas en
+total, ningún Critical, nada que pueda mandar un DXF malo a la fresadora. El revisor
+verificó por su cuenta el reclamo central de seguridad: NO depende del argumento del
+superconjunto, sino de que `ArbitroExacto` importe `placed_polygon` y
+`OVERLAP_AREA_THRESHOLD_MM2` de `verify.py` y aplique los mismos dos chequeos en el mismo
+orden, más `verify()` corriendo al final de los dos caminos de usuario. Barrió ~3500
+posiciones factibles a 2 mm/px y ~2500 a 1 mm/px (donde el presupuesto es más ajustado:
+`radio_optimista(10,1) = 6` px contra una inflación de 2+2, o sea holgura CERO) sin perder
+ni una posición factible.
+Observación suya que vale registrar: `oracle.place` quedó con UN SOLO llamador de
+producción, así que el estado del árbitro no puede desincronizarse del bitmap. La
+desviación de la tarea 5 eliminó por diseño toda esa clase de bugs, en vez de testearla.
+
+Tanda de arreglos final (88005c4): 6 de los 7 ítems aplicados. 1030 passed, 22 warnings
+(los mismos preexistentes), verificado por el controlador.
+  ítem 1: el test estrella pasa a cota inferior + cota de densidad separadas, más `verify()`.
+  ítem 2: el docstring de `pack()` ya no miente sobre cuándo se llama a `progreso`.
+  ítem 3: `EPS` se importa de `verify.py` en vez de duplicarse.
+  ítem 4: change-detector que fija `contact == 4.0` y `resolution == 2.0`, con docstring
+          que explica por qué un change-detector es lo correcto acá.
+  ítem 5: test de propiedad que cruza `ArbitroExacto` contra `verify()` sobre pares al azar
+          y sep en {0, 5, 10}. Confirmado por simulación que habría atrapado el bug
+          histórico de sep=0 (88 de 600 discrepancias con la lógica vieja).
+  ítem 6: se deja de llamar "SUPERCONJUNTO estricto" a algo que es una cota L-infinito con
+          respaldo empírico, no una demostración.
+  ítem 7: RECHAZADO POR EL ARREGLADOR, CON RAZÓN. El revisor final afirmó que el material
+          queda hasta `margin + 2*INFLACION_MAX_PX*resolution` del borde físico. El
+          arreglador no pudo reproducirlo y se negó a escribir en el código un reclamo sin
+          evidencia. LO MEDÍ YO: el margen real cae exacto en 10.00 mm a 4.0, 2.0, 1.0 y
+          0.5 mm/px, con sep 0 y sep 10. El camino del margen NO es conservador: el relleno
+          de `_search` y el anclaje de `masks.origin` en la bbox exacta se compensan. El
+          equivocado era el revisor final, no el arreglador.

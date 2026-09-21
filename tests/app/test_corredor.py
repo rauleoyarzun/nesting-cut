@@ -187,6 +187,20 @@ def test_acomodar_informa_el_sobrante(tmp_path, deposito):
     assert resultado.sobrante_mm > 2000
 
 
+def test_acomodar_informa_el_material_que_queda_en_la_ultima_placa(tmp_path, deposito):
+    """Las dos cifras que compiten van juntas: cuánto material quedó en la
+    última placa y qué tira libre dejó. El criterio nuevo puede acortar la
+    tira para bajar el material, así que el usuario tiene que ver las dos."""
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(fuente, params(), lambda a: True, salida)
+
+    assert resultado.material_ultima_placa_m2 > 0.0
+    assert resultado.sobrante_mm > 0.0
+
+
 def test_acomodar_llama_al_progreso(tmp_path, deposito):
     fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200), (300, 0, 150)]))
     salida = tmp_path / "t"

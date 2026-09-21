@@ -8,13 +8,15 @@ lo que sobra quede libre y entero.**
 Le das un archivo vectorial con las piezas a cortar, elegís sobre qué placa vas a
 cortarlas, y te devuelve un DXF listo para la fresadora.
 
-No se trata sólo de gastar menos: lo que queda libre en la última placa es un
-recorte que vas a volver a usar. Cuanto más abajo entren las piezas, más grande y
-más entera queda esa franja.
+No se trata sólo de gastar menos. El motor busca primero la menor cantidad de
+placas; después, dejar en la última **la menor cantidad de material posible**,
+que es lo que acerca a no necesitar esa placa; y recién ahí, con la misma
+cantidad de material arriba, dejarla **lo más compactada posible**, para que la
+franja que queda libre siga entera para el próximo trabajo.
 
 [![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-informational.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-informational.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-856-informational.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-1028-informational.svg)](tests/)
 
 ---
 
@@ -28,7 +30,7 @@ Abrís el archivo, elegís el material y apretás **Acomodar**.
 | **Sale** | un `.dxf` con todo acomodado, más una previsualización en PNG |
 | **Decide** | cuántas placas, dónde va cada pieza y con qué rotación |
 | **Respeta** | la separación entre piezas, el margen contra el borde y la veta del material |
-| **Busca** | usar la menor cantidad de placas y, en la última, dejar libre la franja más grande posible |
+| **Busca** | la menor cantidad de placas; después, dejar la menor cantidad de material posible en la última; después, con la misma cantidad, dejarla lo más compactada posible |
 
 Además te muestra **qué descartó y por qué**, marcado sobre tu propio dibujo: los
 tramos sueltos, las curvas que no apoyan en el plano, los contornos que no cierran.
@@ -76,11 +78,16 @@ entera para el próximo trabajo.
 El archivo de la captura lo genera `bench/make_sample.py`, así que podés
 reproducirla.
 
-El resultado dice tres cosas: **cuántas placas** hicieron falta, **qué
-porcentaje** de esa superficie quedó ocupado por piezas, y el **sobrante** —los
+El resultado dice cuatro cosas: **cuántas placas** hicieron falta, **qué
+porcentaje** de esa superficie quedó ocupado por piezas, el **sobrante** —los
 milímetros de franja libre en la última placa, medidos desde donde termina la
-pieza más alta hasta el borde—. Ese último número es el que te dice qué recorte
-te llevás.
+pieza más alta hasta el borde— y el **material en la última placa**, en m².
+
+Las dos últimas se muestran juntas a propósito, porque compiten: el motor
+elige el acomodo que deja menos material en la última placa, y eso a veces
+acorta la franja libre a cambio. Ver las dos es lo que te deja decidir si el
+canje conviene para este trabajo: la franja te dice qué recorte te llevás, los
+m² te dicen qué tan cerca estuviste de no necesitar esa placa.
 
 Mientras corre, la barra de abajo dice en qué va (`Intento 2 de 3 · ubicadas 47
 de 93 · placa 1`) y podés **cancelar** en cualquier momento. Cancelar no deja un
@@ -184,7 +191,7 @@ madera de verdad.
 
 ```bash
 .venv/bin/pip install -e ".[dev]"    # pytest, httpx y pyinstaller
-.venv/bin/pytest                     # la suite entera (856, ~4 min)
+.venv/bin/pytest                     # la suite entera (1028, ~7 min)
 .venv/bin/pytest tests/app           # sólo la interfaz (~10 s)
 ```
 

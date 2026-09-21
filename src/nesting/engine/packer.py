@@ -219,36 +219,75 @@ def _raise_too_large(
 EFFORT_RESTARTS: dict[str, int] = {"rapido": 1, "normal": 3, "lento": 12}
 """How many insertion orders each effort level tries.
 
-Measured against wall-clock, not guessed: see the Task 19 report
-(`.superpowers/sdd/task-19-report.md`). A single greedy pass over
-`bench/files/muestra.dxf` (mdf18, default sep/margin, 1 mm/px) took ~46s at
---copias 4 and ~81s at --copias 6, and `pack()`'s time scales linearly with
-the restart count. `normal = 3` lands at 182s / 236s -- comfortably under
-the project's 5-minute target for the harder of the two references, with
-~20% of the budget still spare. `normal = 4` already crosses it (317s at
---copias 6), so 3 is the most this level can spend. `lento = 12` (4x normal)
-is chosen for a real, monotonic drop in the compaction cost as restarts grow
-(measured on a smaller synthetic scenario, since the reference file is too
-slow to sweep at this multiplier): mean last-sheet height fell from 816mm at
-3 restarts to 800mm at 12, with the best-of-N result improving 790mm -> 780mm
-too. It costs roughly 4x normal's wall time in exchange.
+Los tres números siguen siendo los de la Task 19
+(`.superpowers/sdd/task-19-report.md`), que los midió contra reloj: una
+pasada golosa sobre `bench/files/muestra.dxf` (mdf18, sep/margen por
+omisión, 1 mm/px) tardaba ~46s a --copias 4 y ~81s a --copias 6, el tiempo
+de `pack()` escala lineal con los reintentos, `normal = 4` ya cruzaba el
+objetivo de 5 minutos (317s a --copias 6) y `lento = 12` mostraba una caída
+monótona del costo de compactación al crecer los reintentos. Nada de eso
+cambió de signo, y por eso la tabla no se tocó.
 
-What that time actually buys, honestly: a reviewer measured `normal` against
-`rapido` over 7 varied scenarios and found `normal` ties `rapido` -- same
-`layout_cost` -- in 5 of the 7, despite costing 3-4x as much wall time (the
-`normal = 3` vs `rapido = 1` ratio above). The gain is not gradual; it does
-not show up as "slightly better packing" most of the time. It shows up
-specifically when the layout sits near a sheet breakpoint -- close enough to
-the edge of needing one more sheet that a better insertion order avoids
-opening it. That is also exactly the case where it is worth the most: saving
-a whole sheet dwarfs the extra minutes spent finding the order that avoids
-it. Away from a breakpoint, extra restarts mostly re-arrange the same sheet
-count at a similar height, which is why the tie rate is so high. `lento`
-follows the same pattern one level up (see `pack()`'s superset construction
-below, which also guarantees `lento <= normal <= rapido` by construction,
-never just by luck of the seed) -- it is worth reaching for when a job is
-suspected to be near a breakpoint and the extra wall time is affordable, not
-as a default "better quality" dial."""
+QUÉ SÍ CAMBIÓ, Y POR QUÉ ESTA NOTA SE REESCRIBIÓ. La versión anterior
+cerraba con un dato que hoy engaña: "normal empata con rapido en 5 de 7
+escenarios". Ese empate se midió con la función de costo vieja
+`(placas, alto de la última)`, que NO PODÍA VER la diferencia entre los
+layouts que estaba eligiendo -- peor, prefería el equivocado. Sobre
+`NESTING 2.ai` (mdf15, sep 10, borde 10, 2.0 mm/px), medido en la Tarea 6
+con `contact = 1.0` -- el peso vigente mientras se corrió este barrido,
+antes de que la misma Tarea 6 lo recalibrara a 4.0 (ver `Weights.contact`
+en `oracle.py`):
+
+| nivel  | reparto | material última | alto última | seg   |
+|--------|---------|-----------------|-------------|-------|
+| rapido | 32 / 4  | 0.1432 m²       | 235 mm      | 37.7  |
+| normal | 33 / 3  | 0.1106 m²       | 308 mm      | 48.3  |
+| lento  | 35 / 1  | 0.1061 m²       | 491 mm      | 136.2 |
+
+Los reintentos mejoran de verdad y de forma monótona -- de 4 piezas varadas
+a 1 -- pero el ALTO de la última placa CRECE con cada mejora. Con el
+desempate viejo, `normal` y `lento` encontraban esos layouts y después los
+tiraban, porque 308 mm y 491 mm puntúan peor que 235 mm. Parte del "empate"
+que esta nota reportaba era eso: el esfuerzo extra sí encontraba algo, y el
+costo lo descartaba. Con `CostoLayout` (Tarea 1) la mejora se registra.
+
+CUÁNDO SIGUE SIN COMPRAR NADA. Sobre `muestra.dxf` a --copias 8, los tres
+niveles dieron exactamente el mismo layout (50/46, 2.1206 m²) por 70.1s,
+132.1s y 401.9s. La regla vieja se sostiene: el esfuerzo extra rinde cerca
+de un salto de placa -- que es donde está el archivo de referencia, con 1 a
+4 piezas varadas en la segunda placa -- y no rinde lejos de uno. Lo que
+cambió es que ahora, cuando rinde, se nota.
+
+LO QUE ESTA TABLA NO RESPONDE. Todo lo de arriba -- la tabla de la Tarea 6
+y la de la Task 19 con la que se compara -- se midió con `contact = 1.0`.
+Esta misma Tarea 6 deja de usar ese valor: el default pasa a 4.0. El
+barrido de esfuerzo NO se volvió a correr con contact = 4.0, y hay una
+razón concreta para sospechar que el resultado podría no ser el mismo. En
+`tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
+(líneas 157-163 de ese archivo), subir contacto de 1.0 a 4.0 sobre las
+mismas 43 piezas colapsó 3 layouts distintos entre 4 semillas a UNO SOLO:
+ninguna perturbación del orden de inserción mejoraba al orden por área, así
+que `best` nunca se reemplazaba. Eso es exactamente lo que los reintentos
+de `normal` y `lento` son -- perturbaciones del orden de inserción de las
+que se conserva la mejor -- así que si `contact = 4.0` aplana el espacio de
+búsqueda de la misma manera sobre archivos reales, los reintentos podrían
+estar comprando menos de lo que dice la tabla de arriba. No hay medición en
+ningún sentido: ni que lo confirme ni que lo descarte. La tabla y la
+conclusión "nada cambió de signo" quedan tal cual porque no hay evidencia
+para moverlas, no porque se haya verificado que siguen valiendo a
+contact = 4.0.
+
+EL PRESUPUESTO DE 5 MINUTOS, HONESTAMENTE. A 2.0 mm/px (el default desde la
+Task 24) `normal` sale mucho más barato que lo medido en la Task 19: 48.3s
+sobre el archivo de referencia (36 piezas) y 132.1s sobre `muestra.dxf` a
+--copias 8 (96 piezas). Pero el objetivo no es universal: una sola pasada
+sobre `banqueta final raulo.ai` a --copias 5 (200 piezas) ya tarda 450.6s,
+o sea que `normal` ahí se va muy por encima de los 5 minutos. El objetivo
+vale para trabajos del tamaño contra el que se calibró, no para cualquier
+carga.
+
+`pack()` garantiza `lento <= normal <= rapido` por construcción (ver el
+superconjunto de reintentos más abajo), nunca por suerte de la semilla."""
 
 COMPACTION_BOOST = 3.0
 """How much the bottom-left weight is multiplied by on the final compaction pass."""
@@ -258,19 +297,50 @@ class UnknownEffortError(Exception):
     """The requested effort level is not one of the three defined ones."""
 
 
-def layout_cost(result: PackResult, parts: Sequence[Part]) -> tuple[int, float]:
-    """How bad a layout is. Lower is better; compared as a tuple.
+@dataclass(frozen=True, order=True)
+class CostoLayout:
+    """Qué tan malo es un layout. Menor es mejor; se compara campo por campo.
 
-    Sheet count dominates. Between layouts using the same number of sheets, the
-    one whose last sheet is most compacted wins, which leaves the offcut as one
-    usable block instead of scattered strips.
+    El orden de los campos ES el criterio, y por eso son campos con nombre y
+    no una tupla: los dos lugares que informan el sobrante al usuario sacan
+    `alto_ultima` por nombre, así que sumar un campo en el medio no puede
+    volver a significar otra cosa en silencio.
     """
+
+    placas: int
+    """Manda sobre todo lo demás: una placa menos siempre gana."""
+
+    material_ultima: float
+    """Área de pieza que queda en la última placa, en mm².
+
+    Es el segundo criterio, y no el alto, porque es el único que mide
+    progreso hacia no necesitar esa placa: bajarlo a cero elimina una placa
+    entera. El alto no mide eso -- entre un layout que deja 7 piezas en una
+    fila de 308 mm y uno que deja 3 apiladas en 491 mm, el alto premia el de
+    7 piezas aunque esté más lejos de poder tirar la placa. Sobre
+    `NESTING 2.ai` ese desempate hacía que el motor descartara los layouts
+    de 33/3 que él mismo encontraba.
+    """
+
+    alto_ultima: float
+    """Hasta dónde llega el material en la última placa, en mm.
+
+    Desempata entre layouts que dejan el mismo material: con la misma
+    cantidad de pieza arriba, la que está más compactada deja la tira libre
+    en un solo bloque en vez de en pedazos. `sheet_h - alto_ultima` es el
+    "sobrante" que se le muestra al usuario.
+    """
+
+
+def layout_cost(result: PackResult, parts: Sequence[Part]) -> CostoLayout:
+    """Qué tan malo es un layout. Menor es mejor."""
     if not result.placements:
-        return (0, 0.0)
+        return CostoLayout(0, 0.0, 0.0)
 
     by_id = {p.id: p for p in parts}
     last_sheet = result.sheets_used - 1
     top = 0.0
+    material = 0.0
 
     for placement in result.placements:
         if placement.sheet != last_sheet:
@@ -279,8 +349,9 @@ def layout_cost(result: PackResult, parts: Sequence[Part]) -> tuple[int, float]:
         _, _, _, y1 = transformed_bbox(part, placement.transform.angle_deg,
                                        placement.transform.mirror)
         top = max(top, placement.transform.dy + y1)
+        material += part.area
 
-    return (result.sheets_used, top)
+    return CostoLayout(result.sheets_used, material, top)
 
 
 def pack(
@@ -293,9 +364,13 @@ def pack(
     """Place every part, trying several insertion orders and keeping the best.
 
     `progreso`, si se pasa, se llama con un `Avance` despues de cada pieza
-    ubicada y una vez mas al entrar en la compactacion final. Devolver
-    `False` pide abandonar, y `pack` levanta `Cancelado`. No pasarlo deja el
-    comportamiento exactamente como estaba: es lo que hace la CLI.
+    ubicada durante la pasada golosa, una vez con `compactando=True` al
+    entrar en la compactacion final, y ADEMAS muchas veces durante toda la
+    recuperacion cancelable que corre antes de esa compactacion -- un aviso
+    por cada pieza que `_recuperar_de_la_ultima_placa` intenta reubicar, no
+    una sola llamada (ver su docstring). Devolver `False` en cualquiera de
+    esas llamadas pide abandonar, y `pack` levanta `Cancelado`. No pasarlo
+    deja el comportamiento exactamente como estaba: es lo que hace la CLI.
     """
     if config.effort not in EFFORT_RESTARTS:
         raise UnknownEffortError(
@@ -376,6 +451,26 @@ def pack(
     ):
         raise Cancelado("el trabajo se canceló")
 
+    # Antes de compactar, y después del aviso de arriba a propósito: la
+    # recuperación es la parte más lenta de este tramo final (un
+    # `_pack_once` por placa anterior), así que quien mire la barra ya la ve
+    # en "compactando" en vez de quedarse mirando el último aviso de la
+    # pasada golosa.
+    #
+    # La recuperación reporta como "compactando" y no con una fase propia
+    # a propósito: `Avance` no tiene un campo para distinguirla (agregar
+    # uno es una decisión de UI aparte, no algo que este aviso deba forzar)
+    # y, para quien mira la barra, "compactando" ya es verdad -- es
+    # reempaque de placas ya armadas, no la pasada golosa inicial. Lo único
+    # que le faltaba a esa fase era poder cancelarse; el rótulo no cambia.
+    def aviso_recuperacion(ubicadas: int, placa: int) -> None:
+        if not progreso(Avance(intentos, intentos, totales, totales, 0, compactando=True)):
+            raise Cancelado("el trabajo se canceló")
+
+    best = _recuperar_de_la_ultima_placa(
+        best, parts, material, config, oracle_factory,
+        aviso_recuperacion if progreso is not None else None,
+    )
     best = _compact_last_sheet(best, parts, material, config, oracle_factory)
     best.seconds = time.perf_counter() - started
     return best
@@ -390,6 +485,147 @@ def _perturb(order: Sequence[Part], rng: random.Random) -> list[Part]:
         j = rng.randrange(len(shuffled))
         shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
     return shuffled
+
+
+def _recuperar_de_la_ultima_placa(
+    result: PackResult,
+    parts: Sequence[Part],
+    material: Material,
+    config: NestConfig,
+    oracle_factory: Callable[[], Oracle],
+    aviso: Callable[[int, int], None] | None = None,
+) -> PackResult:
+    """Reintentar en las placas anteriores lo que quedó en la última.
+
+    `aviso` se reenvía tal cual a cada `_pack_once` interno -- misma forma
+    que la de `_pack_once`, ver su docstring -- así que puede levantar para
+    abandonar a mitad de un reintento. Sin esto el tramo más lento de todo
+    `pack` (un `_pack_once` completo por placa anterior, ver "CUÁNTO CUESTA"
+    abajo) corría sordo: ni la barra de progreso se movía ni el botón de
+    cancelar hacía nada durante esos segundos.
+
+    Es literalmente lo que el usuario hizo a mano: sacar un disco de la
+    placa 2 y meterlo en un hueco de la placa 1.
+
+    POR QUÉ NO ALCANZA CON VOLVER A PREGUNTARLE A LA PLACA YA ARMADA
+
+    La idea intuitiva -- reconstruir la placa anterior tal cual quedó y
+    preguntarle de nuevo si la pieza entra -- NO PUEDE RECUPERAR NADA NUNCA,
+    y conviene dejarlo escrito para que no vuelva a intentarse. `_pack_once`
+    prueba CADA pieza pendiente contra CADA placa: la que terminó en la
+    última ya fue rechazada por la placa 0 cuando le tocó su turno. El
+    estado de esa placa al final de la pasada es un superconjunto del que la
+    rechazó (colocar sólo agrega material, nunca lo saca), y los dos
+    oráculos son monótonos en ese sentido: si no entraba con menos material,
+    menos todavía entra con más. Medido, además de razonado: sobre 45
+    escenarios al azar multiplaca (30 con `ShelfOracle`, 15 con
+    `RasterOracle`) y sobre `NESTING 2.ai`, esa versión recuperó CERO
+    piezas.
+
+    Lo que sí rompe la avaricia es cambiar el ORDEN DE INSERCIÓN, que es de
+    donde salió el problema: la placa se vuelve a armar desde cero con la
+    pieza pendiente ADELANTE DE TODO, así que la placa se construye
+    alrededor de ella en vez de ofrecerle las sobras. Ahí sí aparecen
+    layouts que la pasada golosa no puede alcanzar.
+
+    QUÉ SE ACEPTA
+
+    Un reempaque se acepta sólo si en su primera placa siguen estando TODAS
+    las piezas que ya tenía y entró al menos una pendiente. Con esa regla el
+    costo del layout no puede subir: las placas anteriores conservan sus
+    piezas, la última pierde alguna (y si se queda sin ninguna, baja el
+    conteo de placas, que es el primer campo de `CostoLayout`), y las que
+    quedan en la última no se tocan, así que ni `material_ultima` ni
+    `alto_ultima` pueden crecer.
+
+    CUÁNTO CUESTA
+
+    Cada intento es un `_pack_once` completo sobre una placa -- unos 10 s
+    sobre `NESTING 2.ai` a 2 mm/px con 31 piezas, o sea del mismo orden que
+    toda la corrida. Por eso el orden de los intentos importa y la cuenta
+    está acotada: por cada placa anterior se paga un intento, y sólo se paga
+    OTRO si el anterior recuperó algo de verdad. Las pendientes van de la
+    más chica a la más grande (la chica entra en más lugares) y las que no
+    encabezan el intento igual viajan al final del orden, así que pueden
+    entrar de arrastre sin costar un intento propio. Medido sobre 15
+    escenarios raster al azar: probar una pendiente por intento recupera 4
+    piezas con 46 intentos; esta versión recupera 3 con 18. Sobre
+    `NESTING 2.ai` recupera la misma pieza que la versión cara, con 1
+    intento en vez de 5.
+    """
+    if result.sheets_used < 2:
+        return result
+
+    by_id = {p.id: p for p in parts}
+    ultima = result.sheets_used - 1
+    en_ultima = [p for p in result.placements if p.sheet == ultima]
+    if not en_ultima:
+        return result
+
+    # Las placas anteriores, cada una con sus ubicaciones EN EL ORDEN EN QUE
+    # SE COLOCARON: ese orden es el que produjo un layout que se sabe que
+    # entra, así que es el que se reusa al reempacar. Reordenar por área
+    # daría otro layout, que podría no entrar.
+    por_placa: dict[int, list[Placement]] = {}
+    for p in result.placements:
+        if p.sheet != ultima:
+            por_placa.setdefault(p.sheet, []).append(p)
+
+    pendientes = sorted((by_id[p.part_id] for p in en_ultima), key=lambda q: q.area)
+    recuperadas: set[int] = set()
+
+    for placa in range(ultima):
+        if not pendientes:
+            break
+        anteriores = por_placa.get(placa, [])
+        en_placa = [by_id[p.part_id] for p in anteriores]
+        while pendientes:
+            orden = [pendientes[0], *en_placa, *pendientes[1:]]
+            redone = _pack_once(orden, material, config, oracle_factory, aviso)
+
+            en_primera = [p for p in redone.placements if p.sheet == 0]
+            ids_primera = {p.part_id for p in en_primera}
+            ya_estaban = {p.id for p in en_placa}
+            ganadas = ids_primera - ya_estaban
+            if not ganadas or not ya_estaban <= ids_primera:
+                # O no entró ninguna pendiente, o para meterlas se cayó
+                # alguna de las que ya estaban: no es una mejora, y la placa
+                # se deja exactamente como estaba.
+                break
+
+            por_placa[placa] = [
+                Placement(p.part_id, placa, p.transform) for p in en_primera
+            ]
+            en_placa = [by_id[p.part_id] for p in en_primera]
+            recuperadas |= ganadas
+            pendientes = [q for q in pendientes if q.id not in ganadas]
+
+    if not recuperadas:
+        return result
+
+    placements: list[Placement] = []
+    for placa in range(ultima):
+        placements.extend(por_placa.get(placa, []))
+    quedan = [p for p in en_ultima if p.part_id not in recuperadas]
+    placements.extend(quedan)
+    sheets = result.sheets_used if quedan else ultima
+
+    # La misma cuenta que hace `_pack_once`: áreas por placa y UNA división
+    # al final. Si acá se sumaran fracciones ya divididas, el total podría
+    # no coincidir con el que informa una corrida normal, y el usuario vería
+    # dos números distintos para el mismo layout.
+    sheet_area = material.sheet_w * material.sheet_h
+    areas = [0.0] * sheets
+    for p in placements:
+        areas[p.sheet] += by_id[p.part_id].area
+
+    return PackResult(
+        placements=placements,
+        sheets_used=sheets,
+        utilization=[area / sheet_area for area in areas],
+        total_utilization=sum(areas) / (sheet_area * sheets) if sheets else 0.0,
+        seconds=result.seconds,
+    )
 
 
 def _compact_last_sheet(
@@ -421,7 +657,11 @@ def _compact_last_sheet(
 
     if redone.sheets_used != 1:
         return result
-    if layout_cost(redone, parts)[1] >= layout_cost(result, parts)[1]:
+    # Compara `.alto_ultima`, no el `CostoLayout` entero: la compactación
+    # mueve las mismas piezas dentro de la misma placa, así que
+    # `material_ultima` no cambia y comparar por ahí no desempataría nada.
+    # El alto es lo único que esta pasada puede mejorar.
+    if layout_cost(redone, parts).alto_ultima >= layout_cost(result, parts).alto_ultima:
         return result
 
     kept = [p for p in result.placements if p.sheet != last]

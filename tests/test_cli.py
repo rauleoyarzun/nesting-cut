@@ -157,6 +157,20 @@ def test_summary_reports_sheets_and_utilisation(tmp_path, capsys):
     assert "%" in output
 
 
+def test_summary_reports_material_left_on_the_last_sheet(tmp_path, capsys):
+    """El criterio nuevo minimiza el material que queda en la última placa,
+    y eso a veces acorta la tira libre a cambio -- las dos cifras compiten,
+    así que el resumen tiene que mostrar las dos, no sólo la tira."""
+    source = write_input(tmp_path, [(0, 0, 400), (500, 0, 400), (0, 500, 400)])
+    run([source, "--material", "test", "--materiales", catalogue(tmp_path),
+         "-o", tmp_path / "out.dxf"])
+
+    output = capsys.readouterr().out
+    assert "material en la última placa" in output
+    assert "m²" in output
+    assert "tira libre" in output
+
+
 def test_separation_and_margin_are_honoured(tmp_path):
     from nesting.geometry.verify import verify
     from nesting.io.dxf_reader import read_dxf

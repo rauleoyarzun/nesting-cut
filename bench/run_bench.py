@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nesting.engine.oracle import NestConfig
-from nesting.engine.packer import PartTooLargeError, pack, replicate
+from nesting.engine.packer import PartTooLargeError, layout_cost, pack, replicate
 from nesting.engine.raster.masks import MaskCache
 from nesting.engine.raster.oracle import RasterOracle
 from nesting.engine.shelf_oracle import ShelfOracle
@@ -100,6 +100,27 @@ class BenchResult:
     engine: str
     violations: int
 
+    material_ultima_m2: float = 0.0
+    """Área de pieza que queda en la última placa, en m² (`CostoLayout.material_ultima`).
+
+    Es el segundo criterio de `layout_cost` desde la Tarea 1, y se agregó acá
+    en la Tarea 6 porque hasta entonces el banco medía una cosa y el motor
+    optimizaba otra: `first_sheet_utilization` no distingue entre un layout
+    que deja 4 piezas en la última placa y uno que deja 2, si la primera
+    placa quedó igual de llena. Calibrar contra una métrica que el motor no
+    persigue es calibrar a ciegas.
+    """
+
+    tira_libre_mm: float = 0.0
+    """`sheet_h - CostoLayout.alto_ultima`: la tira libre de la última placa.
+
+    Convive con `material_ultima_m2` porque las dos cifras compiten y el
+    usuario ve las dos (ver `cli.py::_print_summary`). En los barridos de la
+    Tarea 6 hubo configuraciones que dejaban la mitad de material en la
+    última placa con exactamente la misma tira libre: sin esta columna al
+    lado, esa diferencia no se ve.
+    """
+
 
 def run_one(
     dxf_path: Path,
@@ -134,6 +155,7 @@ def run_one(
     parts = replicate(parts, copies)
 
     result = pack(parts, material, config, oracle_factory)
+    costo = layout_cost(result, parts)
 
     violations = verify(
         parts, result.placements, material.sheet_w, material.sheet_h,
@@ -151,6 +173,8 @@ def run_one(
         seconds=result.seconds,
         engine=engine_name,
         violations=len(violations),
+        material_ultima_m2=costo.material_ultima / 1e6,
+        tira_libre_mm=material.sheet_h - costo.alto_ultima,
     )
 
 

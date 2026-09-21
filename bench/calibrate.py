@@ -4,15 +4,21 @@ resolution and effort.
 Nothing here invents a number. Every value that ends up in the defaults comes
 out of a run over the project's real files (`bench/files/`).
 
-Metrica usada para comparar configuraciones entre si: `first_sheet_utilization`
-(aprovechamiento de la PRIMERA placa), no `total_utilization`. Con el mismo
-conjunto de piezas, `total_utilization` es area de piezas sobre area de placas
-usadas -- si dos configuraciones necesitan la misma cantidad de placas, esa
-metrica da identica por construccion aunque una haya empaquetado la primera
-placa mucho mejor que la otra (ver el docstring de `BenchResult` en
-`run_bench.py`). Por eso cada barrido tambien reporta la cantidad total de
-placas usadas: en igualdad de aprovechamiento de la primera placa, menos
-placas es siempre mejor.
+Criterio para comparar configuraciones entre si (cambiado en la Tarea 6): el
+MISMO que usa el motor, `CostoLayout(placas, material_ultima, alto_ultima)`.
+Cada barrido devuelve, por configuracion, placas totales, material medio en
+la ultima placa y tira libre media, ademas del aprovechamiento de la primera
+placa y el tiempo, y `_mejor` ordena por placas, despues por material en la
+ultima, y desempata por tiempo.
+
+Antes se ordenaba por `first_sheet_utilization`. Esa metrica no se tiro --
+sigue siendo la unica columna con diferencias continuas cuando dos
+configuraciones empatan en placas, y es la que distingue lo que
+`total_utilization` no puede (area de piezas sobre area de placas usadas da
+identica por construccion a igualdad de placas; ver el docstring de
+`BenchResult` en `run_bench.py`) -- pero dejo de ser la que manda, porque no
+es la que el motor optimiza: hubo configuraciones con aprovechamiento de
+primera placa identico y el doble de material en la ultima.
 """
 
 import argparse
@@ -69,72 +75,81 @@ def _load_files(files_dir: Path) -> list[Path]:
     return usable
 
 
+FILA = "eje, aprov. 1ra placa, seg. medio, placas totales, material ultima (m2), tira libre (mm)"
+"""Forma de las filas que devuelven los tres barridos, en orden.
+
+Las dos ultimas columnas se agregaron en la Tarea 6 y son las que ahora
+mandan al elegir (`_mejor`): desde la Tarea 1 el motor minimiza
+`CostoLayout(placas, material_ultima, alto_ultima)`, asi que un barrido que
+ordenara por aprovechamiento de la primera placa estaria eligiendo por una
+cifra que el motor no persigue. Se dejan igual las tres primeras columnas --
+el aprovechamiento de la primera placa sigue siendo la unica que muestra
+diferencias continuas cuando dos configuraciones empatan en placas, y el
+tiempo sigue siendo el que decide los empates.
+"""
+
+
+def _fila(eje, results) -> tuple:
+    """Una fila agregada a partir de los resultados por archivo. Ver `FILA`."""
+    return (
+        eje,
+        sum(r.first_sheet_utilization for r in results) / len(results),
+        sum(r.seconds for r in results) / len(results),
+        sum(r.sheets for r in results),
+        sum(r.material_ultima_m2 for r in results) / len(results),
+        sum(r.tira_libre_mm for r in results) / len(results),
+    )
+
+
 def sweep_weights(
     files: list[Path], material: Material, config: NestConfig, copies: int = 1
-) -> list[tuple[float, float, float, int]]:
-    """For each contact weight: mean first-sheet utilisation, mean seconds,
-    total sheets across every file."""
+) -> list[tuple]:
+    """Una fila con la forma de `FILA` por cada peso de contacto candidato."""
     rows = []
     for contact in CONTACT_CANDIDATES:
         tuned = replace(config, weights=Weights(bottom_left=1.0, contact=contact))
-        results = [
+        rows.append(_fila(contact, [
             run_one(path, material, tuned, RasterOracle, "raster", copies=copies)
             for path in files
-        ]
-        rows.append((
-            contact,
-            sum(r.first_sheet_utilization for r in results) / len(results),
-            sum(r.seconds for r in results) / len(results),
-            sum(r.sheets for r in results),
-        ))
+        ]))
     return rows
 
 
 def sweep_resolution(
     files: list[Path], material: Material, config: NestConfig, copies: int = 1
-) -> list[tuple[float, float, float]]:
-    """For each raster resolution: mean first-sheet utilisation and mean
-    seconds.
+) -> list[tuple]:
+    """Una fila con la forma de `FILA` por cada resolucion candidata.
 
-    No mide `sheets` porque no es lo que este barrido busca: la resolucion
-    afecta la calidad del empaquetado de forma continua (mas piezas
-    entrando, o no, en la placa que ya esta abierta), y esa continuidad se ve
-    en `first_sheet_utilization`, no en un conteo entero que solo cambia
-    cuando se cruza un umbral.
+    Hasta la Tarea 6 este barrido no devolvia `sheets` ni el material de la
+    ultima placa, con el argumento de que la resolucion afecta la calidad de
+    forma continua y eso solo se ve en `first_sheet_utilization`. El
+    argumento era correcto para lo que la resolucion hacia entonces
+    (tambien fijaba la separacion real), pero ahora la separacion la decide
+    el arbitro exacto y lo unico que queda por saber de la resolucion es si
+    mueve el layout: `material_ultima` es la cifra que lo dice, porque es la
+    que el motor minimiza.
     """
     rows = []
     for resolution in RESOLUTION_CANDIDATES:
         tuned = replace(config, resolution=resolution)
-        results = [
+        rows.append(_fila(resolution, [
             run_one(path, material, tuned, RasterOracle, "raster", copies=copies)
             for path in files
-        ]
-        rows.append((
-            resolution,
-            sum(r.first_sheet_utilization for r in results) / len(results),
-            sum(r.seconds for r in results) / len(results),
-        ))
+        ]))
     return rows
 
 
 def sweep_effort(
     files: list[Path], material: Material, config: NestConfig, copies: int = 1
-) -> list[tuple[str, float, float, int]]:
-    """For each effort level: mean first-sheet utilisation, mean seconds and
-    total sheets."""
+) -> list[tuple]:
+    """Una fila con la forma de `FILA` por cada nivel de esfuerzo."""
     rows = []
     for effort in EFFORT_LEVELS:
         tuned = replace(config, effort=effort)
-        results = [
+        rows.append(_fila(effort, [
             run_one(path, material, tuned, RasterOracle, "raster", copies=copies)
             for path in files
-        ]
-        rows.append((
-            effort,
-            sum(r.first_sheet_utilization for r in results) / len(results),
-            sum(r.seconds for r in results) / len(results),
-            sum(r.sheets for r in results),
-        ))
+        ]))
     return rows
 
 
@@ -150,24 +165,53 @@ def compare_engines(
     return rows
 
 
-def _best_contact(rows: list[tuple[float, float, float, int]]) -> float:
-    """The contact weight with the best mean first-sheet utilisation.
+def _mejor(rows: list[tuple]) -> object:
+    """El mejor eje de un barrido, con el MISMO criterio que usa el motor.
 
-    A la par, gana el que ademas haya sido mas rapido -- no hay ninguna
-    razon para pagar mas tiempo por el mismo resultado.
+    Hasta la Tarea 6 esto ordenaba por aprovechamiento de la primera placa,
+    desempatando por tiempo. Esa metrica ya no es la que el motor persigue:
+    desde la Tarea 1 `layout_cost` minimiza
+    `CostoLayout(placas, material_ultima, alto_ultima)`, y las dos cosas se
+    separan de verdad -- en el barrido de contacto sobre
+    `banqueta final raulo.ai` (Tarea 6), contacto 0.5 y 0.8 empataron en
+    aprovechamiento de la primera placa (61.00% las dos) y sin embargo
+    dejaron 0.781 m2 y 0.859 m2 en la ultima: la metrica vieja no podia
+    distinguirlas y el motor si. Un calibrador que ordena por una cifra que
+    el motor no optimiza recomienda valores que el motor despues no elige.
 
-    OJO: esta funcion solo mira el promedio agregado de los archivos del
-    barrido. En la calibracion real (Task 24) ese promedio favorecia
-    contact=0.0, pero un valor tan bajo rompe una capacidad concreta e
-    independiente (una pieza chica dejaba de caer dentro del agujero de una
-    grande, `test_a_small_part_is_nested_inside_a_big_hole`) que este barrido
-    no ejercita. El valor elegido en `engine/oracle.py` no es ciegamente el
-    que devuelve esta funcion -- ver `docs/superpowers/calibracion.md` para
-    el razonamiento completo. Se deja la seleccion automatica igual, para
-    una corrida futura sobre archivos distintos, pero el resultado hay que
-    revisarlo contra ese mismo tipo de test antes de aceptarlo.
+    El orden es entonces: menos placas, menos material en la ultima, menos
+    tiempo. La tira libre NO entra: es la cifra que se le muestra al usuario
+    al lado de la otra, pero como criterio es justamente la que la Tarea 1
+    saco del segundo lugar por premiar layouts mas lejos de poder tirar la
+    placa.
+
+    OJO: esta funcion solo mira los archivos del barrido, y hay una
+    capacidad concreta que ninguno de ellos ejercita: que una pieza chica
+    caiga dentro del agujero de una grande
+    (`test_a_small_part_is_nested_inside_a_big_hole`). En la recalibracion
+    de la Tarea 6 eso volvio a ser decisivo: contacto 0.0 gano el barrido en
+    dos de los tres archivos y es hasta 4.8x mas rapido, pero rompe esa
+    capacidad (se pierde por debajo de 0.7, bisectado) y quedo descartado
+    igual. El valor de `engine/oracle.py` no es ciegamente el que devuelve
+    esta funcion -- ver `docs/superpowers/calibracion.md` para el
+    razonamiento completo. Se deja la seleccion automatica, para una corrida
+    futura sobre archivos distintos, pero el resultado hay que revisarlo
+    contra ese mismo test antes de aceptarlo.
     """
-    return min(rows, key=lambda row: (-row[1], row[2]))[0]
+    return min(rows, key=lambda row: (row[3], row[4], row[2]))[0]
+
+
+def _encabezado(eje: str) -> None:
+    print(f"{eje:>10}{'aprov. 1ra placa':>18}{'seg. medio':>13}{'placas':>9}"
+          f"{'mat. ult. m2':>14}{'tira mm':>10}")
+    print("-" * 74)
+
+
+def _imprimir(row: tuple) -> None:
+    eje, utilisation, seconds, sheets, material_ultima, tira = row
+    etiqueta = f"{eje:>10.1f}" if isinstance(eje, float) else f"{eje:>10}"
+    print(f"{etiqueta}{utilisation * 100:>17.1f}%{seconds:>13.1f}{sheets:>9}"
+          f"{material_ultima:>14.4f}{tira:>10.0f}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -188,20 +232,18 @@ def main(argv: list[str] | None = None) -> int:
     default_resolution = NestConfig().resolution
     print(f"PESO DE CONTACTO  (bottom_left fijo en 1.0, esfuerzo rapido, "
           f"resolucion {default_resolution} mm/px)")
-    print(f"{'contacto':>10}{'aprov. 1ra placa':>18}{'seg. medio':>13}{'placas':>9}")
-    print("-" * 50)
+    _encabezado("contacto")
     weight_rows = sweep_weights(
         files, material, NestConfig(sep=6.0, margin=10.0, effort="rapido"), copies=args.copias
     )
-    for contact, utilisation, seconds, sheets in weight_rows:
-        print(f"{contact:>10.1f}{utilisation * 100:>17.1f}%{seconds:>13.1f}{sheets:>9}")
+    for row in weight_rows:
+        _imprimir(row)
 
-    best_contact = _best_contact(weight_rows)
+    best_contact = _mejor(weight_rows)
     print(f"\n-> mejor contacto medido: {best_contact}")
 
     print("\nRESOLUCION DEL RASTER  (contact = mejor medido, esfuerzo rapido)")
-    print(f"{'mm/px':>10}{'aprov. 1ra placa':>18}{'seg. medio':>13}")
-    print("-" * 41)
+    _encabezado("mm/px")
     resolution_rows = sweep_resolution(
         files, material,
         NestConfig(
@@ -210,25 +252,28 @@ def main(argv: list[str] | None = None) -> int:
         ),
         copies=args.copias,
     )
-    for resolution, utilisation, seconds in resolution_rows:
-        print(f"{resolution:>10.1f}{utilisation * 100:>17.1f}%{seconds:>13.1f}")
+    for row in resolution_rows:
+        _imprimir(row)
 
     print(f"\nNIVELES DE ESFUERZO  (contact = mejor medido, "
           f"resolucion {default_resolution} mm/px)")
-    print(f"{'nivel':>10}{'aprov. 1ra placa':>18}{'seg. medio':>13}{'placas':>9}")
-    print("-" * 50)
+    _encabezado("nivel")
     effort_rows = sweep_effort(
         files, material,
         NestConfig(sep=6.0, margin=10.0, weights=Weights(bottom_left=1.0, contact=best_contact)),
         copies=args.copias,
     )
-    for effort, utilisation, seconds, sheets in effort_rows:
-        print(f"{effort:>10}{utilisation * 100:>17.1f}%{seconds:>13.1f}{sheets:>9}")
+    for row in effort_rows:
+        _imprimir(row)
 
-    print("\nElegir el peso de contacto y la resolucion con mejor aprovechamiento de la")
-    print("1ra placa y anotarlos en engine/oracle.py. Ajustar EFFORT_RESTARTS en")
-    print("engine/packer.py para que 'normal' quede por debajo de 5 minutos y 'lento'")
-    print("mejore de forma medible.")
+    print("\nElegir el peso de contacto y la resolucion que dejen menos placas y, a")
+    print("igualdad de placas, menos material en la ultima -- el mismo orden que usa")
+    print("`layout_cost` -- y anotarlos en engine/oracle.py CON LA MEDICION AL LADO.")
+    print("Antes de bajar el contacto, correr")
+    print("tests/engine/raster/test_raster_oracle.py::test_a_small_part_is_nested_inside_a_big_hole:")
+    print("este barrido no ejercita el anidado en agujeros y ese test es el que manda.")
+    print("Ajustar EFFORT_RESTARTS en engine/packer.py para que 'normal' quede por")
+    print("debajo de 5 minutos y 'lento' mejore de forma medible.")
     return 0
 
 
