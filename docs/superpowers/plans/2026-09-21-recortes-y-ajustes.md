@@ -19,6 +19,7 @@
 - **La CLI no gana ninguna bandera.** Cambia por dentro (arma el `SheetSupply`, pasa `sheets` a `verify`/`write_dxf`/`write_preview`, default de `--resolucion`), pero su superficie de flags queda igual. Si un paso te pide agregar `--recorte`, el paso está mal: pará y avisá.
 - **`verify()` es el árbitro y no confía en quien lo llama.** Sigue levantando `ValueError` ante un `sep`/`margin` negativo, y suma el mismo trato para una lista de placas que no cubra los índices que usan las colocaciones.
 - **Sin recortes, nada cambia.** Después de cada tarea, una corrida sin recortes tiene que dar el mismo layout, el mismo costo y los mismos números que antes del plan. Las tareas 2 y 4 son puramente mecánicas y no pueden mover un resultado.
+- **Los tests de JavaScript miran cuerpos, no el archivo entero.** `tests/app/test_web_javascript.py` ya tiene `_cuerpo_de_funcion(js, "nombre")` (línea 701) y `_cuerpo_de_handler(js, "evento")` (línea 743), que además borran los comentarios antes de mirar. Usarlos. Una aserción sobre el archivo entero (`assert "360" in js`) pasa por cualquier `360` perdido en un comentario, y hubo un test en la primera versión de este plan que pasaba ANTES de implementar nada porque afirmaba `"disabled" in js`, una cadena que ya estaba en el botón de guardar.
 - **Correr la suite entera** (`.venv/bin/pytest`) al cerrar cada tarea, no sólo los tests nuevos. Los cambios de firma de las tareas 2 y 4 tocan muchos archivos de test.
 - **Nada de `Co-Authored-By` ni atribución en los mensajes de commit.**
 
@@ -1908,20 +1909,21 @@ def test_los_recortes_viven_en_el_estado_de_la_sesion(js):
 def test_registrar_no_borra_los_recortes(js):
     """Cambiar de archivo no tira los pedazos que hay contra la pared. Se
     pierden al cerrar el programa, no al abrir otro dibujo."""
-    cuerpo = js[js.index("async function registrar("):]
-    cuerpo = cuerpo[: cuerpo.index("\n}\n")]
-    assert "recortes" not in cuerpo
+    assert "recortes" not in _cuerpo_de_funcion(js, "registrar")
 
 
 def test_los_recortes_se_mandan_con_los_parametros(js):
-    cuerpo = js[js.index("function parametros("):]
-    cuerpo = cuerpo[: cuerpo.index("\n}\n")]
-    assert "recortes: estado.recortes" in cuerpo
+    assert "recortes: estado.recortes" in _cuerpo_de_funcion(js, "parametros")
 
 
 def test_la_casilla_de_veta_cruzada_se_apaga_en_un_material_sin_veta(js):
-    assert "r-cruzada" in js
-    assert 'libre' in js and "disabled" in js
+    """Mira el cuerpo de la función y no el archivo: la primera versión de
+    este test afirmaba `"disabled" in js`, y esa cadena ya estaba en el
+    botón de guardar -- pasaba antes de que la casilla existiera."""
+    cuerpo = _cuerpo_de_funcion(js, "ajustarVetaCruzada")
+
+    assert '=== "libre"' in cuerpo
+    assert '$("r-cruzada").disabled' in cuerpo
 
 
 def test_el_bloque_de_recortes_tiene_sus_controles(html):
@@ -2190,32 +2192,48 @@ La casilla de veta cruzada se apaga en un material de veta libre."
 Agregar a `tests/app/test_web_javascript.py`:
 
 ```python
+def _opciones_de_posiciones(html: str) -> str:
+    """El `<select id="posiciones">` solo, sin el resto de la página.
+
+    Buscar `value="4"` en el HTML entero pasaría por cualquier campo
+    numérico que tenga un 4 adelante."""
+    desde = html.index('id="posiciones"')
+    return html[desde : html.index("</select>", desde)]
+
+
 @pytest.mark.parametrize("valor", ["4", "8", "16", "personalizado"])
 def test_el_desplegable_de_posiciones_tiene_las_cuatro_opciones(html, valor):
-    assert f'value="{valor}"' in html
+    assert f'value="{valor}"' in _opciones_de_posiciones(html)
 
 
 def test_las_posiciones_arrancan_en_cuatro(html):
-    assert re.search(r'<option value="4"[^>]*selected', html)
+    assert re.search(
+        r'<option value="4"[^>]*selected', _opciones_de_posiciones(html)
+    )
 
 
 def test_las_posiciones_se_reparten_en_la_vuelta_entera(js):
     """4 posiciones son 0/90/180/270 y 16 son cada 22,5 grados. La cuenta
-    tiene que ser i * 360 / n, no una tabla escrita a mano."""
-    assert "360" in js
-    assert "angulosElegidos" in js
+    tiene que ser i * 360 / n, no una tabla de ángulos escrita a mano: una
+    tabla se desincroniza de las etiquetas del desplegable en cuanto
+    alguien agregue 32."""
+    cuerpo = _cuerpo_de_funcion(js, "angulosElegidos")
+
+    assert "360" in cuerpo
+    assert "Array.from" in cuerpo
 
 
 def test_personalizado_revela_el_campo_de_texto(js):
+    cuerpo = _cuerpo_de_funcion(js, "angulosElegidos")
+    assert '"personalizado"' in cuerpo
     assert "campo-angulos" in js
-    assert "personalizado" in js
 
 
 def test_el_campo_de_angulos_sigue_validandose(js):
     """Sólo en la rama Personalizado, pero con el mismo error debajo del
     campo que tenía antes."""
-    assert "angulosValidos" in js
-    assert 'marcarCampo(\n      "angulos"' in js or 'marcarCampo("angulos"' in js
+    assert "angulosElegidos" in _cuerpo_de_funcion(js, "angulosValidos")
+    assert '"angulos"' in js
 ```
 
 - [ ] **Step 2: Correr los tests para verlos fallar**
@@ -2340,26 +2358,25 @@ def test_la_rueda_no_salta_por_la_escalera(js):
     """La escalera queda para los botones. Cada evento de rueda avanzaba un
     escalón entero, y un gesto de trackpad manda decenas: iba de 25% a 600%
     de un toque."""
-    handler = js[js.index('$("lienzo").addEventListener("wheel"'):]
-    handler = handler[: handler.index("{ passive: false }")]
+    handler = _cuerpo_de_handler(js, "wheel")
+
     assert "acercar(" not in handler
-    assert "zoomContinuo" in handler or "aplicarNuevoZoom" in handler
+    assert "zoomContinuo" in handler
 
 
 def test_la_rueda_normaliza_el_modo_del_delta(js):
     """Firefox reporta líneas y no píxeles: sin normalizar, el mismo gesto
     da un salto distinto en cada navegador."""
-    assert "deltaMode" in js
+    assert "deltaMode" in _cuerpo_de_funcion(js, "enPixeles")
 
 
 def test_el_zoom_de_la_rueda_esta_acotado(js):
-    assert "ZOOM_MIN" in js and "ZOOM_MAX" in js
+    cuerpo = _cuerpo_de_funcion(js, "zoomContinuo")
+    assert "ZOOM_MIN" in cuerpo and "ZOOM_MAX" in cuerpo
 
 
 def test_los_botones_siguen_usando_la_escalera(js):
-    cuerpo = js[js.index("function acercar("):]
-    cuerpo = cuerpo[: cuerpo.index("\n}\n")]
-    assert "proximoPaso" in cuerpo
+    assert "proximoPaso" in _cuerpo_de_funcion(js, "acercar")
 ```
 
 - [ ] **Step 2: Correr los tests para verlos fallar**
@@ -2399,7 +2416,9 @@ const SENSIBILIDAD = 0.0015;
 // (deltaMode 1) y hay quien reporta páginas (2). Sin normalizar, el mismo
 // gesto salta distinto en cada navegador.
 const PIXELES_POR_MODO = [1, 16, 100];
-const enPixeles = (e) => e.deltaY * (PIXELES_POR_MODO[e.deltaMode] ?? 1);
+function enPixeles(e) {
+  return e.deltaY * (PIXELES_POR_MODO[e.deltaMode] ?? 1);
+}
 
 // El anclaje al cursor lo comparten la rueda y los botones: sin esto el
 // zoom se va siempre al centro y perseguir un detalle es un juego de
