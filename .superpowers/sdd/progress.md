@@ -925,3 +925,17 @@ Task 2: completa (commits 47e1b35..2677265, revisión limpia).
   Menor pendiente p/revisión final: `tests/app/test_web_javascript.py` sólo comprueba que
   las dos cifras aparecen en el fuente de app.js, no que salgan juntas en la misma línea
   renderizada. Un regex de proximidad lo fijaría mejor.
+Task 3: completa (commits 76c9253..5e9dbee, revisión limpia tras un arreglo).
+  Nuevo `src/nesting/engine/exact.py` con `ArbitroExacto`. 1018 passed + 1 del arreglo.
+  DEFECTO DEL PLAN encontrado por el revisor y arreglado: el árbitro sólo comparaba
+  `distance < sep - EPS`. Como `shapely.distance` da 0.0 tanto para "se tocan" como para
+  "se superponen", con `sep = 0` (valor legal: `params.py` sólo rechaza sep < 0) la
+  comparación es `0.0 < -1e-6`, siempre falsa, y el árbitro aceptaba superposiciones
+  enormes. `verify.py` hace DOS chequeos: área de intersección y después distancia.
+  Arreglo (5e9dbee): mismo doble chequeo, importando `OVERLAP_AREA_THRESHOLD_MM2` de
+  `verify.py` en vez de duplicar el número. El revisor verificó el orden de los dos
+  chequeos, el caso de caída-a-través con intersección despreciable, y que el prefiltro
+  por caja no puede saltearse un par superpuesto.
+  Menor pendiente p/revisión final: `EPS = 1e-6` sigue duplicado en `exact.py` en vez de
+  importarse de `verify.py`, aunque el arreglo ya sentó el precedente con la otra
+  constante y el propio docstring dice que "tienen que coincidir". Una línea.
