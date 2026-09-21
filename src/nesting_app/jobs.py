@@ -47,6 +47,13 @@ class Resultado:
     total: float
     segundos: float
     sobrante_mm: float
+    material_ultima_placa_m2: float
+    """Cuánta pieza quedó en la última placa, en m².
+
+    Va al lado de `sobrante_mm` porque las dos cifras compiten: el motor
+    elige el layout que baja ésta, y eso a veces acorta la tira libre. Ver
+    las dos juntas es lo que deja decidir si conviene para este trabajo.
+    """
     carpeta: Path
     avisos: list[str] = field(default_factory=list)
 

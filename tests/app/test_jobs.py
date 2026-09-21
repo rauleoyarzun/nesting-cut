@@ -23,7 +23,8 @@ FUENTE = Fuente(id="f1", ruta=None, nombre="robot.ai", carpeta=None)
 
 def resultado_falso(carpeta):
     return Resultado(placas=1, aprovechamiento=[0.477], total=0.477,
-                     segundos=1.0, sobrante_mm=708.0, carpeta=carpeta)
+                     segundos=1.0, sobrante_mm=708.0,
+                     material_ultima_placa_m2=1.234, carpeta=carpeta)
 
 
 def esperar(trabajo, estados, limite=5.0):

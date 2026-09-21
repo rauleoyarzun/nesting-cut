@@ -608,7 +608,8 @@ function terminar(t) {
   const placas = r.placas === 1 ? "1 placa" : `${r.placas} placas`;
   $("resultado").innerHTML =
     `<strong>${placas}</strong> · <strong>${(100 * r.total).toFixed(1)}%</strong> ` +
-    `aprovechado · sobrante <strong>${r.sobrante_mm.toFixed(0)} mm</strong>`;
+    `aprovechado · sobrante <strong>${r.sobrante_mm.toFixed(0)} mm</strong> · ` +
+    `<strong>${r.material_ultima_placa_m2.toFixed(3)} m²</strong> en la última placa`;
   $("resultado").classList.remove("oculto");
   $("placa-actual").textContent = `${r.placas} placa${r.placas === 1 ? "" : "s"}`;
   $("tab-preview").click();

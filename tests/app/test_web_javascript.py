@@ -58,6 +58,15 @@ def test_contempla_cada_estado_de_un_trabajo(js, estado):
     assert f'"{estado}"' in js or f"'{estado}'" in js
 
 
+def test_muestra_el_material_que_queda_en_la_ultima_placa_junto_al_sobrante(js):
+    """Las dos cifras que compiten van juntas en la pantalla: el criterio
+    nuevo puede acortar la tira libre (`sobrante_mm`) para bajar el material
+    que queda en la última placa, así que el usuario tiene que ver las dos
+    para decidir por trabajo."""
+    assert "material_ultima_placa_m2" in js
+    assert "sobrante_mm" in js
+
+
 def test_distingue_un_bug_del_programa_de_un_error_del_dibujo(js):
     """Son dos mensajes distintos: uno manda a corregir el archivo, el otro
     dice que el problema es nuestro y ofrece copiar el detalle."""

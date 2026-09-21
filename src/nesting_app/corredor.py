@@ -309,6 +309,7 @@ def acomodar(
         total=resultado.total_utilization,
         segundos=resultado.seconds,
         sobrante_mm=material.sheet_h - costo.alto_ultima,
+        material_ultima_placa_m2=costo.material_ultima / 1e6,
         carpeta=carpeta,
         avisos=list(avisos),
     )
