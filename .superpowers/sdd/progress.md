@@ -914,3 +914,14 @@ Task 1: completa (commits 34e6d4d..adce827, revisión limpia).
   "gana en alto" de `test_el_costo_prefiere_dejar_menos_material_en_la_ultima_placa`
   exagera: los dos altos empatan en 100.0 y la asercion usa `<=`. Texto mio del plan,
   no del implementador. Arreglar la redaccion si alguien vuelve a tocar ese test.
+Task 2: completa (commits 47e1b35..2677265, revisión limpia).
+  `Resultado.material_ultima_placa_m2` llega al motor -> API -> ventana -> CLI. 1012 passed
+  (1009 + 3), corrida por el controlador. El revisor verificó los dos riesgos nombrados:
+  (a) la cifra SÍ llega a la pantalla (`app.js` la arma en el mismo innerHTML que el
+      sobrante, y `.resultado strong` ya le da `tabular-nums`, por eso no hizo falta
+      tocar index.html ni app.css);
+  (b) `jobs.py`/`test_jobs.py` no son scope creep: `Resultado` vive en `jobs.py`, no en
+      `corredor.py` como decía el plan. ERROR DEL PLAN, corregido por el implementador.
+  Menor pendiente p/revisión final: `tests/app/test_web_javascript.py` sólo comprueba que
+  las dos cifras aparecen en el fuente de app.js, no que salgan juntas en la misma línea
+  renderizada. Un regex de proximidad lo fijaría mejor.
