@@ -2,7 +2,7 @@
 
 import pytest
 
-from nesting.engine.oracle import NestConfig
+from nesting.engine.oracle import NestConfig, transformed_bbox
 from nesting.engine.packer import (
     PartTooLargeError,
     CostoLayout,
@@ -185,3 +185,87 @@ def test_la_recuperacion_no_acepta_un_layout_mas_caro():
     assert layout_cost(salida, [grande, chica]) <= layout_cost(
         entrada, [grande, chica]
     )
+
+
+def _cada_pieza_dentro_de_su_placa(result, piezas):
+    """Ninguna colocación se sale del área útil de la placa que le tocó.
+
+    `verify` no sirve acá: toma UNA medida de placa para todo el layout, y
+    con recortes en el plan cada placa mide distinto.
+    """
+    por_id = {p.id: p for p in piezas}
+    for colocacion in result.placements:
+        hoja = result.sheets[colocacion.sheet]
+        x0, y0, x1, y1 = transformed_bbox(
+            por_id[colocacion.part_id],
+            colocacion.transform.angle_deg,
+            colocacion.transform.mirror,
+        )
+        assert colocacion.transform.dx + x0 >= CONFIG.margin - 1e-6
+        assert colocacion.transform.dy + y0 >= CONFIG.margin - 1e-6
+        assert colocacion.transform.dx + x1 <= hoja.width - CONFIG.margin + 1e-6
+        assert colocacion.transform.dy + y1 <= hoja.height - CONFIG.margin + 1e-6
+
+
+def test_un_reempaque_que_desborda_el_recorte_no_aborta_el_trabajo():
+    """Este trabajo perfectamente válido abortaba con `PartTooLargeError`.
+
+    La recuperación reempaca cada placa anterior con
+    `SheetSupply(stock=<esa placa>)` -- un plan SIN recortes cuyo stock es el
+    recorte mismo. Si la pendiente que encabeza el orden no entra ahí, el
+    reempaque derrama a una SEGUNDA placa de ese mismo recorte, donde ya no
+    entra nada, y como `scraps` está vacío la guarda de recorte vacío no
+    saltea: levanta. Esa excepción salía de `pack()` y se llevaba puesto todo
+    el trabajo.
+
+    El mensaje, además, mentía: describía el área útil del recorte de 500x500
+    y la llamaba "la placa mdf18", que mide 2000x2000.
+    """
+    plan = SheetSupply(
+        stock=STOCK, scraps=(recorte(500.0, 500.0),), material_name="mdf18"
+    )
+    piezas = [rect_part(0, 1500.0, 1500.0), rect_part(1, 400.0, 400.0)]
+
+    result = pack(piezas, plan, CONFIG, ShelfOracle)
+
+    assert sorted(p.part_id for p in result.placements) == [0, 1]
+    assert result.sheets_used == len({p.sheet for p in result.placements})
+    assert len(result.utilization) == result.sheets_used
+    _cada_pieza_dentro_de_su_placa(result, piezas)
+
+
+def test_dos_placas_usadas_con_recortes_en_el_plan():
+    """El reparto entre recorte y placa del material, con dos placas usadas.
+
+    Los demás tests de este archivo terminan todos en UNA placa, así que la
+    recuperación y la compactación -- que sólo corren con dos o más -- nunca
+    se ejercían con recortes en el plan. Es el agujero por donde se coló el
+    `PartTooLargeError` del test de arriba.
+    """
+    plan = SheetSupply(
+        stock=STOCK,
+        scraps=(recorte(100.0, 100.0), recorte(500.0, 500.0)),
+        material_name="mdf18",
+    )
+    piezas = [
+        rect_part(0, 1500.0, 1500.0),
+        rect_part(1, 400.0, 400.0),
+        rect_part(2, 300.0, 300.0),
+    ]
+
+    result = pack(piezas, plan, CONFIG, ShelfOracle)
+
+    # El recorte de 100x100 se salteó; el de 500x500 recibió la pieza chica
+    # y la placa del material se llevó las otras dos.
+    assert result.sheets_used == 2
+    assert [hoja.scrap for hoja in result.sheets] == [True, False]
+    assert (result.sheets[0].width, result.sheets[0].height) == (500.0, 500.0)
+    assert (result.sheets[1].width, result.sheets[1].height) == (2000.0, 2000.0)
+    assert {p.part_id: p.sheet for p in result.placements} == {1: 0, 0: 1, 2: 1}
+
+    # Una sola placa del material abierta: el recorte no cuenta.
+    assert layout_cost(result, piezas).placas_nuevas == 1
+    # Y cada aprovechamiento se mide contra el área de SU placa.
+    assert result.utilization[0] == pytest.approx(160_000.0 / 250_000.0)
+    assert result.utilization[1] == pytest.approx(2_340_000.0 / 4_000_000.0)
+    _cada_pieza_dentro_de_su_placa(result, piezas)

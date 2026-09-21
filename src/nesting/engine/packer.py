@@ -650,16 +650,34 @@ def _recuperar_de_la_ultima_placa(
         en_placa = [by_id[p.part_id] for p in anteriores]
         while pendientes:
             orden = [pendientes[0], *en_placa, *pendientes[1:]]
-            redone = _pack_once(
-                orden,
-                SheetSupply(
-                    stock=result.sheets[placa],
-                    material_name=nombre_material,
-                ),
-                config,
-                oracle_factory,
-                aviso,
-            )
+            try:
+                redone = _pack_once(
+                    orden,
+                    SheetSupply(
+                        stock=result.sheets[placa],
+                        material_name=nombre_material,
+                    ),
+                    config,
+                    oracle_factory,
+                    aviso,
+                )
+            except PartTooLargeError:
+                # NO es un trabajo imposible, y por eso no se propaga. El
+                # plan que se arma acá tiene esta placa -- que puede ser un
+                # recorte chico -- como stock INFINITO y sin recortes. Si
+                # `pendientes[0]` no entra ahí, el reempaque derrama a una
+                # segunda placa idéntica donde ya no entra nada, y como
+                # `scraps` está vacío la guarda de recorte vacío no saltea:
+                # `_pack_once` levanta. La pieza sí entra en la placa que
+                # tiene ahora; lo único que pasó es que este intento de
+                # rescate no sirvió.
+                #
+                # Se trata igual que "no entró ninguna pendiente": se corta
+                # el bucle, la placa se deja exactamente como estaba y se
+                # sigue con la siguiente. Propagarlo abortaba el trabajo
+                # entero, con un mensaje que encima describía el recorte y
+                # lo llamaba la placa del material.
+                break
 
             en_primera = [p for p in redone.placements if p.sheet == 0]
             ids_primera = {p.part_id for p in en_primera}
@@ -753,12 +771,23 @@ def _compact_last_sheet(
         ),
     )
     order = sorted(on_last, key=lambda p: p.area, reverse=True)
-    redone = _pack_once(
-        order,
-        SheetSupply(stock=hoja, material_name=nombre_material),
-        boosted,
-        oracle_factory,
-    )
+    try:
+        redone = _pack_once(
+            order,
+            SheetSupply(stock=hoja, material_name=nombre_material),
+            boosted,
+            oracle_factory,
+        )
+    except PartTooLargeError:
+        # Defensa en profundidad: NO hay un caso reproducido que llegue acá.
+        # Las piezas que se reempacan ya estaban en esta misma placa, así
+        # que cada una entra sola en ella y el derrame que sí se dispara en
+        # `_recuperar_de_la_ultima_placa` (ver el comentario de su `except`)
+        # no debería aparecer. Pero la función ya contempla el derrame con
+        # `if redone.sheets_used != 1: return result`, y una excepción
+        # esquivaría esa salida prevista para abortar el trabajo entero: si
+        # alguna vez pasa, que sea "esta compactación no sirvió".
+        return result
 
     if redone.sheets_used != 1:
         return result
