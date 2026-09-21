@@ -5,7 +5,7 @@ Nothing here invents a number. Every value that ends up in the defaults comes
 out of a run over the project's real files (`bench/files/`).
 
 Criterio para comparar configuraciones entre si (cambiado en la Tarea 6): el
-MISMO que usa el motor, `CostoLayout(placas, material_ultima, alto_ultima)`.
+MISMO que usa el motor, `CostoLayout(placas_nuevas, material_ultima, alto_ultima)`.
 Cada barrido devuelve, por configuracion, placas totales, material medio en
 la ultima placa y tira libre media, ademas del aprovechamiento de la primera
 placa y el tiempo, y `_mejor` ordena por placas, despues por material en la
@@ -80,7 +80,7 @@ FILA = "eje, aprov. 1ra placa, seg. medio, placas totales, material ultima (m2),
 
 Las dos ultimas columnas se agregaron en la Tarea 6 y son las que ahora
 mandan al elegir (`_mejor`): desde la Tarea 1 el motor minimiza
-`CostoLayout(placas, material_ultima, alto_ultima)`, asi que un barrido que
+`CostoLayout(placas_nuevas, material_ultima, alto_ultima)`, asi que un barrido que
 ordenara por aprovechamiento de la primera placa estaria eligiendo por una
 cifra que el motor no persigue. Se dejan igual las tres primeras columnas --
 el aprovechamiento de la primera placa sigue siendo la unica que muestra
@@ -171,7 +171,7 @@ def _mejor(rows: list[tuple]) -> object:
     Hasta la Tarea 6 esto ordenaba por aprovechamiento de la primera placa,
     desempatando por tiempo. Esa metrica ya no es la que el motor persigue:
     desde la Tarea 1 `layout_cost` minimiza
-    `CostoLayout(placas, material_ultima, alto_ultima)`, y las dos cosas se
+    `CostoLayout(placas_nuevas, material_ultima, alto_ultima)`, y las dos cosas se
     separan de verdad -- en el barrido de contacto sobre
     `banqueta final raulo.ai` (Tarea 6), contacto 0.5 y 0.8 empataron en
     aprovechamiento de la primera placa (61.00% las dos) y sin embargo

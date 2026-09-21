@@ -40,7 +40,7 @@ class Weights:
     RECALIBRADO EN LA TAREA 6 (1.0 -> 4.0). La calibración anterior se hizo
     contra el motor conservador y contra `first_sheet_utilization`, que ya no
     es lo que el motor optimiza: desde la Tarea 1 el criterio es
-    `CostoLayout(placas, material_ultima, alto_ultima)`. Se volvió a medir
+    `CostoLayout(placas_nuevas, material_ultima, alto_ultima)`. Se volvió a medir
     con el motor híbrido, sobre tres archivos, midiendo el material que queda
     en la última placa. Tabla completa en
     `docs/superpowers/calibracion.md`; lo que decidió:

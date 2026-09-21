@@ -27,6 +27,15 @@ MATERIAL = Material("test", 1000.0, 1000.0, grain_tolerance=180.0)
 PLAN_LIBRE = SheetSupply(stock=MATERIAL.stock_sheet(), material_name=MATERIAL.name)
 
 
+def dos_placas():
+    """Las placas concretas de un `PackResult` de dos placas armado a mano.
+
+    `layout_cost` las lee: la última placa sale de `result.sheets`, y de ahí
+    también sale cuántas NO son recortes.
+    """
+    return [MATERIAL.stock_sheet(), MATERIAL.stock_sheet()]
+
+
 def base_config(**overrides):
     defaults = dict(sep=8.0, margin=15.0, angles=(0.0, 90.0), mirror=False,
                     resolution=2.0, effort="rapido", seed=0)
@@ -66,14 +75,17 @@ def test_layout_cost_prefers_fewer_sheets():
     one_sheet = pack(few, PLAN_LIBRE, base_config(), RasterOracle)
     several = pack(many, PLAN_LIBRE, base_config(), RasterOracle)
 
-    assert layout_cost(one_sheet, few).placas < layout_cost(several, many).placas
+    assert (
+        layout_cost(one_sheet, few).placas_nuevas
+        < layout_cost(several, many).placas_nuevas
+    )
 
 
 def test_layout_cost_reports_the_height_used_on_the_last_sheet():
     parts = [rect_part(0, 200.0, 200.0)]
     result = pack(parts, PLAN_LIBRE, base_config(), RasterOracle)
     costo = layout_cost(result, parts)
-    sheets, height = costo.placas, costo.alto_ultima
+    sheets, height = costo.placas_nuevas, costo.alto_ultima
 
     assert sheets == 1
     assert 200.0 <= height <= 260.0, "el alto usado es el de la pieza mas el margen"
@@ -98,6 +110,7 @@ def test_el_costo_prefiere_dejar_menos_material_en_la_ultima_placa():
             Placement(3, 1, Transform(0.0, False, 0.0, 0.0)),
         ],
         sheets_used=2,
+        sheets=dos_placas(),
     )
     mucho = PackResult(
         placements=[
@@ -107,6 +120,7 @@ def test_el_costo_prefiere_dejar_menos_material_en_la_ultima_placa():
             Placement(3, 1, Transform(0.0, False, 400.0, 0.0)),
         ],
         sheets_used=2,
+        sheets=dos_placas(),
     )
     # `mucho` deja las tres piezas en una fila baja: gana en alto.
     assert layout_cost(mucho, parts).alto_ultima <= layout_cost(poco, parts).alto_ultima
@@ -124,6 +138,7 @@ def test_el_alto_sigue_desempatando_con_el_mismo_material():
             Placement(1, 1, Transform(0.0, False, 0.0, 0.0)),
         ],
         sheets_used=2,
+        sheets=dos_placas(),
     )
     alta = PackResult(
         placements=[
@@ -131,6 +146,7 @@ def test_el_alto_sigue_desempatando_con_el_mismo_material():
             Placement(1, 1, Transform(0.0, False, 0.0, 500.0)),
         ],
         sheets_used=2,
+        sheets=dos_placas(),
     )
     assert layout_cost(baja, parts).material_ultima == layout_cost(alta, parts).material_ultima
     assert layout_cost(baja, parts) < layout_cost(alta, parts)

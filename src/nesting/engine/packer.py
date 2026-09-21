@@ -124,9 +124,9 @@ def _pack_once(
     placed_area_per_sheet: list[float] = []
 
     # Dos contadores y no uno: `siguiente` avanza por el plan de placas y
-    # `len(usadas)` cuenta las que de verdad recibieron algo. Hoy son el
-    # mismo número; en cuanto la Tarea 3 permita saltear un recorte vacío,
-    # dejan de serlo, y las colocaciones tienen que llevar el segundo.
+    # `len(usadas)` cuenta las que de verdad recibieron algo. Dejan de ser
+    # el mismo número apenas se saltea un recorte vacío (ver la guarda de
+    # `placed_count == 0`), y las colocaciones tienen que llevar el segundo.
     siguiente = 0
     total_ubicadas = 0
     while remaining:
@@ -164,6 +164,24 @@ def _pack_once(
         # se colocó ALGO, no cuánta área, porque una pieza de área neta cero
         # dejaría `placed_area == 0.0` con `still_pending` vacío.
         if placed_count == 0:
+            # Un recorte donde no entra ninguna pieza es normal -- un pedazo
+            # de 100x100 no sirve para nada grande -- así que se saltea y no
+            # llega a existir en el resultado: ni placa al 0% en la
+            # previsualización, ni rectángulo vacío en el DXF. En una placa
+            # del Material sigue siendo el error de siempre.
+            #
+            # LA CONDICIÓN MIRA LA POSICIÓN EN EL PLAN, NO `hoja.scrap`, Y LA
+            # DIFERENCIA ES UN BUCLE INFINITO. Lo que hace seguro saltear no
+            # es que la placa sea un recorte: es que la próxima vuelta vaya a
+            # recibir una placa DISTINTA. Eso vale mientras queden recortes
+            # por consumir, y deja de valer apenas `supply.sheet()` entra en
+            # su placa infinita, que devuelve la misma para siempre. Los dos
+            # `SheetSupply` que este mismo archivo arma adentro
+            # (`_recuperar_de_la_ultima_placa` y `_compact_last_sheet`) pasan
+            # un recorte COMO stock: con `if hoja.scrap` ahí, un reempaque
+            # donde no entrara nada giraría sin fin en vez de levantar.
+            if siguiente - 1 < len(supply.scraps):
+                continue
             _raise_too_large(
                 still_pending[0], hoja, config, choices, supply.material_name
             )
@@ -332,8 +350,18 @@ class CostoLayout:
     volver a significar otra cosa en silencio.
     """
 
-    placas: int
-    """Manda sobre todo lo demás: una placa menos siempre gana."""
+    placas_nuevas: int
+    """Cuántas placas del Material hubo que abrir. Manda sobre todo lo demás.
+
+    Los recortes NO se cuentan: son material que ya está pago, así que
+    llenarlos no cuesta nada y el motor no tiene que evitarlo. Si contaran,
+    el motor preferiría saltear un recorte de 600x800 y meter todo en una
+    placa nueva -- una placa contra dos -- que es exactamente lo contrario
+    de para qué existen los recortes.
+
+    Sin recortes en el plan, este número es idéntico a `sheets_used`, y el
+    costo entero da lo mismo que antes de que existieran.
+    """
 
     material_ultima: float
     """Área de pieza que queda en la última placa, en mm².
@@ -362,8 +390,9 @@ def layout_cost(result: PackResult, parts: Sequence[Part]) -> CostoLayout:
     if not result.placements:
         return CostoLayout(0, 0.0, 0.0)
 
+    placas_nuevas = sum(1 for hoja in result.sheets if not hoja.scrap)
     by_id = {p.id: p for p in parts}
-    last_sheet = result.sheets_used - 1
+    last_sheet = len(result.sheets) - 1
     top = 0.0
     material = 0.0
 
@@ -376,7 +405,7 @@ def layout_cost(result: PackResult, parts: Sequence[Part]) -> CostoLayout:
         top = max(top, placement.transform.dy + y1)
         material += part.area
 
-    return CostoLayout(result.sheets_used, material, top)
+    return CostoLayout(placas_nuevas, material, top)
 
 
 def pack(
@@ -495,8 +524,9 @@ def pack(
     best = _recuperar_de_la_ultima_placa(
         best, parts, config, oracle_factory,
         aviso_recuperacion if progreso is not None else None,
+        supply,
     )
-    best = _compact_last_sheet(best, parts, config, oracle_factory)
+    best = _compact_last_sheet(best, parts, config, oracle_factory, supply)
     best.seconds = time.perf_counter() - started
     return best
 
@@ -518,6 +548,7 @@ def _recuperar_de_la_ultima_placa(
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
     aviso: Callable[[int, int], None] | None = None,
+    supply: SheetSupply | None = None,
 ) -> PackResult:
     """Reintentar en las placas anteriores lo que quedó en la última.
 
@@ -554,13 +585,20 @@ def _recuperar_de_la_ultima_placa(
 
     QUÉ SE ACEPTA
 
-    Un reempaque se acepta sólo si en su primera placa siguen estando TODAS
-    las piezas que ya tenía y entró al menos una pendiente. Con esa regla el
-    costo del layout no puede subir: las placas anteriores conservan sus
-    piezas, la última pierde alguna (y si se queda sin ninguna, baja el
-    conteo de placas, que es el primer campo de `CostoLayout`), y las que
-    quedan en la última no se tocan, así que ni `material_ultima` ni
-    `alto_ultima` pueden crecer.
+    Un reempaque de UNA placa se acepta sólo si en su primera placa siguen
+    estando TODAS las piezas que ya tenía y entró al menos una pendiente.
+    Esa regla hace que empeorar sea improbable -- las placas anteriores
+    conservan sus piezas y la última sólo pierde alguna -- pero YA NO LO
+    GARANTIZA. Antes sí: vaciar la última placa bajaba el conteo de placas,
+    el primer campo de `CostoLayout`, y eso dominaba cualquier otra cosa.
+    Con `placas_nuevas` ese argumento se cayó: vaciar un RECORTE no baja el
+    conteo, así que el desempate pasa a `material_ultima`, y la "última
+    placa" del layout recuperado puede ser otra, con más material arriba que
+    la que se vació.
+
+    Por eso el resultado se compara contra el de entrada al final y se
+    devuelve el original si salió más caro: lo que era una garantía razonada
+    ahora es una verificada.
 
     CUÁNTO CUESTA
 
@@ -579,6 +617,13 @@ def _recuperar_de_la_ultima_placa(
     """
     if result.sheets_used < 2:
         return result
+
+    # El `SheetSupply` de una sola placa que se arma abajo tiene que llevar
+    # el nombre del material: un `PartTooLargeError` que salga de ahí lo
+    # nombra. `pack` siempre pasa el suyo; sin él queda el nombre genérico.
+    nombre_material = (
+        SheetSupply.material_name if supply is None else supply.material_name
+    )
 
     by_id = {p.id: p for p in parts}
     ultima = result.sheets_used - 1
@@ -607,7 +652,10 @@ def _recuperar_de_la_ultima_placa(
             orden = [pendientes[0], *en_placa, *pendientes[1:]]
             redone = _pack_once(
                 orden,
-                SheetSupply(stock=result.sheets[placa]),
+                SheetSupply(
+                    stock=result.sheets[placa],
+                    material_name=nombre_material,
+                ),
                 config,
                 oracle_factory,
                 aviso,
@@ -649,7 +697,7 @@ def _recuperar_de_la_ultima_placa(
         areas[p.sheet] += by_id[p.part_id].area
     area_total = sum(h.area for h in sheets_finales)
 
-    return PackResult(
+    recuperado = PackResult(
         placements=placements,
         sheets_used=len(sheets_finales),
         sheets=sheets_finales,
@@ -660,23 +708,42 @@ def _recuperar_de_la_ultima_placa(
         seconds=result.seconds,
     )
 
+    # La versión anterior devolvía esto sin compararlo, apoyada en un
+    # argumento escrito: si la última placa se vacía baja el conteo de
+    # placas, que es el primer campo del costo, así que nunca empeora. Con
+    # `placas_nuevas` el argumento dejó de valer -- vaciar un RECORTE no baja
+    # ese conteo, y la "última placa" pasa a ser otra, con posiblemente más
+    # material arriba. Comparar cuesta dos recorridos de las colocaciones y
+    # convierte una garantía razonada en una verificada.
+    if layout_cost(recuperado, parts) > layout_cost(result, parts):
+        return result
+    return recuperado
+
 
 def _compact_last_sheet(
     result: PackResult,
     parts: Sequence[Part],
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
+    supply: SheetSupply | None = None,
 ) -> PackResult:
     """Re-pack the last sheet on its own, pulled harder towards the corner."""
     if result.sheets_used < 1:
         return result
 
     last = result.sheets_used - 1
-    hoja = result.sheets[last]
     by_id = {p.id: p for p in parts}
     on_last = [by_id[p.part_id] for p in result.placements if p.sheet == last]
     if len(on_last) < 2:
         return result
+
+    # Después de la guarda de arriba y no antes: un `PackResult` armado a
+    # mano con `sheets` vacío tiene que salir por ese `return`, no reventar
+    # con `IndexError` dos líneas antes.
+    hoja = result.sheets[last]
+    nombre_material = (
+        SheetSupply.material_name if supply is None else supply.material_name
+    )
 
     boosted = replace(
         config,
@@ -686,7 +753,12 @@ def _compact_last_sheet(
         ),
     )
     order = sorted(on_last, key=lambda p: p.area, reverse=True)
-    redone = _pack_once(order, SheetSupply(stock=hoja), boosted, oracle_factory)
+    redone = _pack_once(
+        order,
+        SheetSupply(stock=hoja, material_name=nombre_material),
+        boosted,
+        oracle_factory,
+    )
 
     if redone.sheets_used != 1:
         return result
