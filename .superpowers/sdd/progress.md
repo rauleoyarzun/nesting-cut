@@ -939,3 +939,48 @@ Task 3: completa (commits 76c9253..5e9dbee, revisión limpia tras un arreglo).
   Menor pendiente p/revisión final: `EPS = 1e-6` sigue duplicado en `exact.py` en vez de
   importarse de `verify.py`, aunque el arreglo ya sentó el precedente con la otra
   constante y el propio docstring dice que "tienen que coincidir". Una línea.
+Task 4: completa (commits 4cf85ab..788c7f9, revisión aprobada). 1021 passed (1019 + 2).
+  La grilla propone con holgura optimista y `ArbitroExacto` dispone.
+  RESULTADO MEDIDO sobre NESTING 2.ai: separación real 10.00 mm (antes 16.00), 2 placas,
+  31/5, cero violaciones, 12.4 s. Los cuatro riesgos nombrados verificados por el revisor:
+  dirección de redondeo de `radio_optimista` (floor, correcta), fallback conservador real
+  y ejercitado por un test que comprueba el EFECTO (separación > 12), desviación de la
+  banda de contacto justificada y documentada en el código, y `best_placement` sin efectos.
+  Desviación deliberada del plan, con evidencia: la banda de contacto se queda sobre
+  `clearance` y no sobre la holgura optimista. El plan decía lo contrario, pero eso rompe
+  `test_a_small_part_is_nested_inside_a_big_hole` (la holgura fina se traga la zona de
+  contacto). Medido y anotado en el docstring de `_banda_de_contacto`.
+
+  >>> ENTRADA OBLIGATORIA PARA LA TASK 6 (recalibración):
+      El peso `contact` está calibrado contra el motor conservador y AHORA CUESTA PIEZAS.
+      Medido por el implementador sobre NESTING 2.ai: con `contact = 1.0` (el actual) da
+      31/5; con `contact = 0` da 34/2. También costaba antes del cambio (29/7 con, 30/6 sin).
+      No se tocó ningún peso: recalibrarlo es trabajo de la tarea 6, con el bench completo,
+      cuidando `test_a_small_part_is_nested_inside_a_big_hole`, que es la capacidad que el
+      término de contacto existe para sostener.
+
+  MENORES PENDIENTES P/REVISIÓN FINAL (varios valen la pena, van en una sola tanda al final):
+  (a) `tests/engine/raster/test_raster_oracle.py:312`: el test estrella usa
+      `pytest.approx(10.0, abs=0.51)`, una banda de DOS lados, así que un layout con 9.5 mm
+      de separación real -- una violación de verdad -- pasa el test que existe para probar
+      la separación exacta. Tolerancia mía del plan. Arreglo: cota de un solo lado más una
+      llamada a `verify(...)` en el mismo test.
+  (b) `best_position` quedó muerto en producción: la rama conservadora reimplementa su
+      argmax en línea (`oracle.py:337-339`). Duplicación y riesgo de deriva; quince
+      aserciones de `test_scoring.py` ahora cuidan un envoltorio que el motor no usa.
+  (c) La pasada conservadora corre aunque no pueda ayudar: `_buscar_con` devuelve `None`
+      por dos motivos distintos (conjunto vacío vs presupuesto agotado) y sólo el segundo
+      justifica el fallback. La instrumentación del implementador lo muestra: 48 de 48
+      fallbacks del trabajo real fueron del tipo inútil, cada uno una correlación completa
+      de placa de más.
+  (d) La afirmación de "salida sin warnings" no está respaldada: las corridas usan
+      `-p no:warnings`, que apaga el plugin. Instrucción mía. El controlador tiene que
+      correr `pytest` pelado una vez antes de cerrar.
+  (e) La desigualdad del superconjunto se cumple con IGUALDAD, no estrictamente, y el
+      docstring la enuncia como si fuera estricta. Vale una frase.
+  (f) El mismo efecto de separación fantasma sigue vigente CONTRA EL BORDE de la placa:
+      el material queda hasta `margin + 2*INFLACION_MAX_PX*resolution` del borde físico
+      aunque el árbitro lo aceptaría a `margin`. Fuera del alcance de la tarea, pero nada
+      en el código lo anota.
+  (g) Nits: `_mejores` recorre el arreglo entero por tanda; imports dentro de los cuerpos
+      de dos tests.
