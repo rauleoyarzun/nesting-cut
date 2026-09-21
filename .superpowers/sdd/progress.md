@@ -886,3 +886,22 @@ lo ya pusheado.
 ## Plan de los globos de ayuda (2026-09-20)
 
 Ledger aparte: `.superpowers/sdd/info-opciones/progress.md`
+
+---
+
+# Progreso — Densidad de acomodo y colisión exacta
+
+Plan: docs/superpowers/plans/2026-09-20-densidad-y-colision-exacta.md
+Modo: subagent-driven-development, CON git, en worktree
+Rama: `worktree-densidad-colision-exacta`
+Base de la rama: 1d32512 (el commit del plan)
+Línea base de tests antes de empezar: **1007 passed**
+
+Nota del controlador (pre-flight): la tarea 5 trae los cuerpos de sus tres
+tests como `...` en el plan. Es un placeholder, o sea un defecto del plan
+según el estándar de writing-plans. Resolución: el implementador de la
+tarea 5 los escribe completos antes de tocar `packer.py`, y se le despacha
+con un modelo capaz en vez del barato. No se bloquea el plan por esto.
+
+## Tareas
+
