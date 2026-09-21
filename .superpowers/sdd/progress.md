@@ -1016,3 +1016,43 @@ Task 5: completa (commits 353177c..4bea902, aprobada tras un arreglo). 1024 pass
 NOTA PARA LA TASK 6: el plan manda correr `bench/run_bench.py --resoluciones ... --esfuerzos ...`
   y esos flags NO EXISTEN. La herramienta correcta es `bench/calibrate.py`, que ya barre peso
   de contacto, resolución y esfuerzo, y toma sólo `--material` y `--copias`.
+Task 6: completa (commits 32fa114..a5d6238, aprobada tras un arreglo). 1028 passed.
+  `Weights.contact` 1.0 -> 4.0, medido. `resolution` se queda en 2.0 y `EFFORT_RESTARTS`
+  también, los dos con la medición escrita en el docstring. `bench/calibrate.py` ahora
+  ordena por el criterio del motor -- (placas, material última, seg) -- en vez de por
+  aprovechamiento de la primera placa, que era la métrica vieja.
+  RESULTADO FINAL sobre NESTING 2.ai (mdf15, sep 10, borde 10, rapido): 2 placas, 34/2,
+  0.0716 m2 en la última placa, tira libre 2365 mm, 0 violaciones, 25 s.
+  HIPÓTESIS REFUTADA, honestamente: la resolución fina SÍ compra algo en los archivos del
+  bench (1.0 mm/px baja 5-7% el material de la última placa por ~5x el tiempo), aunque no
+  en el archivo de referencia. 0.5 salió PEOR. 2.0 se queda como la rodilla medida.
+  Lo que NO se pudo bajar: el piso del anidado en agujero se rebisectó en ~0.7, así que
+  `contact` no se puede apagar. Refuta el "ponelo en cero" que sugería la medición cruda.
+  Arreglo (a5d6238): tres defectos de prosa en la calibración, todos del tipo que este
+  código trata como defecto aunque el número esté bien --
+  (1) la ventaja de velocidad de 1.6-4.8x atribuida a 0.0 Y 0.5, cuando es sólo de 0.0, y
+      contradiciendo al propio docstring dos párrafos más abajo;
+  (2) una cita a "48 rectángulos, el fixture de test_different_seeds..." cuando el fixture
+      tiene 52 y antes tenía 43. Era la única celda donde el peso nuevo salva una placa
+      entera, o sea la que un escéptico intenta reproducir primero. NO SE PUDO ESTABLECER
+      qué se midió (el script no sobrevivió la sesión) y quedó marcado como no establecido
+      en los dos lugares, en vez de adivinar;
+  (3) la tabla de `EFFORT_RESTARTS` sin decir que se midió con contacto 1.0, el valor que
+      este mismo commit deja de usar. Ahora lo dice y deja anotada la pregunta abierta.
+  Menores pendientes p/revisión final:
+  (k) ningún test fija `Weights.contact == 4.0`; la única guarda es el test del agujero,
+      que pasaría con cualquier valor >= 0.7.
+  (l) `test_raster_oracle.py:219-227` compara contacto 0.0 contra 1.0; ninguno es ya el
+      valor por omisión.
+  (m) `_mejor` de calibrate.py compara una columna SUMADA (placas) contra dos PROMEDIADAS
+      (material, seg); con archivos de escalas muy distintas el promedio lo domina el más
+      grande.
+  (n) los dos README fijan "1028" y "~7 min" a mano; así fue como el "856" quedó viejo.
+  (o) mezcla de idiomas dentro de una misma clase: en `Weights`, `contact` pasó a español
+      y `bottom_left` sigue en inglés. Idem en `NestConfig`.
+  (p) el fixture de `test_different_seeds_can_give_different_results` pasó de 43 a 52
+      piezas y de estar "justo antes del quiebre" a "pasado el quiebre": no borra
+      cobertura, pero perdió la razón de ser de su selección y tarda más.
+  (q) 22 warnings en la corrida pelada: 20 son `Image.getdata` (Pillow) de los propios
+      tests del proyecto y 2 de fastapi/starlette. Ninguno nuevo de este plan; las
+      corridas con `-p no:warnings` de las tareas anteriores los estaban tapando.
