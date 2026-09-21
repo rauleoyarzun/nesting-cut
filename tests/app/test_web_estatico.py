@@ -120,17 +120,28 @@ def test_la_revision_tiene_con_que_acercarse(html, id_):
     assert f'id="{id_}"' in html
 
 
-def test_no_hay_emojis_en_la_interfaz(html):
+@pytest.mark.parametrize("archivo", [
+    "index.html", "app.js", "materiales.js", "info.js",
+])
+def test_no_hay_emojis_en_la_interfaz(archivo):
     """Los íconos son SVG con trazo. Un emoji se ve distinto en cada sistema
-    y en una herramienta de taller queda fuera de lugar."""
+    y en una herramienta de taller queda fuera de lugar.
+
+    Mira los cuatro archivos y no sólo el HTML: los diez textos de ayuda de
+    cada opción viven en `info.js`, así que ahí hay tanta prosa de cara al
+    usuario como en la pantalla. Mientras esto miró sólo `index.html`, la
+    regla no cubría justamente donde está el texto que alguien lee."""
     # Los rangos que faltaban dejaban pasar banderas, ⭐, ⌛ y ‼. Se mide por
     # categoría Unicode además de por rango: "So" (símbolo otro) cubre los
     # emojis sueltos sin tener que enumerar bloques a mano.
+    texto = (rutas.recurso("web") / archivo).read_text(encoding="utf-8")
     sospechosos = [
-        c for c in html
+        c for c in texto
         if unicodedata.category(c) == "So" or "\U0001F000" <= c <= "\U0001FAFF"
     ]
-    assert not sospechosos, f"hay símbolos que no son texto: {sospechosos}"
+    assert not sospechosos, (
+        f"hay símbolos que no son texto en {archivo}: {sospechosos}"
+    )
 
 
 def _reglas(css):
@@ -321,6 +332,11 @@ def test_el_boton_de_espejadas_esta_afuera_de_su_casilla(html):
     """Un `<button>` adentro de un `<label>` hereda su clic: abrir la ayuda
     daría vuelta la casilla, que es justo lo contrario de lo que el usuario
     pidió al apretarla."""
+    casillas = html.count('<label class="casilla">')
+    assert casillas == 1, (
+        f"hay {casillas} `<label class=\"casilla\">` y este test asume una: "
+        "con dos, mira la que no es y pasa sin haber probado nada"
+    )
     inicio = html.index('<label class="casilla">')
     cierre = html.index("</label>", inicio)
     assert 'data-info="espejo"' not in html[inicio:cierre], (
@@ -342,9 +358,28 @@ def test_el_globo_no_atrapa_el_foco(html):
 
 
 def test_el_globo_flota_y_no_se_recorta(css):
-    """`.panel-opciones` tiene `overflow-y: auto`: un globo posicionado en
-    absoluto adentro de ese panel se recorta contra el borde justo cuando el
-    campo está abajo de todo -- que es donde están las avanzadas, las que más
-    falta hacen."""
+    """`ubicar()` ubica el globo con el rect del ícono, y un rect viene en
+    coordenadas de viewport: `fixed` es el único posicionamiento que las
+    consume tal cual.
+
+    El motivo no es que un `absolute` se recortaría contra el
+    `overflow-y: auto` de `.panel-opciones`. Eso valdría si el globo viviera
+    adentro del panel, y no vive ahí: `#globo-info` es hijo directo de
+    `<body>`. La explicación vieja describía un escenario que no puede pasar,
+    que en un código donde los comentarios son la herramienta de depuración
+    es peor que no explicar nada."""
     globo = next(c for s, c in _reglas(css) if s == ".globo-info")
     assert "position: fixed" in globo
+
+
+def test_ninguna_regla_usa_z_index(css):
+    """El globo se dibuja arriba del panel y abajo de los carteles por el
+    orden del documento, y nada más: va antes de `#cartel-unidades`. Entre
+    elementos posicionados eso sólo decide mientras NADIE declare `z-index`.
+    El día que alguien ponga uno en cualquier regla, esa premisa se cae en
+    silencio y el globo puede terminar tapando un cartel de error."""
+    con_z = [s for s, cuerpo in _reglas(css) if "z-index" in cuerpo]
+    assert not con_z, (
+        f"estas reglas declaran z-index: {con_z}. El orden de pintado del "
+        "globo dejó de estar garantizado por el orden del documento"
+    )

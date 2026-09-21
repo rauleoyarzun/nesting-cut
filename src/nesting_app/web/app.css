@@ -288,10 +288,13 @@ select.control {
 }
 
 /* --- el globo de ayuda --- */
-/* `fixed` y no `absolute`: `.panel-opciones` tiene `overflow-y: auto`, y un
-   globo absoluto adentro se recorta contra su borde justo cuando el campo
-   está abajo de todo. Las coordenadas las pone `info.js` con el rect del
-   botón. */
+/* `fixed` porque las coordenadas salen de `getBoundingClientRect()` del
+   ícono, que las da relativas al viewport: `fixed` es el único
+   posicionamiento que las consume tal cual. Las escribe `info.js`.
+
+   No es, como decía acá antes, para que el panel no lo recorte: eso valdría
+   si el globo viviera adentro de `.panel-opciones` --que sí tiene
+   `overflow-y: auto`-- y no vive ahí, es hijo directo de `<body>`. */
 .globo-info {
   position: fixed; max-width: 280px; padding: 12px 14px;
   background: var(--panel); border: 1px solid var(--borde);

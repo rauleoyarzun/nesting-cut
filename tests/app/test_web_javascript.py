@@ -650,7 +650,21 @@ def claves_y_textos(js_info: str) -> dict[str, str]:
     comillas y un par clave/valor por línea -- es un formato que se parsea
     en cuatro líneas, y el test que sigue lo obliga a seguir siéndolo.
     """
+    # `.index()` pelado tira `ValueError: substring not found`, sin decir qué
+    # archivo ni qué se esperaba, y de acá cuelgan 21 tests: renombrar
+    # `TEXTOS` daría 21 trazas sin una palabra útil. Mismo criterio que
+    # `_cuerpo_de_funcion` y `_cuerpo_de_handler`.
+    if "const TEXTOS = {" not in js_info:
+        pytest.fail(
+            "no encontré `const TEXTOS = {` en info.js. Es el mapa de los "
+            "textos de ayuda; si lo renombraste, actualizá este helper"
+        )
     cuerpo = js_info[js_info.index("const TEXTOS = {"):]
+    if "\n};" not in cuerpo:
+        pytest.fail(
+            "el literal `TEXTOS` de info.js no cierra con `};` al principio "
+            "de un renglón, que es el formato que este helper sabe leer"
+        )
     cuerpo = cuerpo[:cuerpo.index("\n};")]
     return {
         m.group(1): m.group(2).replace('\\"', '"')
@@ -1363,7 +1377,7 @@ def test_cada_listener_se_registra_donde_el_evento_pasa(info_limpio, receptor, e
     )
 
 
-def test_el_scroll_y_el_resize_cierran_llamando_a_cerrar(js_info, info_limpio):
+def test_el_scroll_y_el_resize_cierran_llamando_a_cerrar(info_limpio):
     """El scroll y el resize tienen que *cerrar* el globo, no sólo
     mencionar esas palabras en algún lado del archivo. Si en vez de la
     referencia a `cerrar` quedara otra función (o una que sólo hace
