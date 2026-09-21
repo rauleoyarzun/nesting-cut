@@ -20,8 +20,10 @@ from nesting.engine.shelf_oracle import ShelfOracle
 from nesting.geometry.verify import verify
 from nesting.model.material import Material
 from nesting.model.part import Part
+from nesting.model.sheet import SheetSupply
 
 PLACA = Material("mdf", 1000.0, 1000.0, grain_tolerance=180.0)
+PLAN_LIBRE = SheetSupply(stock=PLACA.stock_sheet(), material_name=PLACA.name)
 CONFIG = NestConfig(sep=10.0, margin=20.0, angles=(0.0,), mirror=False, effort="rapido")
 """Una sola orientación a propósito: el escenario de abajo está calculado a
 mano contra el cursor de estantes, y una rotación libre lo volvería
@@ -56,14 +58,14 @@ def test_una_pieza_de_la_ultima_placa_vuelve_a_la_primera_si_entra():
     """Escenario armado para que la avaricia falle: una pieza ancha se
     coloca primero y ocupa el centro, una angosta no entra al lado, y
     recién las siguientes dejan libre la franja donde la angosta sí cabe."""
-    goloso = _pack_once(TRES, PLACA, CONFIG, ShelfOracle)
+    goloso = _pack_once(TRES, PLAN_LIBRE, CONFIG, ShelfOracle)
 
     # Sin esto el test sería teatro: hay que ver a la avaricia fallar.
     assert goloso.sheets_used == 2
     assert [p.sheet for p in goloso.placements if p.part_id == ANGOSTA.id] == [1]
 
     recuperado = _recuperar_de_la_ultima_placa(
-        goloso, TRES, PLACA, CONFIG, ShelfOracle
+        goloso, TRES, CONFIG, ShelfOracle
     )
 
     assert [p.sheet for p in recuperado.placements if p.part_id == ANGOSTA.id] == [0]
@@ -74,17 +76,17 @@ def test_una_pieza_de_la_ultima_placa_vuelve_a_la_primera_si_entra():
     ) == []
 
     # Y de punta a punta: `pack` tiene que devolver una sola placa.
-    assert pack(TRES, PLACA, CONFIG, ShelfOracle).sheets_used == 1
+    assert pack(TRES, PLAN_LIBRE, CONFIG, ShelfOracle).sheets_used == 1
 
 
 def test_si_la_ultima_placa_queda_vacia_se_descarta():
     """Recuperar la última pieza de la última placa tiene que bajar el
     conteo de placas, no dejar una placa vacía en el resultado."""
-    goloso = _pack_once(TRES, PLACA, CONFIG, ShelfOracle)
+    goloso = _pack_once(TRES, PLAN_LIBRE, CONFIG, ShelfOracle)
     assert goloso.sheets_used == 2
 
     recuperado = _recuperar_de_la_ultima_placa(
-        goloso, TRES, PLACA, CONFIG, ShelfOracle
+        goloso, TRES, CONFIG, ShelfOracle
     )
 
     assert recuperado.sheets_used == 1
@@ -105,6 +107,7 @@ def _escenario_al_azar(seed, motor):
     """Piezas rectangulares al azar sobre una placa chica, y su motor."""
     rng = random.Random(seed)
     material = Material("mdf", 800.0, 800.0, grain_tolerance=180.0)
+    plan = SheetSupply(stock=material.stock_sheet(), material_name=material.name)
     config = NestConfig(sep=10.0, margin=10.0, angles=(0.0, 90.0), mirror=False,
                         effort="rapido", resolution=4.0)
     parts = [
@@ -112,14 +115,14 @@ def _escenario_al_azar(seed, motor):
         for i in range(rng.randrange(6, 14))
     ]
     if motor == "shelf":
-        return parts, material, config, ShelfOracle
+        return parts, plan, material, config, ShelfOracle
 
     cache = MaskCache()
 
     def factory():
         return RasterOracle(cache=cache)
 
-    return parts, material, config, factory
+    return parts, plan, material, config, factory
 
 
 def test_la_recuperacion_nunca_empeora_el_costo():
@@ -130,17 +133,17 @@ def test_la_recuperacion_nunca_empeora_el_costo():
 
     for motor, semillas in (("shelf", range(30)), ("raster", range(20))):
         for seed in semillas:
-            parts, material, config, factory = _escenario_al_azar(seed, motor)
+            parts, plan, material, config, factory = _escenario_al_azar(seed, motor)
             antes = _pack_once(
                 sorted(parts, key=lambda p: p.area, reverse=True),
-                material, config, factory,
+                plan, config, factory,
             )
             if antes.sheets_used < 2:
                 continue
             multiplaca += 1
 
             despues = _recuperar_de_la_ultima_placa(
-                antes, parts, material, config, factory
+                antes, parts, config, factory
             )
 
             caso = (motor, seed)

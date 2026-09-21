@@ -11,8 +11,10 @@ from nesting.geometry.verify import verify
 from nesting.model.entities import Transform
 from nesting.model.material import Material
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import SheetSupply
 
 MATERIAL = Material("test", 1000.0, 1000.0, grain_tolerance=180.0)
+PLAN_LIBRE = SheetSupply(stock=MATERIAL.stock_sheet(), material_name=MATERIAL.name)
 CONFIG = NestConfig(sep=10.0, margin=20.0, angles=(0.0, 90.0), mirror=False, resolution=2.0)
 
 
@@ -98,7 +100,7 @@ def test_a_full_layout_passes_the_verifier():
 def test_rotated_and_mirrored_layouts_pass_the_verifier():
     config = NestConfig(sep=10.0, margin=20.0, angles=(0.0, 90.0), mirror=True, resolution=2.0)
     parts = [rect_part(i, 200.0, 70.0) for i in range(12)]
-    result = pack(parts, MATERIAL, config, RasterOracle)
+    result = pack(parts, PLAN_LIBRE, config, RasterOracle)
 
     assert verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
                   sep=config.sep, margin=config.margin) == []
@@ -106,7 +108,7 @@ def test_rotated_and_mirrored_layouts_pass_the_verifier():
 
 def test_curved_parts_pass_the_verifier():
     parts = [circle_part(i, 90.0) for i in range(12)]
-    result = pack(parts, MATERIAL, CONFIG, RasterOracle)
+    result = pack(parts, PLAN_LIBRE, CONFIG, RasterOracle)
     assert verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
                   sep=CONFIG.sep, margin=CONFIG.margin) == []
 
@@ -114,7 +116,7 @@ def test_curved_parts_pass_the_verifier():
 def test_a_small_part_is_nested_inside_a_big_hole():
     """La ganancia de la spec 5.2, verificada end to end."""
     parts = [ring_part(0, 600.0, 400.0), rect_part(1, 200.0, 200.0)]
-    result = pack(parts, MATERIAL, CONFIG, RasterOracle)
+    result = pack(parts, PLAN_LIBRE, CONFIG, RasterOracle)
 
     assert result.sheets_used == 1
     assert len(result.placements) == 2
@@ -168,8 +170,8 @@ def test_the_raster_engine_fits_more_parts_on_a_single_sheet_than_the_shelf_engi
     parts = [circle_part(i, 120.0) for i in range(14)]
     config = NestConfig(sep=8.0, margin=15.0, angles=(0.0,), mirror=False, resolution=2.0)
 
-    shelf = pack(parts, MATERIAL, config, ShelfOracle)
-    raster = pack(parts, MATERIAL, config, RasterOracle)
+    shelf = pack(parts, PLAN_LIBRE, config, ShelfOracle)
+    raster = pack(parts, PLAN_LIBRE, config, RasterOracle)
 
     shelf_on_first_sheet = sum(1 for p in shelf.placements if p.sheet == 0)
     raster_on_first_sheet = sum(1 for p in raster.placements if p.sheet == 0)
@@ -198,8 +200,8 @@ def test_the_raster_engine_packs_the_first_sheet_denser_with_curved_and_concave_
     parts += [notched_circle_part(12 + i, 120.0) for i in range(4)]
     config = NestConfig(sep=8.0, margin=15.0, angles=(0.0,), mirror=False, resolution=2.0)
 
-    shelf = pack(parts, MATERIAL, config, ShelfOracle)
-    raster = pack(parts, MATERIAL, config, RasterOracle)
+    shelf = pack(parts, PLAN_LIBRE, config, ShelfOracle)
+    raster = pack(parts, PLAN_LIBRE, config, RasterOracle)
 
     # Ambos deben haber tenido que abrir una segunda placa: si no, la
     # comparacion de la primera placa no tendria sentido (no hubo sobrante
@@ -211,8 +213,8 @@ def test_the_raster_engine_packs_the_first_sheet_denser_with_curved_and_concave_
 
 def test_the_raster_engine_is_deterministic():
     parts = [rect_part(i, 140.0, 90.0) for i in range(10)]
-    first = pack(parts, MATERIAL, CONFIG, RasterOracle)
-    second = pack(parts, MATERIAL, CONFIG, RasterOracle)
+    first = pack(parts, PLAN_LIBRE, CONFIG, RasterOracle)
+    second = pack(parts, PLAN_LIBRE, CONFIG, RasterOracle)
     assert first.placements == second.placements
 
 
@@ -220,8 +222,8 @@ def test_contact_weight_produces_tighter_packing_than_bottom_left_alone():
     parts = [circle_part(i, 100.0) for i in range(12)]
     base = NestConfig(sep=8.0, margin=15.0, angles=(0.0,), mirror=False, resolution=2.0)
 
-    bl_only = pack(parts, MATERIAL, replace(base, weights=Weights(1.0, 0.0)), RasterOracle)
-    with_contact = pack(parts, MATERIAL, replace(base, weights=Weights(1.0, 1.0)),
+    bl_only = pack(parts, PLAN_LIBRE, replace(base, weights=Weights(1.0, 0.0)), RasterOracle)
+    with_contact = pack(parts, PLAN_LIBRE, replace(base, weights=Weights(1.0, 1.0)),
                         RasterOracle)
 
     assert with_contact.total_utilization >= bl_only.total_utilization
@@ -230,7 +232,7 @@ def test_contact_weight_produces_tighter_packing_than_bottom_left_alone():
 def test_a_finer_resolution_does_not_break_the_verifier():
     parts = [circle_part(i, 80.0) for i in range(8)]
     config = NestConfig(sep=6.0, margin=10.0, angles=(0.0,), mirror=False, resolution=0.5)
-    result = pack(parts, MATERIAL, config, RasterOracle)
+    result = pack(parts, PLAN_LIBRE, config, RasterOracle)
     assert verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
                   sep=config.sep, margin=config.margin) == []
 

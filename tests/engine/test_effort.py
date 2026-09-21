@@ -18,11 +18,13 @@ from nesting.geometry.verify import verify
 from nesting.model.entities import Transform
 from nesting.model.material import Material
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import SheetSupply
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bench"))
 from make_sample import write_sample  # noqa: E402
 
 MATERIAL = Material("test", 1000.0, 1000.0, grain_tolerance=180.0)
+PLAN_LIBRE = SheetSupply(stock=MATERIAL.stock_sheet(), material_name=MATERIAL.name)
 
 
 def base_config(**overrides):
@@ -53,7 +55,7 @@ def test_the_effort_table_has_the_three_levels():
 def test_an_unknown_effort_level_is_rejected():
     parts = [rect_part(0, 100.0, 100.0)]
     with pytest.raises(UnknownEffortError) as info:
-        pack(parts, MATERIAL, base_config(effort="turbo"), RasterOracle)
+        pack(parts, PLAN_LIBRE, base_config(effort="turbo"), RasterOracle)
     assert "turbo" in str(info.value)
 
 
@@ -61,15 +63,15 @@ def test_layout_cost_prefers_fewer_sheets():
     few = [rect_part(i, 300.0, 300.0) for i in range(4)]
     many = [rect_part(i, 300.0, 300.0) for i in range(16)]
 
-    one_sheet = pack(few, MATERIAL, base_config(), RasterOracle)
-    several = pack(many, MATERIAL, base_config(), RasterOracle)
+    one_sheet = pack(few, PLAN_LIBRE, base_config(), RasterOracle)
+    several = pack(many, PLAN_LIBRE, base_config(), RasterOracle)
 
     assert layout_cost(one_sheet, few).placas < layout_cost(several, many).placas
 
 
 def test_layout_cost_reports_the_height_used_on_the_last_sheet():
     parts = [rect_part(0, 200.0, 200.0)]
-    result = pack(parts, MATERIAL, base_config(), RasterOracle)
+    result = pack(parts, PLAN_LIBRE, base_config(), RasterOracle)
     costo = layout_cost(result, parts)
     sheets, height = costo.placas, costo.alto_ultima
 
@@ -136,16 +138,16 @@ def test_el_alto_sigue_desempatando_con_el_mismo_material():
 
 def test_rapido_is_a_single_pass():
     parts = [circle_part(i, 90.0) for i in range(10)]
-    first = pack(parts, MATERIAL, base_config(effort="rapido"), RasterOracle)
-    second = pack(parts, MATERIAL, base_config(effort="rapido"), RasterOracle)
+    first = pack(parts, PLAN_LIBRE, base_config(effort="rapido"), RasterOracle)
+    second = pack(parts, PLAN_LIBRE, base_config(effort="rapido"), RasterOracle)
     assert first.placements == second.placements
 
 
 def test_the_same_seed_gives_the_same_result():
     parts = [circle_part(i, 80.0) for i in range(12)]
     config = base_config(effort="normal", seed=7)
-    assert pack(parts, MATERIAL, config, RasterOracle).placements == \
-           pack(parts, MATERIAL, config, RasterOracle).placements
+    assert pack(parts, PLAN_LIBRE, config, RasterOracle).placements == \
+           pack(parts, PLAN_LIBRE, config, RasterOracle).placements
 
 
 def test_different_seeds_can_give_different_results():
@@ -171,16 +173,16 @@ def test_different_seeds_can_give_different_results():
              (250.0, 40.0), (100.0, 100.0), (170.0, 110.0), (60.0, 300.0),
              (140.0, 140.0), (90.0, 220.0)]
     parts = [rect_part(i, *sizes[i % len(sizes)]) for i in range(52)]
-    a = pack(parts, MATERIAL, base_config(effort="normal", seed=1), RasterOracle)
-    b = pack(parts, MATERIAL, base_config(effort="normal", seed=2), RasterOracle)
+    a = pack(parts, PLAN_LIBRE, base_config(effort="normal", seed=1), RasterOracle)
+    b = pack(parts, PLAN_LIBRE, base_config(effort="normal", seed=2), RasterOracle)
     assert a.placements != b.placements
 
 
 def test_normal_is_never_worse_than_rapido():
     """El costo del mejor de N intentos no puede superar al del primero."""
     parts = [circle_part(i, 85.0) for i in range(16)]
-    quick = pack(parts, MATERIAL, base_config(effort="rapido"), RasterOracle)
-    normal = pack(parts, MATERIAL, base_config(effort="normal", seed=3), RasterOracle)
+    quick = pack(parts, PLAN_LIBRE, base_config(effort="rapido"), RasterOracle)
+    normal = pack(parts, PLAN_LIBRE, base_config(effort="normal", seed=3), RasterOracle)
 
     assert layout_cost(normal, parts) <= layout_cost(quick, parts)
 
@@ -189,7 +191,7 @@ def test_every_effort_level_produces_a_valid_layout():
     parts = [circle_part(i, 90.0) for i in range(14)]
     for effort in ("rapido", "normal", "lento"):
         config = base_config(effort=effort, seed=5)
-        result = pack(parts, MATERIAL, config, RasterOracle)
+        result = pack(parts, PLAN_LIBRE, config, RasterOracle)
         violations = verify(parts, result.placements, MATERIAL.sheet_w, MATERIAL.sheet_h,
                             sep=config.sep, margin=config.margin)
         assert violations == [], f"el nivel {effort} produjo una salida invalida"
@@ -198,7 +200,7 @@ def test_every_effort_level_produces_a_valid_layout():
 def test_every_part_is_placed_at_every_effort_level():
     parts = [rect_part(i, 150.0, 100.0) for i in range(12)]
     for effort in ("rapido", "normal", "lento"):
-        result = pack(parts, MATERIAL, base_config(effort=effort), RasterOracle)
+        result = pack(parts, PLAN_LIBRE, base_config(effort=effort), RasterOracle)
         assert len(result.placements) == len(parts)
 
 
@@ -206,7 +208,7 @@ def test_the_last_sheet_gets_compacted():
     """Dos placas: la segunda tiene que quedar apretada contra el borde de abajo."""
     parts = [rect_part(i, 400.0, 400.0) for i in range(6)]
     config = base_config(effort="normal", seed=2)
-    result = pack(parts, MATERIAL, config, RasterOracle)
+    result = pack(parts, PLAN_LIBRE, config, RasterOracle)
 
     assert result.sheets_used >= 2
     last_height = layout_cost(result, parts).alto_ultima
@@ -215,8 +217,8 @@ def test_the_last_sheet_gets_compacted():
 
 def test_the_reported_time_grows_with_the_effort():
     parts = [circle_part(i, 90.0) for i in range(10)]
-    quick = pack(parts, MATERIAL, base_config(effort="rapido"), RasterOracle)
-    normal = pack(parts, MATERIAL, base_config(effort="normal"), RasterOracle)
+    quick = pack(parts, PLAN_LIBRE, base_config(effort="rapido"), RasterOracle)
+    normal = pack(parts, PLAN_LIBRE, base_config(effort="normal"), RasterOracle)
     assert normal.seconds > quick.seconds
 
 
@@ -243,7 +245,7 @@ def test_effort_levels_are_monotonic():
         for seed in (0, 1, 3):
             costs = {
                 effort: layout_cost(
-                    pack(parts, MATERIAL, base_config(effort=effort, seed=seed,
+                    pack(parts, PLAN_LIBRE, base_config(effort=effort, seed=seed,
                                                        resolution=5.0), RasterOracle),
                     parts,
                 )
@@ -273,7 +275,9 @@ def test_effort_levels_are_monotonic_on_the_reported_regression(tmp_path):
     material = Material("mdf18", 1830.0, 2600.0, grain_tolerance=180.0)
     costs = {
         effort: layout_cost(
-            pack(parts, material,
+            pack(parts,
+                 SheetSupply(stock=material.stock_sheet(),
+                             material_name=material.name),
                  NestConfig(sep=6.0, margin=10.0, resolution=3.0, effort=effort, seed=1),
                  RasterOracle),
             parts,

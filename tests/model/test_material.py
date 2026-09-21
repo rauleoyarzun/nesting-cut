@@ -1,34 +1,6 @@
 import pytest
 
-from nesting.model.material import Material, allowed_angles, load_materials
-
-FREE = Material("mdf18", 1830.0, 2600.0, grain_tolerance=180.0)
-GRAIN = Material("multilam18", 1220.0, 2440.0, grain_tolerance=5.0)
-
-
-def test_free_rotation_allows_every_angle():
-    angles = [0.0, 15.0, 90.0, 137.0, 180.0, 270.0]
-    assert allowed_angles(FREE, angles) == angles
-
-
-def test_grain_constraint_keeps_only_zero_and_one_eighty():
-    assert allowed_angles(GRAIN, [0.0, 90.0, 180.0, 270.0]) == [0.0, 180.0]
-
-
-def test_grain_constraint_allows_angles_inside_the_tolerance():
-    assert allowed_angles(GRAIN, [0.0, 3.0, 8.0, 177.0, 183.0]) == [0.0, 3.0, 177.0, 183.0]
-
-
-def test_360_is_treated_as_zero():
-    assert allowed_angles(GRAIN, [360.0]) == [360.0]
-
-
-def test_negative_angles_are_handled():
-    assert allowed_angles(GRAIN, [-3.0, -90.0]) == [-3.0]
-
-
-def test_an_empty_angle_list_stays_empty():
-    assert allowed_angles(GRAIN, []) == []
+from nesting.model.material import load_materials
 
 
 def test_loads_the_bundled_catalogue(tmp_path):
@@ -174,15 +146,6 @@ def test_a_grain_tolerance_over_180_is_rejected(tmp_path):
     assert "roto" in message
     assert "tolerancia_veta" in message
     assert "200" in message
-
-
-# --- Hallazgo 3: 90 grados ya es rotacion libre, igual que 180 ---
-
-
-def test_ninety_degrees_is_already_free_rotation_like_180():
-    ninety = Material("ninety", 1000.0, 1000.0, grain_tolerance=90.0)
-    angles = [0.0, 15.0, 90.0, 137.0, 180.0, 270.0]
-    assert allowed_angles(ninety, angles) == allowed_angles(FREE, angles) == angles
 
 
 # --- No regresion ---

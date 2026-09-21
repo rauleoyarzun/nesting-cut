@@ -21,6 +21,7 @@ from nesting.io.ai_reader import read_ai
 from nesting.io.dxf_reader import UNIT_SCALES, UnknownUnitsError, read_dxf
 from nesting.io.rhino_reader import read_3dm
 from nesting.model.material import DEFAULT_MATERIALS_PATH, Material, load_materials
+from nesting.model.sheet import SheetSupply
 from nesting.pipeline import OpenContourError, prepare_parts
 
 FILES_DIR = Path(__file__).parent / "files"
@@ -154,7 +155,8 @@ def run_one(
     parts, _, _ = prepare_parts(drawing)
     parts = replicate(parts, copies)
 
-    result = pack(parts, material, config, oracle_factory)
+    supply = SheetSupply(stock=material.stock_sheet(), material_name=material.name)
+    result = pack(parts, supply, config, oracle_factory)
     costo = layout_cost(result, parts)
 
     violations = verify(

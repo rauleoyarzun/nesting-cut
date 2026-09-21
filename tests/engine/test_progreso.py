@@ -8,8 +8,10 @@ from nesting.engine.raster.masks import MaskCache
 from nesting.engine.raster.oracle import RasterOracle
 from nesting.model.material import Material
 from nesting.model.part import Part
+from nesting.model.sheet import SheetSupply
 
 MATERIAL = Material("test", 1000.0, 1000.0, 180.0)
+PLAN_LIBRE = SheetSupply(stock=MATERIAL.stock_sheet(), material_name=MATERIAL.name)
 
 
 def cuadrado(part_id, lado=100.0):
@@ -37,8 +39,8 @@ def test_sin_callback_pack_se_comporta_igual_que_siempre():
     estaría tocando el motor de verdad y no sólo observándolo."""
     piezas = [cuadrado(i) for i in range(6)]
 
-    sin = pack(piezas, MATERIAL, config(), fabrica())
-    con = pack(piezas, MATERIAL, config(), fabrica(), progreso=lambda a: True)
+    sin = pack(piezas, PLAN_LIBRE, config(), fabrica())
+    con = pack(piezas, PLAN_LIBRE, config(), fabrica(), progreso=lambda a: True)
 
     assert sin.sheets_used == con.sheets_used
     assert [(p.part_id, p.sheet, p.transform) for p in sin.placements] == [
@@ -50,7 +52,7 @@ def test_el_callback_se_llama_por_cada_pieza_ubicada():
     piezas = [cuadrado(i) for i in range(6)]
     avances = []
 
-    pack(piezas, MATERIAL, config(), fabrica(), progreso=lambda a: avances.append(a) or True)
+    pack(piezas, PLAN_LIBRE, config(), fabrica(), progreso=lambda a: avances.append(a) or True)
 
     ubicadas = [a for a in avances if not a.compactando]
     assert len(ubicadas) >= 6
@@ -62,7 +64,7 @@ def test_las_piezas_ubicadas_solo_suben_dentro_de_un_intento():
     piezas = [cuadrado(i) for i in range(8)]
     avances = []
 
-    pack(piezas, MATERIAL, config(effort="normal"), fabrica(),
+    pack(piezas, PLAN_LIBRE, config(effort="normal"), fabrica(),
          progreso=lambda a: avances.append(a) or True)
 
     por_intento = {}
@@ -80,7 +82,7 @@ def test_la_cantidad_de_intentos_se_sabe_desde_el_primer_aviso():
     piezas = [cuadrado(i) for i in range(4)]
     avances = []
 
-    pack(piezas, MATERIAL, config(effort="normal"), fabrica(),
+    pack(piezas, PLAN_LIBRE, config(effort="normal"), fabrica(),
          progreso=lambda a: avances.append(a) or True)
 
     assert avances[0].intentos == EFFORT_RESTARTS["normal"]
@@ -91,7 +93,7 @@ def test_los_intentos_llegan_hasta_el_ultimo():
     piezas = [cuadrado(i) for i in range(4)]
     avances = []
 
-    pack(piezas, MATERIAL, config(effort="normal"), fabrica(),
+    pack(piezas, PLAN_LIBRE, config(effort="normal"), fabrica(),
          progreso=lambda a: avances.append(a) or True)
 
     intentos = {a.intento for a in avances if not a.compactando}
@@ -103,7 +105,7 @@ def test_la_compactacion_final_se_avisa_aparte():
     piezas = [cuadrado(i) for i in range(4)]
     avances = []
 
-    pack(piezas, MATERIAL, config(), fabrica(),
+    pack(piezas, PLAN_LIBRE, config(), fabrica(),
          progreso=lambda a: avances.append(a) or True)
 
     assert any(a.compactando for a in avances)
@@ -119,7 +121,7 @@ def test_devolver_False_cancela_y_levanta():
         return len(vistos) < 3
 
     with pytest.raises(Cancelado):
-        pack(piezas, MATERIAL, config(), fabrica(), progreso=cortar)
+        pack(piezas, PLAN_LIBRE, config(), fabrica(), progreso=cortar)
 
     assert len(vistos) == 3, "no puede seguir trabajando después del corte"
 
@@ -130,7 +132,7 @@ def test_cancelar_no_deja_el_resultado_a_medias():
     piezas = [cuadrado(i) for i in range(20)]
 
     with pytest.raises(Cancelado):
-        pack(piezas, MATERIAL, config(), fabrica(), progreso=lambda a: False)
+        pack(piezas, PLAN_LIBRE, config(), fabrica(), progreso=lambda a: False)
 
 
 def test_el_avance_nombra_la_placa_en_curso():
@@ -139,7 +141,7 @@ def test_el_avance_nombra_la_placa_en_curso():
     piezas = [cuadrado(i, lado=400.0) for i in range(12)]
     avances = []
 
-    pack(piezas, MATERIAL, config(), fabrica(),
+    pack(piezas, PLAN_LIBRE, config(), fabrica(),
          progreso=lambda a: avances.append(a) or True)
 
     placas = {a.placa for a in avances if not a.compactando}
@@ -167,7 +169,7 @@ def test_cancelar_durante_la_recuperacion_levanta():
         return True
 
     with pytest.raises(Cancelado):
-        pack(piezas, MATERIAL, config(), fabrica(), progreso=cortar)
+        pack(piezas, PLAN_LIBRE, config(), fabrica(), progreso=cortar)
 
     compactando_vistos = sum(1 for a in vistos if a.compactando)
     assert compactando_vistos == 2, "tiene que cortar en el segundo aviso de compactando"
@@ -176,7 +178,7 @@ def test_cancelar_durante_la_recuperacion_levanta():
 def test_sin_piezas_no_se_llama_al_callback():
     llamadas = []
 
-    resultado = pack([], MATERIAL, config(), fabrica(),
+    resultado = pack([], PLAN_LIBRE, config(), fabrica(),
                      progreso=lambda a: llamadas.append(a) or True)
 
     assert llamadas == []

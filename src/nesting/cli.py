@@ -33,6 +33,7 @@ from nesting.io.rhino_reader import read_3dm
 from nesting.model.discard import Discard
 from nesting.model.material import DEFAULT_MATERIALS_PATH, Material, load_materials
 from nesting.model.part import Part
+from nesting.model.sheet import SheetSupply
 from nesting.pipeline import (
     DEFAULT_CHAIN_TOL,
     OpenContourError,
@@ -216,7 +217,8 @@ def main(argv: list[str] | None = None) -> int:
         # there is no reason to re-rasterize the same orientation for every
         # sheet or every retry.
         cache = MaskCache()
-        result = pack(parts, material, config, lambda: RasterOracle(cache=cache))
+        supply = SheetSupply(stock=material.stock_sheet(), material_name=material.name)
+        result = pack(parts, supply, config, lambda: RasterOracle(cache=cache))
     except (PartTooLargeError, ValueError) as error:
         # `rasterize` (nesting.engine.raster.masks) raises `ValueError` for a
         # resolution too fine to allocate a mask (e.g. --resolucion 0.005):

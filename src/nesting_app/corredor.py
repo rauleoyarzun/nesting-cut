@@ -19,6 +19,7 @@ from nesting.io.dxf_writer import write_dxf
 from nesting.io.preview import write_preview
 from nesting.io.rhino_reader import read_3dm
 from nesting.model.discard import Discard
+from nesting.model.sheet import SheetSupply
 from nesting.params import NestParams, a_config
 from nesting.pipeline import discard_plate_outline, prepare_parts
 from nesting_app import materials_store
@@ -253,8 +254,9 @@ def acomodar(
         piezas = replicate(piezas, params.copias)
         config = a_config(params)
         cache = MaskCache()
+        supply = SheetSupply(stock=material.stock_sheet(), material_name=material.name)
         resultado = pack(
-            piezas, material, config, lambda: RasterOracle(cache=cache), progreso=progreso
+            piezas, supply, config, lambda: RasterOracle(cache=cache), progreso=progreso
         )
 
         violaciones = verify(

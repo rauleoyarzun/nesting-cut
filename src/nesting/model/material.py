@@ -4,13 +4,12 @@ Choosing a material configures both at once, because they always change
 together in practice.
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
-from nesting.model.sheet import Sheet, allowed_angles as _allowed_angles_de_placa
+from nesting.model.sheet import Sheet
 
 
 def _default_materials_path() -> Path:
@@ -45,10 +44,10 @@ class Material:
     grain_tolerance: float
     """Degrees a part may deviate from the grain axis.
 
-    El rango util real es 0 a 90: por como se calcula la distancia angular al
-    eje de veta (ver `_distance_to_grain_axis`), esa distancia nunca supera 90
-    grados, asi que cualquier valor de 90 o mas equivale a rotacion libre,
-    igual que 180. Por convencion se usa 180 para expresar "libre".
+    El rango útil real es 0 a 90: la distancia angular al eje de veta nunca
+    supera 90 grados, así que cualquier valor de 90 o más equivale a
+    rotación libre, igual que 180. Por convención se usa 180 para expresar
+    "libre". El cálculo vive en `nesting.model.sheet.allowed_angles`.
     """
 
     def stock_sheet(self) -> Sheet:
@@ -131,17 +130,3 @@ def load_materials(path: str | Path) -> dict[str, Material]:
         )
 
     return materials
-
-
-def allowed_angles(material: Material, angles: Sequence[float]) -> list[float]:
-    """Keep only the angles the material's grain constraint permits.
-
-    An angle is allowed when it lies within `grain_tolerance` degrees of the
-    grain axis, which runs along both 0 and 180 degrees.
-
-    The distance to the grain axis (`_distance_to_grain_axis`) is always in
-    [0, 90], so any `grain_tolerance` of 90 or more allows every angle, same
-    as 180. The useful range is really 0 to 90; 180 is the conventional
-    spelling for "free rotation".
-    """
-    return _allowed_angles_de_placa(material.stock_sheet(), angles)

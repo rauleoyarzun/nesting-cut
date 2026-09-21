@@ -24,6 +24,32 @@ def test_la_veta_cruzada_rota_el_eje_noventa_grados():
     assert allowed_angles(CRUZADA, (0.0, 90.0, 180.0, 270.0)) == [90.0, 270.0]
 
 
+def test_la_veta_permite_los_angulos_de_adentro_de_la_tolerancia():
+    assert allowed_angles(CON_VETA, [0.0, 3.0, 8.0, 177.0, 183.0]) == [
+        0.0, 3.0, 177.0, 183.0
+    ]
+
+
+def test_360_es_lo_mismo_que_0():
+    assert allowed_angles(CON_VETA, [360.0]) == [360.0]
+
+
+def test_los_angulos_negativos_se_pliegan_igual():
+    assert allowed_angles(CON_VETA, [-3.0, -90.0]) == [-3.0]
+
+
+def test_una_lista_de_angulos_vacia_queda_vacia():
+    assert allowed_angles(CON_VETA, []) == []
+
+
+def test_noventa_grados_de_tolerancia_ya_es_rotacion_libre_como_180():
+    """Hallazgo 3: la distancia al eje nunca supera 90, así que una
+    tolerancia de exactamente 90 permite todo, igual que 180."""
+    noventa = Sheet(1000.0, 1000.0, grain_tolerance=90.0)
+    angulos = [0.0, 15.0, 90.0, 137.0, 180.0, 270.0]
+    assert allowed_angles(noventa, angulos) == allowed_angles(LIBRE, angulos) == angulos
+
+
 def test_la_veta_cruzada_no_cambia_nada_en_una_placa_libre():
     cruzada_libre = Sheet(1000.0, 2000.0, grain_tolerance=180.0, cross_grain=True)
     angulos = (0.0, 45.0, 90.0, 135.0)

@@ -11,8 +11,8 @@ from dataclasses import dataclass, field, replace
 
 from nesting.engine.oracle import NestConfig, Oracle, Weights, transformed_bbox
 from nesting.model.entities import Transform
-from nesting.model.material import Material, allowed_angles
 from nesting.model.part import Part, Placement
+from nesting.model.sheet import Sheet, SheetSupply, allowed_angles
 
 
 class PartTooLargeError(Exception):
@@ -23,6 +23,15 @@ class PartTooLargeError(Exception):
 class PackResult:
     placements: list[Placement] = field(default_factory=list)
     sheets_used: int = 0
+    sheets: list[Sheet] = field(default_factory=list)
+    """Qué placa concreta fue cada índice, en orden.
+
+    Sin esto, todo lo que viene después de `pack` -- el verificador, el
+    escritor de DXF, la previsualización -- tendría que adivinar la medida
+    de cada placa, y con recortes en juego adivinar es escribir un DXF
+    equivocado.
+    """
+
     utilization: list[float] = field(default_factory=list)
     """Fraction of each sheet covered by part material."""
 
@@ -80,9 +89,9 @@ def replicate(parts: Sequence[Part], copies: int) -> list[Part]:
     return out
 
 
-def orientations(material: Material, config: NestConfig) -> list[tuple[float, bool]]:
-    """Every (angle, mirror) pair the material and config permit."""
-    angles = allowed_angles(material, config.angles)
+def orientations(sheet: Sheet, config: NestConfig) -> list[tuple[float, bool]]:
+    """Cada par (ángulo, espejo) que la veta de ESTA placa y el config permiten."""
+    angles = allowed_angles(sheet, config.angles)
     result = [(a, False) for a in angles]
     if config.mirror:
         result.extend((a, True) for a in angles)
@@ -91,7 +100,7 @@ def orientations(material: Material, config: NestConfig) -> list[tuple[float, bo
 
 def _pack_once(
     order: Sequence[Part],
-    material: Material,
+    supply: SheetSupply,
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
     aviso: Callable[[int, int], None] | None = None,
@@ -110,18 +119,29 @@ def _pack_once(
         result.seconds = time.perf_counter() - started
         return result
 
-    choices = orientations(material, config)
     remaining = list(order)
-    sheet_area = material.sheet_w * material.sheet_h
+    usadas: list[Sheet] = []
     placed_area_per_sheet: list[float] = []
 
-    sheet = 0
+    # Dos contadores y no uno: `siguiente` avanza por el plan de placas y
+    # `len(usadas)` cuenta las que de verdad recibieron algo. Hoy son el
+    # mismo número; en cuanto la Tarea 3 permita saltear un recorte vacío,
+    # dejan de serlo, y las colocaciones tienen que llevar el segundo.
+    siguiente = 0
     total_ubicadas = 0
     while remaining:
-        oracle = oracle_factory()
-        oracle.reset(material.sheet_w, material.sheet_h, config)
+        hoja = supply.sheet(siguiente)
+        siguiente += 1
 
+        # Por placa y no por corrida: dos placas del mismo material pueden
+        # tener la veta al revés y permitir ángulos distintos.
+        choices = orientations(hoja, config)
+        oracle = oracle_factory()
+        oracle.reset(hoja.width, hoja.height, config)
+
+        indice = len(usadas)
         still_pending: list[Part] = []
+        en_esta_placa: list[Placement] = []
         placed_area = 0.0
         placed_count = 0
 
@@ -132,32 +152,36 @@ def _pack_once(
                 continue
             angle, mirror, x, y = spot
             oracle.place(part, angle, mirror, x, y)
-            result.placements.append(Placement(part.id, sheet, Transform(angle, mirror, x, y)))
+            en_esta_placa.append(
+                Placement(part.id, indice, Transform(angle, mirror, x, y))
+            )
             placed_area += part.area
             placed_count += 1
             if aviso is not None:
-                aviso(total_ubicadas + placed_count, sheet + 1)
+                aviso(total_ubicadas + placed_count, indice + 1)
 
-        # Guard on whether anything was placed on this sheet, not on how much
-        # *area* it added: a placed part whose net area happens to be zero (a
-        # self-intersecting contour whose signed area cancels, see Hallazgo 1)
-        # would otherwise make `placed_area == 0.0` even though `still_pending`
-        # is empty -- indexing `still_pending[0]` then crashed with
-        # `IndexError`. Worse, when a sheet mixes such zero-area parts with
-        # real ones that could not fit, the old guard blamed a real, fitting
-        # part for the failure instead of just moving on to the next sheet.
+        # Ver el comentario largo de la versión anterior: la guarda mira si
+        # se colocó ALGO, no cuánta área, porque una pieza de área neta cero
+        # dejaría `placed_area == 0.0` con `still_pending` vacío.
         if placed_count == 0:
-            _raise_too_large(still_pending[0], material, config, choices)
+            _raise_too_large(
+                still_pending[0], hoja, config, choices, supply.material_name
+            )
 
+        result.placements.extend(en_esta_placa)
+        usadas.append(hoja)
         placed_area_per_sheet.append(placed_area)
         total_ubicadas += placed_count
         remaining = still_pending
-        sheet += 1
 
-    result.sheets_used = sheet
-    result.utilization = [area / sheet_area for area in placed_area_per_sheet]
+    result.sheets = usadas
+    result.sheets_used = len(usadas)
+    result.utilization = [
+        area / hoja.area for area, hoja in zip(placed_area_per_sheet, usadas)
+    ]
+    area_total = sum(hoja.area for hoja in usadas)
     result.total_utilization = (
-        sum(placed_area_per_sheet) / (sheet_area * sheet) if sheet else 0.0
+        sum(placed_area_per_sheet) / area_total if area_total else 0.0
     )
     result.seconds = time.perf_counter() - started
     return result
@@ -186,16 +210,17 @@ def _best_over_orientations(
 
 def _raise_too_large(
     part: Part,
-    material: Material,
+    sheet: Sheet,
     config: NestConfig,
     choices: Sequence[tuple[float, bool]],
+    material_name: str,
 ) -> None:
-    """Report the smallest footprint the part can take, against the usable area.
+    """Informa la huella más chica que la pieza puede tomar, contra el área útil.
 
-    A single orientation is picked -- the one minimizing its own larger
-    dimension (max(width, height)) -- rather than taking the min width and
-    min height independently, which can mix two different orientations and
-    describe a bounding box the part never actually has.
+    Se elige UNA orientación -- la que minimiza su propia dimensión mayor --
+    en vez de tomar el ancho mínimo y el alto mínimo por separado, que
+    pueden venir de dos orientaciones distintas y describir una caja que la
+    pieza nunca tiene.
     """
     best_w = best_h = None
     best_max = float("inf")
@@ -206,12 +231,12 @@ def _raise_too_large(
             best_max = max(w, h)
             best_w, best_h = w, h
 
-    usable_w = material.sheet_w - 2 * config.margin
-    usable_h = material.sheet_h - 2 * config.margin
+    usable_w = sheet.width - 2 * config.margin
+    usable_h = sheet.height - 2 * config.margin
     raise PartTooLargeError(
         f"la pieza {part.id} no entra en una placa vacía: mide al menos "
         f"{best_w:.1f} x {best_h:.1f} mm en su mejor orientación, "
-        f"y el área útil de la placa {material.name} es "
+        f"y el área útil de la placa {material_name} es "
         f"{usable_w:.1f} x {usable_h:.1f} mm (margen {config.margin} mm)."
     )
 
@@ -356,7 +381,7 @@ def layout_cost(result: PackResult, parts: Sequence[Part]) -> CostoLayout:
 
 def pack(
     parts: Sequence[Part],
-    material: Material,
+    supply: SheetSupply,
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
     progreso: Callable[[Avance], bool] | None = None,
@@ -399,7 +424,7 @@ def pack(
         return avisar
 
     best_order = list(by_area)
-    best = _pack_once(best_order, material, config, oracle_factory, avisos_de(1))
+    best = _pack_once(best_order, supply, config, oracle_factory, avisos_de(1))
     best_cost = layout_cost(best, parts)
 
     # Garantia: "lento" nunca puede ser peor que "normal", igual que "normal"
@@ -440,7 +465,7 @@ def pack(
             perturb_base = by_area
         candidate_order = _perturb(perturb_base, rng)
         candidate = _pack_once(
-            candidate_order, material, config, oracle_factory, avisos_de(i + 2)
+            candidate_order, supply, config, oracle_factory, avisos_de(i + 2)
         )
         candidate_cost = layout_cost(candidate, parts)
         if candidate_cost < best_cost:
@@ -468,10 +493,10 @@ def pack(
             raise Cancelado("el trabajo se canceló")
 
     best = _recuperar_de_la_ultima_placa(
-        best, parts, material, config, oracle_factory,
+        best, parts, config, oracle_factory,
         aviso_recuperacion if progreso is not None else None,
     )
-    best = _compact_last_sheet(best, parts, material, config, oracle_factory)
+    best = _compact_last_sheet(best, parts, config, oracle_factory)
     best.seconds = time.perf_counter() - started
     return best
 
@@ -490,7 +515,6 @@ def _perturb(order: Sequence[Part], rng: random.Random) -> list[Part]:
 def _recuperar_de_la_ultima_placa(
     result: PackResult,
     parts: Sequence[Part],
-    material: Material,
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
     aviso: Callable[[int, int], None] | None = None,
@@ -581,7 +605,13 @@ def _recuperar_de_la_ultima_placa(
         en_placa = [by_id[p.part_id] for p in anteriores]
         while pendientes:
             orden = [pendientes[0], *en_placa, *pendientes[1:]]
-            redone = _pack_once(orden, material, config, oracle_factory, aviso)
+            redone = _pack_once(
+                orden,
+                SheetSupply(stock=result.sheets[placa]),
+                config,
+                oracle_factory,
+                aviso,
+            )
 
             en_primera = [p for p in redone.placements if p.sheet == 0]
             ids_primera = {p.part_id for p in en_primera}
@@ -608,22 +638,25 @@ def _recuperar_de_la_ultima_placa(
         placements.extend(por_placa.get(placa, []))
     quedan = [p for p in en_ultima if p.part_id not in recuperadas]
     placements.extend(quedan)
-    sheets = result.sheets_used if quedan else ultima
 
     # La misma cuenta que hace `_pack_once`: áreas por placa y UNA división
     # al final. Si acá se sumaran fracciones ya divididas, el total podría
     # no coincidir con el que informa una corrida normal, y el usuario vería
     # dos números distintos para el mismo layout.
-    sheet_area = material.sheet_w * material.sheet_h
-    areas = [0.0] * sheets
+    sheets_finales = result.sheets if quedan else result.sheets[:ultima]
+    areas = [0.0] * len(sheets_finales)
     for p in placements:
         areas[p.sheet] += by_id[p.part_id].area
+    area_total = sum(h.area for h in sheets_finales)
 
     return PackResult(
         placements=placements,
-        sheets_used=sheets,
-        utilization=[area / sheet_area for area in areas],
-        total_utilization=sum(areas) / (sheet_area * sheets) if sheets else 0.0,
+        sheets_used=len(sheets_finales),
+        sheets=sheets_finales,
+        utilization=[
+            area / hoja.area for area, hoja in zip(areas, sheets_finales)
+        ],
+        total_utilization=sum(areas) / area_total if area_total else 0.0,
         seconds=result.seconds,
     )
 
@@ -631,7 +664,6 @@ def _recuperar_de_la_ultima_placa(
 def _compact_last_sheet(
     result: PackResult,
     parts: Sequence[Part],
-    material: Material,
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
 ) -> PackResult:
@@ -640,6 +672,7 @@ def _compact_last_sheet(
         return result
 
     last = result.sheets_used - 1
+    hoja = result.sheets[last]
     by_id = {p.id: p for p in parts}
     on_last = [by_id[p.part_id] for p in result.placements if p.sheet == last]
     if len(on_last) < 2:
@@ -653,7 +686,7 @@ def _compact_last_sheet(
         ),
     )
     order = sorted(on_last, key=lambda p: p.area, reverse=True)
-    redone = _pack_once(order, material, boosted, oracle_factory)
+    redone = _pack_once(order, SheetSupply(stock=hoja), boosted, oracle_factory)
 
     if redone.sheets_used != 1:
         return result
@@ -667,7 +700,6 @@ def _compact_last_sheet(
     kept = [p for p in result.placements if p.sheet != last]
     moved = [Placement(p.part_id, last, p.transform) for p in redone.placements]
 
-    sheet_area = material.sheet_w * material.sheet_h
     result.placements = kept + moved
-    result.utilization[last] = sum(p.area for p in on_last) / sheet_area
+    result.utilization[last] = sum(p.area for p in on_last) / hoja.area
     return result

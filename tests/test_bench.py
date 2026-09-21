@@ -169,7 +169,7 @@ def test_run_one_reports_the_seconds_from_pack_result(tmp_path, monkeypatch):
 
     recognizable_seconds = 12345.678
 
-    def fake_pack(parts, material, config, oracle_factory):
+    def fake_pack(parts, supply, config, oracle_factory):
         return PackResult(
             placements=[], sheets_used=1, utilization=[0.5],
             total_utilization=0.5, seconds=recognizable_seconds,
