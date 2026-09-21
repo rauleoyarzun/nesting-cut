@@ -7,6 +7,7 @@ import pytest
 from nesting.engine.oracle import NestConfig
 from nesting.engine.packer import (
     EFFORT_RESTARTS,
+    PackResult,
     UnknownEffortError,
     layout_cost,
     pack,
@@ -14,8 +15,9 @@ from nesting.engine.packer import (
 )
 from nesting.engine.raster.oracle import RasterOracle
 from nesting.geometry.verify import verify
+from nesting.model.entities import Transform
 from nesting.model.material import Material
-from nesting.model.part import Part
+from nesting.model.part import Part, Placement
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bench"))
 from make_sample import write_sample  # noqa: E402
@@ -62,16 +64,74 @@ def test_layout_cost_prefers_fewer_sheets():
     one_sheet = pack(few, MATERIAL, base_config(), RasterOracle)
     several = pack(many, MATERIAL, base_config(), RasterOracle)
 
-    assert layout_cost(one_sheet, few)[0] < layout_cost(several, many)[0]
+    assert layout_cost(one_sheet, few).placas < layout_cost(several, many).placas
 
 
 def test_layout_cost_reports_the_height_used_on_the_last_sheet():
     parts = [rect_part(0, 200.0, 200.0)]
     result = pack(parts, MATERIAL, base_config(), RasterOracle)
-    sheets, height = layout_cost(result, parts)
+    costo = layout_cost(result, parts)
+    sheets, height = costo.placas, costo.alto_ultima
 
     assert sheets == 1
     assert 200.0 <= height <= 260.0, "el alto usado es el de la pieza mas el margen"
+
+
+def test_el_costo_prefiere_dejar_menos_material_en_la_ultima_placa():
+    """Entre dos layouts de la misma cantidad de placas, gana el que deja
+    menos material en la última: es el que está más cerca de no necesitarla.
+
+    Es el caso exacto que el motor encontraba y descartaba sobre
+    `NESTING 2.ai`: un layout de 33 piezas en la placa 1 y 3 en la 2
+    perdía contra uno de 29 y 7, porque las 3 apiladas llegaban más
+    alto que las 7 en fila.
+    """
+    parts = [rect_part(i, 100.0, 100.0) for i in range(4)]
+    # `poco` deja una sola pieza en la placa 1 (la última); `mucho` deja tres.
+    poco = PackResult(
+        placements=[
+            Placement(0, 0, Transform(0.0, False, 0.0, 0.0)),
+            Placement(1, 0, Transform(0.0, False, 0.0, 200.0)),
+            Placement(2, 0, Transform(0.0, False, 0.0, 400.0)),
+            Placement(3, 1, Transform(0.0, False, 0.0, 0.0)),
+        ],
+        sheets_used=2,
+    )
+    mucho = PackResult(
+        placements=[
+            Placement(0, 0, Transform(0.0, False, 0.0, 0.0)),
+            Placement(1, 1, Transform(0.0, False, 0.0, 0.0)),
+            Placement(2, 1, Transform(0.0, False, 200.0, 0.0)),
+            Placement(3, 1, Transform(0.0, False, 400.0, 0.0)),
+        ],
+        sheets_used=2,
+    )
+    # `mucho` deja las tres piezas en una fila baja: gana en alto.
+    assert layout_cost(mucho, parts).alto_ultima <= layout_cost(poco, parts).alto_ultima
+    # Y aun así pierde, porque deja el triple de material en la última placa.
+    assert layout_cost(poco, parts) < layout_cost(mucho, parts)
+
+
+def test_el_alto_sigue_desempatando_con_el_mismo_material():
+    """Con el mismo material en la última placa, gana la más compactada:
+    la tira sobrante queda en un solo bloque en vez de en pedazos."""
+    parts = [rect_part(i, 100.0, 100.0) for i in range(2)]
+    baja = PackResult(
+        placements=[
+            Placement(0, 0, Transform(0.0, False, 0.0, 0.0)),
+            Placement(1, 1, Transform(0.0, False, 0.0, 0.0)),
+        ],
+        sheets_used=2,
+    )
+    alta = PackResult(
+        placements=[
+            Placement(0, 0, Transform(0.0, False, 0.0, 0.0)),
+            Placement(1, 1, Transform(0.0, False, 0.0, 500.0)),
+        ],
+        sheets_used=2,
+    )
+    assert layout_cost(baja, parts).material_ultima == layout_cost(alta, parts).material_ultima
+    assert layout_cost(baja, parts) < layout_cost(alta, parts)
 
 
 def test_rapido_is_a_single_pass():
@@ -143,7 +203,7 @@ def test_the_last_sheet_gets_compacted():
     result = pack(parts, MATERIAL, config, RasterOracle)
 
     assert result.sheets_used >= 2
-    _, last_height = layout_cost(result, parts)
+    last_height = layout_cost(result, parts).alto_ultima
     assert last_height < MATERIAL.sheet_h * 0.75, "el sobrante quedo en un bloque"
 
 

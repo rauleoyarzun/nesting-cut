@@ -298,7 +298,7 @@ def _print_summary(
     result: PackResult, parts: Sequence[Part], material: Material,
     part_count: int, out_path: Path,
 ) -> None:
-    _, used_height = layout_cost(result, parts)
+    used_height = layout_cost(result, parts).alto_ultima
     free_height = material.sheet_h - used_height
 
     for index, utilisation in enumerate(result.utilization):

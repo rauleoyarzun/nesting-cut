@@ -258,19 +258,50 @@ class UnknownEffortError(Exception):
     """The requested effort level is not one of the three defined ones."""
 
 
-def layout_cost(result: PackResult, parts: Sequence[Part]) -> tuple[int, float]:
-    """How bad a layout is. Lower is better; compared as a tuple.
+@dataclass(frozen=True, order=True)
+class CostoLayout:
+    """Qué tan malo es un layout. Menor es mejor; se compara campo por campo.
 
-    Sheet count dominates. Between layouts using the same number of sheets, the
-    one whose last sheet is most compacted wins, which leaves the offcut as one
-    usable block instead of scattered strips.
+    El orden de los campos ES el criterio, y por eso son campos con nombre y
+    no una tupla: los dos lugares que informan el sobrante al usuario sacan
+    `alto_ultima` por nombre, así que sumar un campo en el medio no puede
+    volver a significar otra cosa en silencio.
     """
+
+    placas: int
+    """Manda sobre todo lo demás: una placa menos siempre gana."""
+
+    material_ultima: float
+    """Área de pieza que queda en la última placa, en mm².
+
+    Es el segundo criterio, y no el alto, porque es el único que mide
+    progreso hacia no necesitar esa placa: bajarlo a cero elimina una placa
+    entera. El alto no mide eso -- entre un layout que deja 7 piezas en una
+    fila de 308 mm y uno que deja 3 apiladas en 491 mm, el alto premia el de
+    7 piezas aunque esté más lejos de poder tirar la placa. Sobre
+    `NESTING 2.ai` ese desempate hacía que el motor descartara los layouts
+    de 33/3 que él mismo encontraba.
+    """
+
+    alto_ultima: float
+    """Hasta dónde llega el material en la última placa, en mm.
+
+    Desempata entre layouts que dejan el mismo material: con la misma
+    cantidad de pieza arriba, la que está más compactada deja la tira libre
+    en un solo bloque en vez de en pedazos. `sheet_h - alto_ultima` es el
+    "sobrante" que se le muestra al usuario.
+    """
+
+
+def layout_cost(result: PackResult, parts: Sequence[Part]) -> CostoLayout:
+    """Qué tan malo es un layout. Menor es mejor."""
     if not result.placements:
-        return (0, 0.0)
+        return CostoLayout(0, 0.0, 0.0)
 
     by_id = {p.id: p for p in parts}
     last_sheet = result.sheets_used - 1
     top = 0.0
+    material = 0.0
 
     for placement in result.placements:
         if placement.sheet != last_sheet:
@@ -279,8 +310,9 @@ def layout_cost(result: PackResult, parts: Sequence[Part]) -> tuple[int, float]:
         _, _, _, y1 = transformed_bbox(part, placement.transform.angle_deg,
                                        placement.transform.mirror)
         top = max(top, placement.transform.dy + y1)
+        material += part.area
 
-    return (result.sheets_used, top)
+    return CostoLayout(result.sheets_used, material, top)
 
 
 def pack(
@@ -421,7 +453,11 @@ def _compact_last_sheet(
 
     if redone.sheets_used != 1:
         return result
-    if layout_cost(redone, parts)[1] >= layout_cost(result, parts)[1]:
+    # Compara `.alto_ultima`, no el `CostoLayout` entero: la compactación
+    # mueve las mismas piezas dentro de la misma placa, así que
+    # `material_ultima` no cambia y comparar por ahí no desempataría nada.
+    # El alto es lo único que esta pasada puede mejorar.
+    if layout_cost(redone, parts).alto_ultima >= layout_cost(result, parts).alto_ultima:
         return result
 
     kept = [p for p in result.placements if p.sheet != last]

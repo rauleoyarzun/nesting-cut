@@ -302,13 +302,13 @@ def acomodar(
         _con_avisos(error, avisos)
         raise
 
-    _, alto_usado = layout_cost(resultado, piezas)
+    costo = layout_cost(resultado, piezas)
     return Resultado(
         placas=resultado.sheets_used,
         aprovechamiento=list(resultado.utilization),
         total=resultado.total_utilization,
         segundos=resultado.seconds,
-        sobrante_mm=material.sheet_h - alto_usado,
+        sobrante_mm=material.sheet_h - costo.alto_ultima,
         carpeta=carpeta,
         avisos=list(avisos),
     )
