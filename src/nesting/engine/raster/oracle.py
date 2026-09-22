@@ -141,12 +141,29 @@ class RasterOracle:
         rows = max(0, math.floor(usable_h / resolution))
 
         if rows * cols > MAX_SHEET_PIXELS:
+            # El mensaje nombra la medida ANTES que la resolución, y pide
+            # revisarla. Desde los recortes, la medida de una placa puede
+            # venir de algo que el usuario acaba de tipear en la pantalla --
+            # `Recorte(18300, 26000)`, un cero de más sobre 1830x2600, es el
+            # error más plausible que llega hasta acá -- y mandarlo a tocar
+            # la resolución sería mandarlo a arreglar lo que no está roto.
+            # Antes no hacía falta: las medidas de placa salían sólo del
+            # catálogo de materiales, donde el cero de más se nota al
+            # guardarlo.
+            #
+            # No dice "recorte" ni "placa del material" porque acá no se
+            # sabe: `reset` recibe dos números y el config, no el `Sheet`, y
+            # el campo `scrap` se queda del otro lado. Nombrar la medida
+            # sirve para los dos casos sin mentir en ninguno.
             raise ValueError(
-                "la grilla de la placa es demasiado grande: una placa de "
+                "la grilla es demasiado grande: acomodar sobre una placa de "
                 f"{sheet_w:.0f}x{sheet_h:.0f} mm a resolución {resolution} mm/px "
                 f"necesita {cols}x{rows} = {rows * cols:,} píxeles "
-                f"(tope: {MAX_SHEET_PIXELS:,}). "
-                "Probá con una resolución más gruesa."
+                f"(tope: {MAX_SHEET_PIXELS:,}). Revisá que la medida "
+                f"{sheet_w:.0f}x{sheet_h:.0f} mm sea la que querías -- si la "
+                "cargaste a mano, un cero de más alcanza para llegar hasta "
+                "acá -- y si es la correcta, probá con una resolución más "
+                "gruesa."
             )
 
         self._sheet = np.zeros((rows, cols), dtype=bool)

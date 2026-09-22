@@ -336,11 +336,12 @@ conclusión "nada cambió de signo" quedan tal cual porque no hay evidencia
 para moverlas, no porque se haya verificado que siguen valiendo a
 contact = 4.0.
 
-EL PRESUPUESTO DE 5 MINUTOS, HONESTAMENTE. A 2.0 mm/px (el default desde la
-Task 24) `normal` sale mucho más barato que lo medido en la Task 19: 48.3s
-sobre el archivo de referencia (36 piezas) y 132.1s sobre `muestra.dxf` a
---copias 8 (96 piezas). Pero el objetivo no es universal: una sola pasada
-sobre `banqueta final raulo.ai` a --copias 5 (200 piezas) ya tarda 450.6s,
+EL PRESUPUESTO DE 5 MINUTOS, HONESTAMENTE. A 2.0 mm/px (el default entre la
+Task 24 y los recortes; ver el último párrafo) `normal` salía mucho más
+barato que lo medido en la Task 19: 48.3s sobre el archivo de referencia
+(36 piezas) y 132.1s sobre `muestra.dxf` a --copias 8 (96 piezas). Pero el
+objetivo no es universal: una sola pasada sobre `banqueta final raulo.ai`
+a --copias 5 (200 piezas) ya tarda 450.6s,
 o sea que `normal` ahí se va muy por encima de los 5 minutos. El objetivo
 vale para trabajos del tamaño contra el que se calibró, no para cualquier
 carga.
