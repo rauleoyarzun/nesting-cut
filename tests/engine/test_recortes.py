@@ -2,7 +2,7 @@
 
 import pytest
 
-from nesting.engine.oracle import NestConfig, transformed_bbox
+from nesting.engine.oracle import NestConfig
 from nesting.engine.packer import (
     PartTooLargeError,
     CostoLayout,
@@ -10,6 +10,7 @@ from nesting.engine.packer import (
     pack,
 )
 from nesting.engine.shelf_oracle import ShelfOracle
+from nesting.geometry.verify import verify
 from nesting.model.part import Part
 from nesting.model.sheet import Sheet, SheetSupply
 
@@ -186,24 +187,25 @@ def test_la_recuperacion_no_acepta_un_layout_mas_caro():
     )
 
 
-def _cada_pieza_dentro_de_su_placa(result, piezas):
-    """Ninguna colocación se sale del área útil de la placa que le tocó.
+def _el_verificador_no_encuentra_nada(result, piezas):
+    """El árbitro de verdad: cada colocación contra SU placa.
 
-    `verify` no sirve acá: toma UNA medida de placa para todo el layout, y
-    con recortes en el plan cada placa mide distinto.
+    Esto lo hacía a mano una cuenta de bounding boxes, con un comentario que
+    decía que `verify` no servía acá porque tomaba UNA medida de placa para
+    todo el layout. Era cierto cuando se escribió y dejó de serlo en la
+    tarea 4: `verify` recibe `sheets` y revisa cada pieza contra la placa que
+    le tocó -- que es el reclamo central de seguridad de esta rama. Repetirlo
+    a mano acá no agregaba nada y enseñaba lo contrario de lo que la rama
+    construyó.
+
+    Además revisa más: la cuenta a mano miraba sólo el bounding box contra el
+    área útil, y `verify` usa la geometría exacta y además controla que las
+    piezas no se pisen ni se acerquen a menos de `sep`.
     """
-    por_id = {p.id: p for p in piezas}
-    for colocacion in result.placements:
-        hoja = result.sheets[colocacion.sheet]
-        x0, y0, x1, y1 = transformed_bbox(
-            por_id[colocacion.part_id],
-            colocacion.transform.angle_deg,
-            colocacion.transform.mirror,
-        )
-        assert colocacion.transform.dx + x0 >= CONFIG.margin - 1e-6
-        assert colocacion.transform.dy + y0 >= CONFIG.margin - 1e-6
-        assert colocacion.transform.dx + x1 <= hoja.width - CONFIG.margin + 1e-6
-        assert colocacion.transform.dy + y1 <= hoja.height - CONFIG.margin + 1e-6
+    assert verify(
+        piezas, result.placements, result.sheets,
+        sep=CONFIG.sep, margin=CONFIG.margin,
+    ) == []
 
 
 def test_un_reempaque_que_desborda_el_recorte_no_aborta_el_trabajo():
@@ -230,7 +232,7 @@ def test_un_reempaque_que_desborda_el_recorte_no_aborta_el_trabajo():
     assert sorted(p.part_id for p in result.placements) == [0, 1]
     assert result.sheets_used == len({p.sheet for p in result.placements})
     assert len(result.utilization) == result.sheets_used
-    _cada_pieza_dentro_de_su_placa(result, piezas)
+    _el_verificador_no_encuentra_nada(result, piezas)
 
 
 def test_dos_placas_usadas_con_recortes_en_el_plan():
@@ -267,4 +269,4 @@ def test_dos_placas_usadas_con_recortes_en_el_plan():
     # Y cada aprovechamiento se mide contra el área de SU placa.
     assert result.utilization[0] == pytest.approx(160_000.0 / 250_000.0)
     assert result.utilization[1] == pytest.approx(2_340_000.0 / 4_000_000.0)
-    _cada_pieza_dentro_de_su_placa(result, piezas)
+    _el_verificador_no_encuentra_nada(result, piezas)

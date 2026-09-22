@@ -3,6 +3,7 @@ import pytest
 from nesting.engine.oracle import NestConfig
 from nesting.engine.packer import (
     PartTooLargeError,
+    layout_cost,
     orientations,
     pack,
     replicate,
@@ -209,10 +210,19 @@ def test_a_zero_area_part_still_gets_placed_without_crashing():
 
 
 def test_el_resultado_dice_que_placa_fue_cada_indice():
+    """`sheets` tiene una entrada por cada placa que las colocaciones usan.
+
+    Comparar contra `sheets_used` no medía nada: es una `@property` que
+    devuelve `len(sheets)`, así que la igualdad se cumple sola. Lo que hay
+    que revisar es que `sheets` cubra los índices que aparecen en
+    `placements`, que es lo que verify, el escritor de DXF y la
+    previsualización dan por hecho.
+    """
     parts = [rect_part(i, 400.0, 400.0) for i in range(6)]
     result = pack(parts, PLAN_LIBRE, CONFIG, ShelfOracle)
 
-    assert len(result.sheets) == result.sheets_used
+    assert len(result.sheets) == 2
+    assert len(result.sheets) == len({p.sheet for p in result.placements})
     assert all(h is PLAN_LIBRE.stock for h in result.sheets)
 
 
@@ -236,6 +246,52 @@ def test_sin_recortes_el_aprovechamiento_se_calcula_igual_que_siempre():
     assert result.total_utilization == pytest.approx(
         total / (area_placa * result.sheets_used)
     )
+
+
+def test_una_corrida_sin_recortes_da_exactamente_los_numeros_de_siempre():
+    """Detector de cambio, no de propiedad: nada en el código obliga a que
+    este escenario dé 2 placas, 0.69/0.24 y `CostoLayout(2, 240000.0, 480.0)`.
+    Son los números que devolvía el motor ANTES de que existieran los
+    recortes, medidos sobre el commit 1d626ab (el punto de arranque de la
+    rama) con este mismo escenario: mismas placas, mismo aprovechamiento por
+    placa, mismo costo y -- comprobado al medirlos -- hasta la misma
+    transformación pieza por pieza.
+
+    QUÉ GARANTIZA. Que meter `SheetSupply` en el medio no movió una corrida
+    sin recortes. El motor pasó de recibir un `Material` (una medida de
+    placa, infinitas veces) a un plan de placas, `layout_cost` pasó de contar
+    placas a contar sólo las que no son recortes, y el aprovechamiento pasó
+    de un área única a un área por placa. Con la lista de recortes vacía
+    los tres cambios tienen que ser invisibles. Eso se verificó a mano, con
+    worktrees del commit anterior, tres veces durante la revisión de la
+    rama, y esa evidencia no sobrevive al merge: este test es lo único que
+    la deja escrita.
+
+    QUÉ HACER SI FALLA. No actualizar el número. Que este test se ponga en
+    rojo quiere decir que una corrida sin recortes -- o sea, todas las
+    corridas de todos los usuarios que no cargan recortes -- cambió de
+    resultado. Primero hay que averiguar por qué cambió y si el cambio se
+    pidió; recién ahí, si la respuesta es que sí, se vuelven a medir los
+    seis valores y se anota acá contra qué commit se midieron. Se puede
+    reproducir con un worktree del commit de referencia y este mismo
+    escenario: `pack` de las ocho piezas de abajo sobre `PLAN_LIBRE` con
+    `CONFIG`, que es una pasada golosa sin reintentos y por lo tanto
+    determinista.
+    """
+    medidas = [(500.0, 400.0), (500.0, 400.0), (500.0, 400.0),
+               (300.0, 300.0), (300.0, 300.0), (300.0, 300.0),
+               (200.0, 150.0), (200.0, 150.0)]
+    piezas = [rect_part(i, ancho, alto) for i, (ancho, alto) in enumerate(medidas)]
+
+    result = pack(piezas, PLAN_LIBRE, CONFIG, ShelfOracle)
+    costo = layout_cost(result, piezas)
+
+    assert result.sheets_used == 2
+    assert result.utilization == pytest.approx([0.69, 0.24])
+    assert result.total_utilization == pytest.approx(0.465)
+    assert costo.placas_nuevas == 2
+    assert costo.material_ultima == pytest.approx(240_000.0)
+    assert costo.alto_ultima == pytest.approx(480.0)
 
 
 def test_orientations_toma_una_placa_y_respeta_su_veta():
