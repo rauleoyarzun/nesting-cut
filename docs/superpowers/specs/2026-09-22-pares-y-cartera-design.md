@@ -192,8 +192,16 @@ Let `N` be the chosen number of cores (section 6).
 | effort | variants evaluated | pairs |
 |---|---|---|
 | rapido | 1 (base) | no |
-| normal | base + one batch of `N` | 6 types per class |
-| lento | base + three batches of `N` | 10 types per class, plus orientation perturbations |
+| normal | base + one batch | 6 types per class |
+| lento | base + three batches | 10 types per class, plus orientation perturbations |
+
+A **batch** is `max(N, 12)` variants: never fewer than 12, even with fewer
+cores, in which case they are evaluated in several rounds of `N`. The user's
+decision: the result must not depend on the machine. On the bench job the
+winning combination comes out eighth, and with batches of `N` a 4-core
+computer did not find it even in lento. With the minimum, every machine with
+up to 12 cores tries exactly the same variants; a 4-core one takes about three
+times longer in normal, and the estimated time says so before starting.
 
 Batches are filled in the order of 4.1: pair combinations first, then order
 perturbations and, in lento, orientation ones. With no pairable classes,
@@ -281,7 +289,8 @@ sheets of different sizes is not that.
   returns `{"nucleos": 14, "tope": 12, "omision": 12}`.
 - **CLI**: `--nucleos N`.
 - The pre-run estimated time (estimated-time spec, 3.2) multiplies the
-  forecast queries by the batch's variants and divides by `N`.
+  forecast queries of one pass by each batch's rounds,
+  `⌈max(N, 12) / N⌉`.
 
 ## 7. Tests
 

@@ -1513,6 +1513,45 @@ Expected: PASS, sin fallos nuevos.
 
 - [ ] **Step 5: Escribir los tests de la cartera, que fallan**
 
+Crear `tests/conftest.py` (no existe todavía):
+
+```python
+"""Fixtures para toda la suite."""
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _tanda_minima_de_uno(request, monkeypatch):
+    """Baja `cartera.MIN_BATCH` a 1 salvo en los tests `minimo_real`.
+
+    Con el mínimo de verdad (12), cada `pack()` en normal son trece pasadas
+    y la suite tardaría horas; y las cuentas chicas de los tests (`workers=3`
+    son cuatro variantes) dejarían de valer. El mínimo se prueba aparte, con
+    la marca. Se importa adentro para que un test que no toca el motor no
+    lo cargue.
+    """
+    if request.node.get_closest_marker("minimo_real"):
+        return
+    from nesting.engine import cartera
+
+    monkeypatch.setattr(cartera, "MIN_BATCH", 1)
+```
+
+En `pyproject.toml`, sumar a `[tool.pytest.ini_options]`:
+
+```toml
+markers = [
+    "minimo_real: usa `cartera.MIN_BATCH` de verdad en vez del 1 de los tests",
+]
+```
+
+(La Tarea 9 reemplaza esta sección entera y tiene que conservar esta marca.)
+
+El fixture sólo baja el número en el proceso de pytest. Las tandas en
+paralelo de la Tarea 6 calculan el tamaño en el proceso principal, así que
+el valor parcheado alcanza; los procesos `spawn` nunca lo leen.
+
 Crear `tests/engine/test_cartera.py`:
 
 ```python
@@ -1745,6 +1784,31 @@ def test_normal_evalua_la_base_y_una_tanda_y_es_prefijo_de_lento():
     assert lento.evaluated[:4] == normal.evaluated
 
 
+@pytest.mark.minimo_real
+def test_con_pocos_nucleos_la_tanda_no_baja_del_minimo():
+    """Decisión del usuario: el resultado no depende de la máquina. Con 4
+    núcleos, normal prueba las mismas 12 variantes que con 12."""
+    from nesting.engine.cartera import MIN_BATCH, batch_size
+
+    assert MIN_BATCH == 12
+    assert batch_size(1) == batch_size(4) == batch_size(12) == 12
+    assert planned_variants("normal", 4) == planned_variants("normal", 12) == 13
+    assert planned_variants("lento", 4) == 37
+
+
+@pytest.mark.minimo_real
+def test_con_mas_nucleos_que_el_minimo_la_tanda_crece():
+    from nesting.engine.cartera import batch_size
+
+    assert batch_size(14) == 14
+    assert planned_variants("normal", 14) == 15
+
+
+@pytest.mark.minimo_real
+def test_rapido_no_paga_el_minimo():
+    assert planned_variants("rapido", 4) == 1
+
+
 def test_mas_esfuerzo_nunca_da_peor():
     costos = {
         e: layout_cost(pack(siete(), PLAN, config(effort=e, workers=2), RasterOracle), siete())
@@ -1888,8 +1952,9 @@ EFFORT_BATCHES: dict[str, int] = {"rapido": 0, "normal": 1, "lento": 3}
 Reemplaza a `EFFORT_RESTARTS` (1, 3 y 12 pasadas). Los reintentos de antes
 sólo permutaban el orden de inserción, y seis copias idénticas permutadas
 dan el mismo acomodo: sobre la banqueta alta esos reintentos no exploraban
-nada (spec 1.1). Una tanda en paralelo cuesta lo que una pasada, así que
-`normal` con `N` núcleos prueba `N` variantes en el tiempo de una.
+nada (spec 1.1). Una tanda son `batch_size(N)` variantes: `N`, pero nunca
+menos de `MIN_BATCH`. Con 12 núcleos o más, normal prueba `N` variantes en
+el tiempo de una pasada; con menos, las mismas 12 en varias vueltas.
 
 `lento <= normal <= rapido` sigue valiendo por construcción: con el mismo
 `N` y la misma semilla, las variantes de `rapido` son un prefijo de las de
@@ -1926,6 +1991,28 @@ ORIENTATION_RANKS = 3
 ORIENTATION_TOP_SHARE = 0.1
 """Qué parte de las piezas, las de más área, se perturban en orientación."""
 
+MIN_BATCH = 12
+"""Cuántas variantes tiene, como mínimo, cada tanda, aunque haya menos núcleos.
+
+Decisión del usuario (2026-09-22): el resultado no puede depender de la
+máquina. Sobre la banqueta alta, la combinación que gana sale octava; con
+tandas de `N` variantes, una computadora de 4 núcleos no la encontraba ni en
+lento (tres tandas de 2 con dos núcleos libres son seis). Con este mínimo,
+toda máquina de hasta 12 núcleos prueba exactamente las mismas variantes y
+da el mismo resultado; una de 4 tarda unas tres veces más en normal, y el
+tiempo estimado lo avisa antes de arrancar. Con más de 12 núcleos la tanda
+crece a `N`: más núcleos exploran más, en el mismo tiempo.
+
+Los tests lo bajan a 1 con el fixture `_tanda_minima_de_uno` de
+`tests/conftest.py`, para que las cuentas chicas de siempre sigan valiendo;
+los que prueban el mínimo de verdad llevan `@pytest.mark.minimo_real`.
+"""
+
+
+def batch_size(workers: int) -> int:
+    """Cuántas variantes tiene cada tanda: `N`, pero nunca menos de `MIN_BATCH`."""
+    return max(1, workers, MIN_BATCH)
+
 
 def cota_minima(parts: Sequence[Part], supply: SheetSupply, margin: float) -> int | None:
     """⌈área neta de las piezas / área útil de la placa del Material⌉.
@@ -1948,7 +2035,7 @@ def cota_minima(parts: Sequence[Part], supply: SheetSupply, margin: float) -> in
 
 def planned_variants(effort: str, workers: int) -> int:
     """Cuántas variantes prevé la cartera, base incluida, si no corta por la cota."""
-    return 1 + EFFORT_BATCHES[effort] * max(1, workers)
+    return 1 + EFFORT_BATCHES[effort] * batch_size(workers)
 
 
 def smallest_combinations(
@@ -2530,8 +2617,8 @@ def run_portfolio(
     if not parts:
         return PortfolioResult(PackResult(seconds=time.perf_counter() - started), base, [], lower)
 
-    size = max(1, config.workers)
-    planned = planned_variants(config.effort, size)
+    size = batch_size(config.workers)
+    planned = planned_variants(config.effort, config.workers)
     progress = _Progress(progreso, len(parts), planned,
                          initial_forecast(parts, supply, config))
 
@@ -3963,7 +4050,9 @@ def wall_passes(effort: str, workers: int) -> float:
     no corren.
     """
     n = max(1, workers)
-    return 1.0 + EFFORT_BATCHES[effort] * n / n
+    # Las variantes de una tanda se reparten en `n` núcleos: son
+    # ⌈tanda / n⌉ vueltas, cada una del tiempo de una pasada.
+    return 1.0 + EFFORT_BATCHES[effort] * math.ceil(batch_size(workers) / n)
 
 
 def wall_forecast(parts: Sequence[Part], supply: SheetSupply, config: NestConfig) -> float:
@@ -4292,6 +4381,7 @@ testpaths = ["tests"]
 addopts = "-q -m 'not lento'"
 markers = [
     "lento: pruebas de minutos (la banqueta alta, la confirmación del caso sintético); correr con `.venv/bin/pytest -m lento`",
+    "minimo_real: usa `cartera.MIN_BATCH` de verdad en vez del 1 de los tests",
 ]
 ```
 
@@ -4414,15 +4504,17 @@ def piezas_de_la_banqueta():
 
 
 def config_banqueta():
-    """8 posiciones, sep 8, borde 5, 1 mm/px, normal. `workers = 12` FIJO:
-    el resultado depende de N (la combinación que gana está en el puesto 8
-    de la tanda), y 12 es el valor por omisión en la máquina de 14 núcleos
-    donde se midió. Con menos núcleos la prueba igual usa 12 procesos."""
+    """8 posiciones, sep 8, borde 5, 1 mm/px, normal, con `workers = 4` a
+    propósito: la combinación que gana sale octava, y es `MIN_BATCH` el que
+    garantiza que una máquina de 4 núcleos también la pruebe. Las pruebas que
+    usan esto llevan `@pytest.mark.minimo_real`; sin la marca, el fixture de
+    `tests/conftest.py` bajaría la tanda a 4 y la banqueta daría 2 placas."""
     return NestConfig(sep=8.0, margin=5.0, angles=tuple(i * 45.0 for i in range(8)),
-                      mirror=True, resolution=1.0, effort="normal", seed=0, workers=12)
+                      mirror=True, resolution=1.0, effort="normal", seed=0, workers=4)
 
 
 @pytest.mark.lento
+@pytest.mark.minimo_real
 @falta_la_banqueta
 def test_la_banqueta_alta_entra_en_una_placa_libre():
     piezas = piezas_de_la_banqueta()

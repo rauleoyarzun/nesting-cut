@@ -198,8 +198,16 @@ Sea `N` la cantidad de núcleos elegida (sección 6).
 | esfuerzo | variantes evaluadas | pares |
 |---|---|---|
 | rápido | 1 (base) | no |
-| normal | base + una tanda de `N` | 6 tipos por clase |
-| lento | base + tres tandas de `N` | 10 tipos por clase, más perturbaciones de orientación |
+| normal | base + una tanda | 6 tipos por clase |
+| lento | base + tres tandas | 10 tipos por clase, más perturbaciones de orientación |
+
+Una **tanda** son `max(N, 12)` variantes: nunca menos de 12, aunque haya
+menos núcleos, y entonces se evalúan en varias vueltas de `N`. Decisión del
+usuario: el resultado no puede depender de la máquina. Sobre la banqueta la
+combinación ganadora sale octava, y con tandas de `N` una computadora de 4
+núcleos no la encontraba ni en lento. Con el mínimo, toda máquina de hasta 12
+núcleos prueba exactamente las mismas variantes; una de 4 tarda unas tres
+veces más en normal, y el tiempo estimado lo avisa antes de arrancar.
 
 Las tandas se llenan en el orden de 4.1: primero combinaciones de pares,
 después perturbaciones de orden y, en lento, de orientación. Si no hay
@@ -291,7 +299,8 @@ honesta con placas de distinto tamaño no es esa.
   "omision": 12}`.
 - **CLI**: `--nucleos N`.
 - El tiempo estimado previo (spec de tiempo estimado, 3.2) multiplica las
-  consultas previstas por las variantes de la tanda y divide por `N`.
+  consultas previstas de una pasada por las vueltas de cada tanda,
+  `⌈max(N, 12) / N⌉`.
 
 ## 7. Pruebas
 
