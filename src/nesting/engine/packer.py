@@ -345,6 +345,14 @@ o sea que `normal` ahí se va muy por encima de los 5 minutos. El objetivo
 vale para trabajos del tamaño contra el que se calibró, no para cualquier
 carga.
 
+TODO LO DE ARRIBA SE MIDIÓ A 2.0 mm/px, QUE YA NO ES EL VALOR POR OMISIÓN.
+Desde los recortes, `NestParams.resolucion` arranca en 1.0: cuatro veces los
+píxeles del raster, así que cuatro veces el trabajo de rasterizar y de
+buscar. Ninguno de los números de esta nota se volvió a medir a 1.0, y no
+hay razón para creer que escalen de forma simple. Valen como comparación
+entre niveles de esfuerzo a una misma resolución, no como pronóstico de
+cuánto va a tardar una corrida con los valores de hoy.
+
 `pack()` garantiza `lento <= normal <= rapido` por construcción (ver el
 superconjunto de reintentos más abajo), nunca por suerte de la semilla."""
 

@@ -147,14 +147,16 @@ mismos parámetros.
 | Control | Flag | Qué es |
 |---|---|---|
 | Material | `--material` | Clave del catálogo. Obligatorio. |
+| Recortes | — | Pedazos sueltos que ya tenés y querés usar antes de abrir una placa nueva. Se cargan con medida y cantidad, se llenan del más grande al más chico, y valen sólo mientras el programa está abierto: no van al catálogo. **Sólo en la interfaz; la CLI no los acepta.** |
 | Separación | `--sep` | Milímetros mínimos entre dos piezas. |
 | Borde | `--borde` | Margen contra el borde de la placa. |
 | Copias | `--copias` | Cuántas veces repetir todo el contenido del archivo. |
 | Esfuerzo | `--esfuerzo` | `rapido` (1 pasada), `normal` (3) o `lento` (12). |
-| Ángulos | `--angulos` | Rotaciones candidatas, separadas por coma. |
+| Posiciones | — | En cuántas posiciones puede girar cada pieza, repartidas en la vuelta entera: 4, 8 o 16. `Personalizado` revela el campo Ángulos para escribir la lista a mano. **Sólo en la interfaz.** |
+| Ángulos | `--angulos` | Rotaciones candidatas, separadas por coma. En la pantalla vive detrás de `Posiciones → Personalizado`. |
 | Permitir espejadas | `--sin-espejo` | Si una pieza se puede dar vuelta como un guante. La pantalla lo trae activado; el flag lo apaga. |
 | Tolerancia de cierre | `--tol-cierre` | Cuánto puede separarse un contorno para considerarlo cerrado. |
-| Resolución | `--resolucion` | Milímetros por píxel del raster. Más fino acomoda un poco mejor y tarda mucho más. |
+| Resolución | `--resolucion` | Milímetros por píxel del raster. Bajar de 2 a 1 cuadruplica el trabajo. Arranca en 1. |
 | — | `--unidades` | Unidades del archivo, si el archivo no las declara. |
 | — | `--preview` | Ruta del PNG de previsualización. |
 | — | `--diagnostico` | Ruta del PNG que marca los descartes. Si es lo único que pedís, no acomoda nada y sale en un segundo. |

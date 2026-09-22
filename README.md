@@ -149,14 +149,16 @@ parameters.
 | Control | Flag | What it is |
 |---|---|---|
 | Material | `--material` | Key from the catalogue. Required. |
+| Recortes | — | Loose offcuts you already have and want to use before opening a new sheet. Loaded with a size and a quantity, filled largest to smallest, and only last while the program stays open: they never go into the catalogue. **Interface only; the CLI does not accept them.** |
 | Separación | `--sep` | Minimum millimetres between two parts. |
 | Borde | `--borde` | Margin against the edge of the sheet. |
 | Copias | `--copias` | How many times to repeat the entire contents of the file. |
 | Esfuerzo | `--esfuerzo` | `rapido` (1 pass), `normal` (3) or `lento` (12). |
-| Ángulos | `--angulos` | Candidate rotations, comma separated. |
+| Posiciones | — | How many positions each part can rotate to, spread evenly across the full turn: 4, 8 or 16. `Personalizado` reveals the Ángulos field to type the list by hand. **Interface only.** |
+| Ángulos | `--angulos` | Candidate rotations, comma separated. On screen it now lives behind `Posiciones → Personalizado`. |
 | Permitir espejadas | `--sin-espejo` | Whether a part may be flipped over like a glove. The screen has it on; the flag turns it off. |
 | Tolerancia de cierre | `--tol-cierre` | How far apart an outline may be and still count as closed. |
-| Resolución | `--resolucion` | Millimetres per pixel of the raster. Finer lays out slightly better and takes much longer. |
+| Resolución | `--resolucion` | Millimetres per pixel of the raster. Going from 2 down to 1 quadruples the work. Starts at 1. |
 | — | `--unidades` | Units of the file, if the file does not declare them. |
 | — | `--preview` | Path for the preview PNG. |
 | — | `--diagnostico` | Path for the PNG that marks the discards. If it is the only thing you ask for, it lays out nothing and finishes in a second. |

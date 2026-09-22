@@ -26,9 +26,9 @@ const TEXTOS = {
   "copias": "Cuántas veces se repite el contenido entero del archivo. Si el archivo trae 12 piezas y ponés 3, acomoda 36.",
   "esfuerzo": "Cuántas veces intenta acomodar antes de quedarse con la mejor. Más esfuerzo nunca da un resultado peor, pero tarda más: Normal alcanza casi siempre.",
   "angulos": "Las rotaciones que puede probar en cada pieza, separadas por comas. Menos ángulos es más rápido; sumar 45 suele ganar lugar en piezas largas. Si el material respeta la veta, sólo se usan 0 y 180.",
-  "posiciones": "Cuántas rotaciones prueba en cada pieza, repartidas parejas en la vuelta entera: 4 son 0/90/180/270, 16 son cada 22,5 grados. Más posiciones gana lugar pero tarda más. Personalizado abre el campo de ángulos sueltos, para casos que no son una repartición pareja.",
+  "posiciones": "Cuántas rotaciones prueba en cada pieza, repartidas parejo en la vuelta entera: 4 son 0/90/180/270, 16 son cada 22,5 grados. Más posiciones gana lugar pero tarda más. Personalizado abre el campo de ángulos sueltos, para casos que no son una repartición pareja.",
   "tol-cierre": "Cuánto puede separarse la punta de un contorno de su principio y todavía contar como cerrado. Si te descarta piezas que a ojo están cerradas, subila.",
-  "resolucion": "Cuántos milímetros mide cada píxel con el que el programa \"ve\" la placa. Más fino acomoda apenas mejor y tarda mucho más; 2 mm es buen punto.",
+  "resolucion": "Cuántos milímetros mide cada píxel con el que el programa \"ve\" la placa. Más fino acomoda mejor y tarda mucho más: bajar de 2 a 1 cuadruplica el trabajo. Arranca en 1; si un archivo grande tarda demasiado, subirlo a 2 es lo primero que conviene probar.",
   "espejo": "Deja dar vuelta la pieza como un guante, no sólo rotarla. Gana lugar, pero si el material tiene una cara buena o el dibujo es asimétrico, apagalo.",
   "recortes": "Pedazos sueltos que sobraron de un trabajo anterior: el acomodo los llena antes de abrir una placa nueva. Se pierden al cerrar el programa -- anotalos de nuevo la próxima vez que los uses.",
 };
