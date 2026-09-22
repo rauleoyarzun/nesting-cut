@@ -299,11 +299,16 @@ sheets of different sizes is not that.
   the best gets cut; cancelling leaves no process alive.
 - Bound: "No se puede con menos placas" is reported when it applies, and
   never with offcuts.
-- **The test that matters**: `BANQUETA ALTA NESTING.ai` moves to
-  `bench/files/banqueta-alta.ai`. With a free 1220×2440 sheet, sep 8, margin
-  5, 8 positions, normal effort, 1 mm/px: **1 sheet**, verified. With
-  multilam18 (grain): 2 sheets, and no minimum line (bound 1). It is a slow
-  test, marked as such, and also a bench row.
+- **The test that matters**: `BANQUETA ALTA NESTING.ai` is copied to
+  `bench/files/banqueta-alta.ai`, which is **not versioned** (`bench/files/`
+  is already in `.gitignore`: design files are the user's work). With a free
+  1220×2440 sheet, sep 8, margin 5, 8 positions, normal effort, 1 mm/px:
+  **1 sheet**, verified. With multilam18 (grain): 2 sheets, and no minimum
+  line (bound 1). It is a slow test, marked as such, that **skips with a
+  clear reason if the file is missing**, and also a bench row. So the suite
+  does not depend on that file alone, a fast test builds a synthetic case
+  with the same trap: six copies of an L-shaped part that only fit one sheet
+  when interlocked in pairs of two different types.
 - Packaging: the `--autotest` in `packaging/construir.sh` does a run with 2
   processes, because a `spawn` without `freeze_support` works from the repo
   and hangs in the executable.

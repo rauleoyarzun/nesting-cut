@@ -309,11 +309,17 @@ honesta con placas de distinto tamaño no es esa.
   más placas que la mejor se corta; cancelar no deja procesos vivos.
 - Cota: se informa "No se puede con menos placas" cuando corresponde, y
   nunca con recortes.
-- **La prueba que importa**: `BANQUETA ALTA NESTING.ai` pasa a
-  `bench/files/banqueta-alta.ai`. Con placa 1220×2440 libre, sep 8, borde 5,
-  8 posiciones, esfuerzo normal, 1 mm/px: **1 placa**, verificada. Con
-  multilam18 (veta): 2 placas, y sin el cartel de mínimo (cota 1). Es un
-  test lento, marcado como tal, y además una fila del bench.
+- **La prueba que importa**: `BANQUETA ALTA NESTING.ai` se copia a
+  `bench/files/banqueta-alta.ai`, que **no se versiona** (`bench/files/` ya
+  está en `.gitignore`: los archivos de diseño son trabajo del usuario). Con
+  placa 1220×2440 libre, sep 8, borde 5, 8 posiciones, esfuerzo normal,
+  1 mm/px: **1 placa**, verificada. Con multilam18 (veta): 2 placas, y sin el
+  cartel de mínimo (cota 1). Es un test lento, marcado como tal, que **se
+  saltea con un motivo claro si el archivo no está**, y además una fila del
+  bench. Para que la suite no dependa sólo de ese archivo, un test rápido
+  fabrica un caso sintético con la misma trampa: seis copias de una pieza
+  en L que sólo entran en una placa si se encastran de a pares con dos tipos
+  distintos.
 - Empaquetado: el `--autotest` de `packaging/construir.sh` hace una corrida
   con 2 procesos, porque un `spawn` sin `freeze_support` funciona en el
   repo y se cuelga en el ejecutable.
