@@ -1354,3 +1354,54 @@ Task 10: completa (commits 97c772b..895a87b, revisión limpia). Globo de resoluc
         agregar al final y no tocar el cuerpo, así que el implementador cumplió.
 
 ## Estado: las diez tareas completas. Falta la revisión final de rama.
+
+## Revisión final de rama (26 commits) y sus arreglos
+
+Veredicto: mergeable con arreglos menores, nada bloqueante.
+El revisor final corrió su propio fuzz (400 escenarios ShelfOracle + 60 raster + 400 con
+veta y espejo al azar; 314 usaron al menos un recorte): cero PartTooLargeError, cero
+violaciones de verify(), todos los invariantes en pie. Forzó además una
+desincronización de placas y confirmó que sale VerificacionFallidaError SIN escribir
+salida.dxf. Corrida funcional de punta a punta con recortes reales: correcta.
+
+HALLAZGO QUE NINGUNA REVISIÓN INDIVIDUAL PODÍA VER: la rama dejó ciega a
+herramientas/globos_reales.py, que según su propio docstring es LO ÚNICO que ejecuta el
+JavaScript de la interfaz (la suite sólo lee archivos como texto). Su lista CLAVES tenía
+los diez botones viejos y el HTML pasó a doce; y el botón de `angulos` quedó adentro de
+un div `oculto` que la tarea 8 introdujo, así que medía la caja de un globo anclado a un
+elemento de 0x0. Los dos globos que ya no podía alcanzar eran justamente los dos nuevos.
+
+Arreglos aplicados (71a737b, 2758cdb, 6432425, c967c47), siete ítems:
+  1. globos_reales.py: CLAVES al día y el `oculto` de campo-angulos. CORRIDA contra la
+     ventana real: 12 comprobaciones en verde.
+  2. El docstring de _cada_pieza_dentro_de_su_placa afirmaba que verify() no sirve con
+     recortes -- lo contrario de lo que la tarea 4 construyó. Se reemplazó el helper por
+     verify() directamente (geometría exacta y separación, no sólo bbox).
+  3. El mensaje del oráculo raster ante un recorte mal tipeado culpaba a la resolución.
+  4. Etiquetas del preview: label_lines() parte el rótulo en las líneas que entren en el
+     ancho de SU placa y agrega "recorte" cuando Sheet.scrap. Con una línea la franja
+     mide lo mismo que antes, así que ningún render sin recortes cambió.
+  5. La aserción tautológica de test_packer.py:215.
+  6. Las tres palabras del docstring de EFFORT_RESTARTS.
+  7. EL CHANGE-DETECTOR QUE FALTABA: el spec lo pedía y la evidencia de "nada cambió"
+     vivía sólo en worktrees de las revisiones, que no sobreviven al merge. El arreglador
+     no lo dio por bueno desde la rama: armó un worktree del merge-base y corrió el mismo
+     escenario contra el motor viejo. Idéntico en los seis valores y las ocho
+     transformaciones.
+
+Suite final: 1112 passed, verificado por el controlador. Árbol limpio, 30 commits, cero
+líneas de atribución, fast-forward limpio sobre main.
+
+Comprobación visual del controlador: previsualización con dos recortes (600x800 y
+450x1200) más la placa de mdf18 -- los recortes se llenan primero (41.2% y 73.2%), el
+sobrante va a la placa nueva, y las etiquetas dicen cuál es recorte y se parten en dos
+renglones cuando la placa es angosta.
+
+DATO PARA EL USUARIO, medido por el revisor final sobre el archivo de referencia del
+propio proyecto (muestra.dxf, esfuerzo rapido): la resolución 1 mm/px por omisión cuesta
+4,5x y da EL MISMO LAYOUT que 2.0. 24 piezas: 6.1s -> 27.5s, idéntico (1 placa, 27.12%).
+60 piezas: 27.4s -> 127.2s, idéntico (2 placas, 33.90%). Con esfuerzo normal ese trabajo
+de 60 piezas pasa de ~82s a ~380s, o sea cruza el objetivo de 5 minutos que el proyecto
+documenta. Fue un pedido explícito y el spec decidió a conciencia no volver a medir.
+
+## Estado: rama completa y verificada. Pendiente: decisión de merge del usuario.
