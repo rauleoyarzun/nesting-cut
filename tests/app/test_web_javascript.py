@@ -1669,6 +1669,29 @@ def test_la_casilla_de_veta_cruzada_se_apaga_en_un_material_sin_veta(js):
 
     assert '=== "libre"' in cuerpo
     assert '$("r-cruzada").disabled' in cuerpo
+def test_el_material_arranca_en_el_que_mas_se_usa(js):
+    """El selector se llenaba con el catálogo y se quedaba con el primero,
+    que sale del orden del YAML. Elegir uno por nombre es lo que hace que el
+    default no dependa de cómo quedó ordenado el archivo -- y el catálogo se
+    guarda alfabético, así que ese orden ya cambió una vez."""
+    cuerpo = _cuerpo_de_funcion(js, "refrescarMateriales")
+
+    assert "MATERIAL_PREFERIDO" in cuerpo
+    assert re.search(r'MATERIAL_PREFERIDO\s*=\s*"mdf15"', js)
+
+
+def test_un_catalogo_sin_el_preferido_igual_elige_algo(js):
+    """Se puede borrar mdf15 desde la pantalla de materiales. Si el default
+    se aplicara a ciegas, el selector quedaría en un valor que no está en la
+    lista: `select.value` devuelve "" y Acomodar sale con el material
+    vacío."""
+    cuerpo = _cuerpo_de_funcion(js, "refrescarMateriales")
+
+    assert "some" in cuerpo or "includes" in cuerpo or "find" in cuerpo, (
+        "nada comprueba que el preferido esté en el catálogo"
+    )
+
+
 
 
 def test_el_bloque_de_recortes_tiene_sus_controles(html):

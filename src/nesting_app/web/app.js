@@ -834,6 +834,11 @@ $("btn-materiales").onclick = mostrarMateriales;
 
 // --- arranque ---------------------------------------------------------------
 
+// El material que más se corta. Se elige por nombre y no por posición:
+// el catálogo se guarda en orden alfabético, así que "el primero de la
+// lista" ya cambió una vez y volvería a cambiar con cada material nuevo.
+const MATERIAL_PREFERIDO = "mdf15";
+
 async function refrescarMateriales() {
   const datos = await apiJson("/api/materiales");
   const select = $("material");
@@ -845,7 +850,12 @@ async function refrescarMateriales() {
     opcion.textContent = `${m.nombre} — ${m.ancho} × ${m.alto}`;
     select.append(opcion);
   }
+  // El preferido se puede borrar desde la pantalla de materiales. Sin este
+  // `some`, `select.value = "mdf15"` contra un catálogo que ya no lo tiene
+  // deja el selector en "" y Acomodar sale sin material.
+  const hayPreferido = datos.materiales.some((m) => m.nombre === MATERIAL_PREFERIDO);
   if (elegido) select.value = elegido;
+  else if (hayPreferido) select.value = MATERIAL_PREFERIDO;
   vetaPorMaterial = Object.fromEntries(
     datos.materiales.map((m) => [m.nombre, m.veta])
   );

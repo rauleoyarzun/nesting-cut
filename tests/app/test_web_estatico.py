@@ -65,6 +65,23 @@ def test_todo_campo_tiene_su_etiqueta(html):
         assert f'for="{campo}"' in html, f"falta el label de {campo}"
 
 
+@pytest.mark.parametrize("campo,valor", [("sep", "10"), ("borde", "5")])
+def test_los_milimetros_arrancan_en_lo_que_se_usa_todos_los_dias(html, valor, campo):
+    """Los valores que trae el taller: 10 mm entre piezas -- una fresa de 8
+    con aire -- y 5 de margen contra el filo. Estaban al revés, así que las
+    dos había que corregirlas a mano en cada trabajo."""
+    etiqueta = re.search(rf'<input id="{campo}"[^>]*>', html).group(0)
+    assert f'value="{valor}"' in etiqueta, etiqueta
+
+
+def test_el_esfuerzo_arranca_en_una_pasada(html):
+    """Una pasada da un resultado en segundos. Las tres de Normal se piden
+    cuando el de una no alcanzó, que es la excepción y no la regla."""
+    select = html[html.index('id="esfuerzo"'):html.index("</select>", html.index('id="esfuerzo"'))]
+    assert re.search(r'<option value="rapido"[^>]*selected', select), select
+    assert select.count("selected") == 1, "hay más de una opción marcada"
+
+
 def test_el_catalogo_se_abre_desde_el_campo_material(html):
     """Arriba a la derecha, separado de todo, nadie lo encuentra: lo reportó
     el usuario. El momento en que a alguien le falta un material es el

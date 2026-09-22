@@ -104,7 +104,7 @@
         <button type="button" class="boton-info" data-info="sep" aria-label="Qué es Separación" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
       </div>
       <div class="control con-unidad">
-        <input id="sep" type="number" min="0" step="0.5" value="5" class="medida">
+        <input id="sep" type="number" min="0" step="0.5" value="10" class="medida">
         <span class="unidad">mm</span>
       </div>
       <p class="error-campo oculto" data-error-de="sep"></p>
@@ -116,7 +116,7 @@
         <button type="button" class="boton-info" data-info="borde" aria-label="Qué es Borde" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
       </div>
       <div class="control con-unidad">
-        <input id="borde" type="number" min="0" step="1" value="10" class="medida">
+        <input id="borde" type="number" min="0" step="1" value="5" class="medida">
         <span class="unidad">mm</span>
       </div>
       <p class="error-campo oculto" data-error-de="borde"></p>
@@ -140,8 +140,8 @@
       </div>
       <div class="desplegable">
         <select id="esfuerzo" class="control">
-          <option value="rapido">Rápido — una pasada</option>
-          <option value="normal" selected>Normal — tres pasadas</option>
+          <option value="rapido" selected>Rápido — una pasada</option>
+          <option value="normal">Normal — tres pasadas</option>
           <option value="lento">Lento — doce pasadas</option>
         </select>
         <svg viewBox="0 0 16 16" class="icono flecha" aria-hidden="true"><path d="M4 6.5l4 4 4-4"></path></svg>
