@@ -4,7 +4,7 @@ import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from nesting.geometry.transform import apply_points
 from nesting.model.entities import Point
@@ -18,6 +18,59 @@ DEFAULT_PART = (150, 150, 150)
 PART_EDGE = (40, 40, 40)
 GAP_MM = 80.0
 LABEL_BAND_PX = 18
+"""Alto de la franja de texto de abajo cuando la etiqueta entra en UNA línea.
+
+Cada línea de más agrega `LABEL_LINE_PX`."""
+
+LABEL_LINE_PX = 11
+LABEL_COLOR = (60, 60, 60)
+LABEL_FONT = ImageFont.load_default()
+LABEL_SEP = "   "
+
+
+def label_lines(
+    index: int, sheet: Sheet, fraction: float, width_px: int
+) -> list[str]:
+    """El rótulo de una placa, partido en líneas que entran en `width_px`.
+
+    Dice tres cosas -- qué número de placa es, si es un recorte, y cuánto se
+    aprovechó -- y las acomoda en cuantas líneas hagan falta para no pasarse
+    del ancho de SU placa.
+
+    Antes era una sola línea y alcanzaba, porque todas las placas medían lo
+    mismo que el Material: cientos de píxeles de ancho. Con recortes no: a
+    0.15 px/mm un recorte de 300 mm son 45 px y la línea entera medía 65, así
+    que se metía adentro de la placa siguiente y la franja quedaba ilegible
+    (`Placa 1  72.0Placa 2  77.0%`). Partirla es lo que la vuelve a hacer
+    legible SIN achicar la letra ni recortar el texto, que en una imagen que
+    va al taller es lo último que conviene hacer.
+
+    Que diga "recorte" y no sólo el número es la otra mitad: la pantalla arma
+    "2 placas (1 recorte + 1 nueva)", pero el PNG es lo que el usuario mira y
+    lo que manda al taller, y ahí el dato no estaba en ningún lado. Compite
+    con lo anterior -- es texto de más justo donde ya no entraba -- y por eso
+    va en su propia línea cuando no entra al lado del resto.
+
+    Un token suelto más ancho que la placa (una placa de 20 px: ni "Placa 1"
+    entra) se deja igual en su línea: partir una palabra al medio o cortarla
+    con puntos suspensivos sería menos legible que dejarla asomar.
+    """
+    tokens = [f"Placa {index + 1}"]
+    if sheet.scrap:
+        tokens.append("recorte")
+    tokens.append(f"{fraction * 100:.1f}%")
+
+    lines: list[str] = []
+    current = tokens[0]
+    for token in tokens[1:]:
+        candidate = f"{current}{LABEL_SEP}{token}"
+        if LABEL_FONT.getlength(candidate) > width_px:
+            lines.append(current)
+            current = token
+        else:
+            current = candidate
+    lines.append(current)
+    return lines
 
 # Pillow itself refuses to *open* an image above roughly 89.5 Mpx
 # (PIL.Image.MAX_IMAGE_PIXELS, its decompression-bomb guard), so writing a
@@ -43,8 +96,17 @@ def write_preview(
     gap_px = max(1, round(GAP_MM * px_per_mm))
     alto_max_px = max(altos_px, default=1)
 
+    etiquetas = {
+        index: label_lines(index, hoja, utilization[index], anchos_px[index])
+        for index, hoja in enumerate(sheets)
+        if index < len(utilization)
+    }
+    banda_px = LABEL_BAND_PX + LABEL_LINE_PX * (
+        max((len(l) for l in etiquetas.values()), default=1) - 1
+    )
+
     width = sum(anchos_px) + (len(sheets) + 1) * gap_px
-    height = alto_max_px + 2 * gap_px + LABEL_BAND_PX
+    height = alto_max_px + 2 * gap_px + banda_px
 
     total_pixels = width * height
     if total_pixels > MAX_CANVAS_PIXELS:
@@ -78,11 +140,12 @@ def write_preview(
             [left, piso - alto_px, left + ancho_px, piso],
             fill=SHEET_FILL, outline=SHEET_EDGE,
         )
-        if index < len(utilization):
+        for renglon, linea in enumerate(etiquetas.get(index, ())):
             draw.text(
-                (left, piso + 4),
-                f"Placa {index + 1}   {utilization[index] * 100:.1f}%",
-                fill=(60, 60, 60),
+                (left, piso + 4 + renglon * LABEL_LINE_PX),
+                linea,
+                fill=LABEL_COLOR,
+                font=LABEL_FONT,
             )
 
     by_id = {p.id: p for p in parts}

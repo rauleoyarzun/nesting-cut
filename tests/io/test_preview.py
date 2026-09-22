@@ -1,7 +1,15 @@
 import pytest
 from PIL import Image
 
-from nesting.io.preview import LABEL_BAND_PX, MAX_CANVAS_PIXELS, write_preview
+from nesting.io.preview import (
+    BACKGROUND,
+    GAP_MM,
+    LABEL_BAND_PX,
+    LABEL_FONT,
+    MAX_CANVAS_PIXELS,
+    label_lines,
+    write_preview,
+)
 from nesting.model.entities import Transform
 from nesting.model.part import Part, Placement
 from nesting.model.sheet import Sheet
@@ -224,3 +232,66 @@ def test_el_lienzo_acomoda_placas_de_medidas_distintas(tmp_path):
     # placa más alta, no la primera.
     assert ancho == pytest.approx(round(600 * 0.1) + round(1830 * 0.1) + 3 * 8, abs=4)
     assert alto > round(2600 * 0.1)
+
+
+# --- la franja de etiquetas con placas de anchos distintos ---
+
+RECORTE_CHICO = Sheet(300.0, 400.0, grain_tolerance=180.0, scrap=True)
+RECORTE_MEDIANO = Sheet(450.0, 400.0, grain_tolerance=180.0, scrap=True)
+PLACA_ENTERA = Sheet(1830.0, 2600.0, grain_tolerance=180.0)
+ESCENA_RECORTES = [RECORTE_CHICO, RECORTE_MEDIANO, PLACA_ENTERA]
+
+
+def test_la_etiqueta_entra_en_el_ancho_de_su_placa():
+    """El caso estrella de la rama: dos recortes chicos y una placa entera.
+
+    A 0.15 px/mm el recorte de 300 mm mide 45 px y la etiqueta de una sola
+    línea medía 65: se metía adentro de la placa siguiente y la franja salía
+    `Placa 1  72.0Placa 2  77.0%`. Ninguna línea puede ser más ancha que la
+    placa que rotula.
+    """
+    for indice, hoja in enumerate(ESCENA_RECORTES):
+        ancho_px = round(hoja.width * 0.15)
+        lineas = label_lines(indice, hoja, 0.72, ancho_px)
+        assert lineas
+        for linea in lineas:
+            assert LABEL_FONT.getlength(linea) <= ancho_px, (indice, linea)
+
+
+def test_la_etiqueta_dice_cuando_la_placa_es_un_recorte():
+    """El PNG es lo que el usuario mira y lo que manda al taller: si no dice
+    cuál placa era un recorte, el dato sólo existe en la línea de texto de la
+    pantalla y se pierde en el camino."""
+    recorte = label_lines(0, RECORTE_CHICO, 0.72, round(300 * 0.15))
+    entera = label_lines(2, PLACA_ENTERA, 0.72, round(1830 * 0.15))
+
+    assert any("recorte" in linea for linea in recorte)
+    assert not any("recorte" in linea for linea in entera)
+    assert any("Placa 1" in linea for linea in recorte)
+    assert any("72.0%" in linea for linea in entera)
+
+
+def test_las_etiquetas_no_invaden_la_separacion_entre_placas(tmp_path):
+    """Lo mismo, pero mirando el PNG: en las columnas de separación entre una
+    placa y la siguiente no puede haber tinta. Con la etiqueta de una sola
+    línea, la de la placa 1 cruzaba entera esa separación y se solapaba con
+    la de la placa 2."""
+    salida = tmp_path / "preview.png"
+    write_preview(salida, [], [], ESCENA_RECORTES, [0.72, 0.77, 1.0])
+
+    imagen = Image.open(salida).convert("RGB")
+    gap_px = max(1, round(GAP_MM * 0.15))
+    anchos = [round(h.width * 0.15) for h in ESCENA_RECORTES]
+
+    x = gap_px
+    separaciones = []
+    for ancho in anchos:
+        # +1 para saltear el borde dibujado de la placa, que cae justo en
+        # `x + ancho` y es tinta legítima.
+        separaciones.append((x + ancho + 1, x + ancho + gap_px))
+        x += ancho + gap_px
+
+    for desde, hasta in separaciones:
+        for px in range(desde, min(hasta, imagen.width)):
+            columna = {imagen.getpixel((px, y)) for y in range(imagen.height)}
+            assert columna == {BACKGROUND}, f"hay tinta en la separación, x={px}"
