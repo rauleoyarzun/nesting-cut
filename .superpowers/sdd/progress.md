@@ -1333,3 +1333,24 @@ Task 9: completa (commits 0d32407..54e1d2f, revisión limpia + un Importante arr
   legítimo en el handler del arrastre lo habría puesto en rojo culpando a la rueda.
   Capturado para wheel: 963 -> 289 caracteres. click y keydown devuelven idéntico.
   Se agregó un test del helper mismo para que la sobrecaptura no vuelva.
+Task 10: completa (commits 97c772b..895a87b, revisión limpia). Globo de resolución
+  reescrito, nota de tiempos de EFFORT_RESTARTS al día, los dos README. 1108 passed
+  (verificado por el controlador: el implementador contó 1114 a ojo).
+  Los globos de recortes y posiciones ya existían: los adelantaron las tareas 7 y 8,
+  forzadas por el test que exige que todo data-info tenga su texto.
+  >>> HALLAZGO QUE VALE GUARDAR, y que evita un arreglo equivocado: NestConfig.resolution
+      sigue en 2.0 mientras el default de la interfaz pasó a 1.0. NO ES UN DESCUIDO.
+      El revisor encontró que es el ancla de calibración del motor:
+      tests/test_calibration.py:151 fija `assert NestConfig().resolution == 2.0` con un
+      comentario de que no se toca sin volver a medir, y docs/superpowers/calibracion.md
+      documenta que TODA la calibración de Weights.contact (1.0 -> 4.0) se corrió con
+      resolución fijada en 2.0. O sea, ese 2.0 documenta a qué resolución se calibró el
+      motor -- el mismo hecho que el párrafo nuevo del docstring de packer.py acaba de
+      poner por escrito. Ningún camino de producción lo usa sin pisarlo. SE DEJA EN 2.0.
+  Menor pendiente para la revisión final:
+    (a) packer.py: la frase vieja "A 2.0 mm/px (el default desde la Task 24)" quedó en
+        presente ocho líneas antes del párrafo nuevo que aclara que ya no es el default.
+        Leído de corrido, el docstring se contradice antes de corregirse. El brief pidió
+        agregar al final y no tocar el cuerpo, así que el implementador cumplió.
+
+## Estado: las diez tareas completas. Falta la revisión final de rama.
