@@ -115,9 +115,13 @@ copia B:
 - De cada desplazamiento se calcula el área de la caja del par a partir de
   las cajas en píxeles, sin rasterizar nada más.
 - Se toman los mejores por área de caja, **con supresión de vecinos**: dos
-  candidatos de la misma orientación a menos de 60 mm uno del otro son el
-  mismo encastre. El experimento mostró que sin esto los doscientos mejores
-  son todos el mismo y el par en diagonal no aparece.
+  candidatos de la misma orientación a menos de 200 mm uno del otro son el
+  mismo encastre, y un tipo cuya pieza compuesta tiene la misma forma que
+  la de uno ya guardado tampoco cuenta como nuevo. El experimento mostró que
+  sin supresión los doscientos mejores son todos el mismo y el par en
+  diagonal no aparece; al escribir el plan se midió que con 60 mm los seis
+  tipos de normal salían de una sola familia corrida de a 60 mm y el
+  apilado recién aparecía séptimo.
 
 Cada candidato se confirma con geometría exacta: la separación real entre A
 y B tiene que ser al menos `sep` y **menos de `2·sep`**. El tope garantiza

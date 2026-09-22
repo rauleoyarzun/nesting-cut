@@ -112,9 +112,13 @@ Copy A is fixed at identity. For each allowed orientation of copy B:
 - For each offset the pair's box area is computed from the pixel boxes,
   without rasterizing anything else.
 - The best by box area are taken, **with neighbour suppression**: two
-  candidates of the same orientation within 60 mm of each other are the same
-  interlock. The experiment showed that without this the top two hundred are
-  all the same one and the diagonal pair never shows up.
+  candidates of the same orientation within 200 mm of each other are the same
+  interlock, and a type whose composite has the same shape as one already kept
+  does not count as new either. The experiment showed that without
+  suppression the top two hundred are all the same one and the diagonal pair
+  never shows up; while writing the plan it was measured that at 60 mm all six
+  of normal's types came from one family sliding 60 mm at a time and the
+  stacked one only showed up seventh.
 
 Each candidate is confirmed with exact geometry: the real separation between
 A and B must be at least `sep` and **less than `2·sep`**. The cap guarantees
