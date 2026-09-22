@@ -60,6 +60,7 @@ def test_todo_campo_tiene_su_etiqueta(html):
     """Un input sin label es invisible para un lector de pantalla y su texto
     no se puede clickear para enfocarlo."""
     for campo in ("sep", "borde", "copias", "material", "esfuerzo",
+                  "r-ancho", "r-alto", "r-cantidad",
                   "m-nombre", "m-ancho", "m-alto"):
         assert f'for="{campo}"' in html, f"falta el label de {campo}"
 

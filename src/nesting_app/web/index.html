@@ -60,18 +60,31 @@
         <button type="button" id="btn-agregar-recorte" class="enlace">Agregar</button>
       </div>
       <ul id="lista-recortes" class="lista-recortes"></ul>
+      <!-- Uno abajo del otro y no en una fila: tres controles con su unidad
+           al lado no entran en los 284 px útiles del panel, y el `min-width: 0`
+           que lo arreglaría llega por `.fila > .campo`, no por `.control`
+           pelado. Apilados además tienen lugar para su etiqueta, que como
+           `aria-label` sólo existía para un lector de pantalla: en la pantalla
+           eran tres cajas iguales sin decir cuál era cuál. -->
       <div id="alta-recorte" class="alta-recorte oculto">
-        <div class="fila">
+        <div class="campo">
+          <label class="etiqueta" for="r-ancho">Ancho</label>
           <div class="control con-unidad">
-            <input id="r-ancho" type="number" min="1" step="1" class="medida" aria-label="Ancho del recorte">
+            <input id="r-ancho" type="number" min="1" step="1" class="medida">
             <span class="unidad">mm</span>
           </div>
+        </div>
+        <div class="campo">
+          <label class="etiqueta" for="r-alto">Alto</label>
           <div class="control con-unidad">
-            <input id="r-alto" type="number" min="1" step="1" class="medida" aria-label="Alto del recorte">
+            <input id="r-alto" type="number" min="1" step="1" class="medida">
             <span class="unidad">mm</span>
           </div>
+        </div>
+        <div class="campo">
+          <label class="etiqueta" for="r-cantidad">Cantidad</label>
           <div class="control">
-            <input id="r-cantidad" type="number" min="1" step="1" value="1" class="medida" aria-label="Cuántos recortes de esta medida">
+            <input id="r-cantidad" type="number" min="1" step="1" value="1" class="medida">
           </div>
         </div>
         <label class="casilla" id="etiqueta-cruzada">

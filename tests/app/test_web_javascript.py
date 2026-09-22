@@ -1698,3 +1698,18 @@ def test_el_plural_de_placas_con_recortes_no_queda_fijo(js):
         'la rama con recortes sigue con "placas" pegado al literal, sin '
         "pluralizar cuando r.placas es 1"
     )
+def test_las_medidas_del_recorte_van_una_abajo_de_la_otra(html):
+    """Estaban los tres en un `.fila`, y `.fila > .campo` -- el que les da
+    `min-width: 0` -- no les llegaba, porque adentro del `.fila` colgaban
+    `.control` pelados. Resultado: el primero ocupaba el ancho entero y Alto
+    y Cantidad quedaban dibujados afuera del panel. Lo reportó el usuario
+    con una captura."""
+    desde = html.index('id="alta-recorte"')
+    hasta = html.index('data-error-de="recortes"', desde)
+    alta = html[desde:hasta]
+    medidas = alta[: alta.index('id="r-cruzada"')]
+    assert "fila" not in medidas, (
+        "las medidas del recorte volvieron a compartir una fila: " + medidas
+    )
+
+
