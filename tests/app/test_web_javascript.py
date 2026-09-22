@@ -1740,6 +1740,101 @@ def test_las_medidas_del_recorte_van_una_abajo_de_la_otra(html):
     )
 
 
+def test_acomodar_no_se_come_el_recorte_a_medio_cargar(js):
+    """El usuario abrió el alta, tipeó el ancho y el alto, y apretó Acomodar
+    sin tocar el botón que lo mete en la lista. El trabajo salía sin ese
+    recorte y sin decir una palabra: se acomodaba contra placas nuevas y la
+    pantalla mostraba un resultado que parecía bien. Lo reportó el usuario.
+
+    Que corte ANTES de `/api/trabajos` es la mitad que importa: avisar
+    después de haber mandado el trabajo no evita nada."""
+    inicio = js.index('$("btn-acomodar").onclick')
+    cuerpo = js[inicio:js.index('$("btn-cancelar").onclick')]
+
+    assert "recorteSinAgregar()" in cuerpo, (
+        "acomodar no mira si quedó un recorte sin agregar"
+    )
+    assert re.search(r'marcarCampo\(\s*\n?\s*"recortes"', cuerpo), (
+        "el aviso del recorte pendiente no sale debajo de su campo"
+    )
+    assert cuerpo.index("recorteSinAgregar()") < cuerpo.index("/api/trabajos"), (
+        "el chequeo llega después de mandar el trabajo, o sea tarde"
+    )
+
+
+def test_el_alta_vacia_no_traba_el_acomodo(js):
+    """Abrir el alta y no tipear nada no es un recorte pendiente. Trabar
+    Acomodar por dos cajas en blanco sería cobrarle al usuario un clic que
+    no hizo daño."""
+    cuerpo = _cuerpo_de_funcion(js, "recorteSinAgregar")
+
+    assert "oculto" in cuerpo, "no mira si el alta está siquiera abierta"
+    assert re.search(r"!ancho\s*&&\s*!alto", cuerpo), (
+        "con los dos campos vacíos igual reporta algo pendiente"
+    )
+
+
+def test_cancelar_deja_el_alta_limpia(js):
+    """Cancelar sólo escondía el alta: los números quedaban adentro y el
+    aviso de "todavía no está en la lista" seguía pintado abajo, hablando de
+    un recorte que ya no existe. La próxima vez que se abría, las medidas de
+    la vez pasada estaban ahí como si alguien las acabara de tipear."""
+    cuerpo = _cuerpo_de_funcion(js, "limpiarAltaRecorte")
+
+    for campo in ["r-ancho", "r-alto", "r-cantidad", "r-cruzada"]:
+        assert campo in cuerpo, campo
+    assert "limpiarErroresDeCampo()" in cuerpo
+
+
+def test_el_aviso_nombra_la_medida_que_quedo_afuera(js):
+    """"Te falta agregar un recorte" obliga a ir a buscar cuál. La medida ya
+    está tipeada en la pantalla: decirla es gratis y cierra la duda."""
+    inicio = js.index('$("btn-acomodar").onclick')
+    cuerpo = js[inicio:js.index('$("btn-cancelar").onclick')]
+    aviso = cuerpo[cuerpo.index("recorteSinAgregar()"):]
+
+    assert "pendiente.ancho" in aviso and "pendiente.alto" in aviso, (
+        "el aviso no repite la medida que el usuario tipeó"
+    )
+
+
+def test_enter_agrega_el_recorte(js):
+    """Tipear 600, Tab, 800, Enter es el camino natural y era el que no
+    llevaba a ningún lado: sin un `<form>` alrededor no hay envío implícito,
+    así que Enter no hacía nada y había que ir a buscar el botón."""
+    cuerpo = _cuerpo_de_handler(js, "keydown")
+
+    assert '"Enter"' in cuerpo
+    assert "btn-confirmar-recorte" in cuerpo
+    assert "preventDefault" in cuerpo
+
+
+def test_los_dos_botones_del_alta_no_se_llaman_igual(html):
+    """Uno abre el alta y el otro la confirma. Con los dos diciendo
+    "Agregar", tipear las medidas ya parecía haber agregado el recorte --
+    y el segundo botón, que es el que cuenta, quedaba leído como el mismo
+    que ya se había tocado."""
+    abrir = re.search(r'id="btn-agregar-recorte"[^>]*>([^<]*)<', html).group(1)
+    confirmar = re.search(r'id="btn-confirmar-recorte"[^>]*>([^<]*)<', html).group(1)
+
+    assert abrir.strip() != confirmar.strip(), (
+        f"los dos botones dicen {abrir.strip()!r}"
+    )
+    assert "lista" in confirmar.lower(), (
+        f"el botón que confirma no dice adónde va el recorte: {confirmar!r}"
+    )
+
+
+def test_el_error_de_un_campo_se_trae_a_la_vista(js):
+    """El panel mide 1197 px de alto en una ventana de 560 y Acomodar está
+    en la barra de abajo. Sin traerlo, marcar Recortes -- que está arriba de
+    todo -- pinta un aviso fuera de la pantalla, y el botón parece no haber
+    hecho nada: exactamente el silencio que este arreglo viene a sacar."""
+    cuerpo = _cuerpo_de_funcion(js, "marcarCampo")
+
+    assert "scrollIntoView" in cuerpo
+
+
 def test_el_reparto_de_placas_se_muestra_al_terminar(js):
     assert "recortes_usados" in js
 

@@ -122,6 +122,10 @@ function marcarCampo(campo, mensaje) {
   p.textContent = mensaje;
   p.classList.remove("oculto");
   p.closest(".campo")?.classList.add("campo-con-error");
+  // El panel mide más de mil píxeles de alto y Acomodar está en la barra de
+  // abajo: sin traerlo, el aviso se pinta fuera de la pantalla y el botón
+  // parece no haber hecho nada. Justo el silencio que hay que evitar.
+  p.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
 // --- elegir el archivo ------------------------------------------------------
@@ -253,8 +257,46 @@ function abrirAltaRecorte(abierta) {
   if (abierta) $("r-ancho").focus();
 }
 
+// Vaciar el alta es parte de cerrarla, la cierre quien la cierre. Cancelar
+// sólo la escondía: los números quedaban adentro para la próxima vez que se
+// abriera, y el aviso de "todavía no está en la lista" seguía pintado abajo
+// hablando de un recorte que el usuario acababa de descartar.
+function limpiarAltaRecorte() {
+  $("r-ancho").value = "";
+  $("r-alto").value = "";
+  $("r-cantidad").value = "1";
+  $("r-cruzada").checked = false;
+  limpiarErroresDeCampo();
+}
+
 $("btn-agregar-recorte").onclick = () => abrirAltaRecorte(true);
-$("btn-cancelar-recorte").onclick = () => abrirAltaRecorte(false);
+$("btn-cancelar-recorte").onclick = () => {
+  limpiarAltaRecorte();
+  abrirAltaRecorte(false);
+};
+
+// Tipear las medidas no agrega nada hasta tocar el botón, y eso no se ve:
+// un usuario cargó ancho y alto y apretó Acomodar directo. El trabajo salía
+// contra placas nuevas, sin el pedazo y sin una palabra. Lo que devuelve
+// esto es lo que quedó tipeado sin agregar, o `null` si no hay nada que
+// perder -- el alta cerrada, o abierta y en blanco, que es un clic de más y
+// no un error.
+function recorteSinAgregar() {
+  if ($("alta-recorte").classList.contains("oculto")) return null;
+  const ancho = $("r-ancho").value.trim();
+  const alto = $("r-alto").value.trim();
+  if (!ancho && !alto) return null;
+  return { ancho, alto, completo: Number(ancho) > 0 && Number(alto) > 0 };
+}
+
+// Sin un <form> alrededor no hay envío implícito: Enter no hacía nada y
+// había que soltar el teclado para ir a buscar el botón con el mouse.
+$("alta-recorte").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.tagName === "INPUT") {
+    e.preventDefault();
+    $("btn-confirmar-recorte").click();
+  }
+});
 
 $("btn-confirmar-recorte").onclick = () => {
   const ancho = Number($("r-ancho").value);
@@ -273,10 +315,7 @@ $("btn-confirmar-recorte").onclick = () => {
     cantidad,
     veta_cruzada: $("r-cruzada").checked,
   });
-  $("r-ancho").value = "";
-  $("r-alto").value = "";
-  $("r-cantidad").value = "1";
-  $("r-cruzada").checked = false;
+  limpiarAltaRecorte();
   abrirAltaRecorte(false);
   dibujarRecortes();
 };
@@ -642,6 +681,17 @@ $("btn-acomodar").onclick = async () => {
     return mostrarError("Falta el archivo", "Elegí un archivo antes de acomodar.");
   }
   limpiarErroresDeCampo();
+  const pendiente = recorteSinAgregar();
+  if (pendiente) {
+    return marcarCampo(
+      "recortes",
+      pendiente.completo
+        ? `el recorte de ${pendiente.ancho} × ${pendiente.alto} mm todavía no ` +
+          `está en la lista: agregalo a la lista o cancelalo`
+        : "te quedó un recorte a medio cargar: completalo y agregalo a la " +
+          "lista, o cancelalo"
+    );
+  }
   if (!angulosValidos()) {
     return marcarCampo(
       "angulos",
