@@ -40,11 +40,17 @@ from nesting_app import desktop, rutas
 from nesting_app.archivos import Deposito
 from nesting_app.jobs import Registro
 
-CLAVES = ["archivo", "material", "sep", "borde", "copias", "esfuerzo",
-          "angulos", "tol-cierre", "resolucion", "espejo"]
+CLAVES = ["archivo", "material", "recortes", "sep", "borde", "copias",
+          "esfuerzo", "posiciones", "angulos", "tol-cierre", "resolucion",
+          "espejo"]
 """Una por opción, igual al `data-info` de su botón. `info.js` tiene la
 misma lista escrita a mano; si alguna vez difieren es una señal de que se
-agregó una opción sin su globo, o al revés."""
+agregó una opción sin su globo, o al revés.
+
+EL ORDEN ES EL DEL DOM en `src/nesting_app/web/index.html`, porque la
+revisión compara contra esta lista lo que raspa de la página, en orden. Si
+se agrega una opción hay que agregarla acá en el lugar que le toca; si no,
+la herramienta falla siempre y deja de revisar nada."""
 
 PRELUDIO = """
 window.__p = {
@@ -71,13 +77,15 @@ window.__p = {
 # `tests/test_herramienta_globos_reales.py` sin abrir ninguna ventana.
 
 def problemas_de_inventario(iconos: list[dict]) -> list[str]:
-    """Comportamiento 1: los diez íconos existen, en el orden de `CLAVES`,
+    """Comportamiento 1: están todos los íconos, en el orden de `CLAVES`,
     miden 16x16 como el resto de los íconos de la interfaz, y son
     `<button>` a los que se llega con Tab."""
     fallas = []
     claves = [i["clave"] for i in iconos]
     if claves != CLAVES:
-        fallas.append(f"los íconos no son los diez esperados, en este orden: {claves}")
+        fallas.append(
+            f"los íconos no son los {len(CLAVES)} esperados, en este orden: {claves}"
+        )
     if any(i["caja"] is None for i in iconos):
         fallas.append("algún botón de información no tiene un <svg> adentro para medir")
     else:
@@ -261,10 +269,18 @@ def revisar(ventana) -> list[str]:
     # Las opciones avanzadas están plegadas: un <details> cerrado no dibuja
     # a sus hijos, así que sin esto Ángulos, Tolerancia de cierre,
     # Resolución y espejadas no existirían todavía para el DOM.
-    ventana.evaluate_js('document.getElementById("avanzadas").open = true')
+    # Y el campo de Ángulos, además, arranca con la clase `oculto`: desde que
+    # Posiciones es un desplegable, el cuadro de texto de ángulos sólo se
+    # revela con la opción `Personalizado`. Escondido mide 0x0, así que su
+    # globo se anclaría contra una caja vacía y las medidas no querrían decir
+    # nada.
+    ventana.evaluate_js("""
+      document.getElementById("avanzadas").open = true;
+      document.getElementById("campo-angulos").classList.remove("oculto");
+    """)
     time.sleep(0.4)
 
-    # 1. los diez íconos están, se ven y miden lo mismo
+    # 1. están todos los íconos, se ven y miden lo mismo
     iconos = js(ventana, """
       return [...document.querySelectorAll(".boton-info")].map(b => ({
         clave: b.dataset.info, tipo: b.tagName,
@@ -273,7 +289,7 @@ def revisar(ventana) -> list[str]:
       }));
     """)
     if not agregar(problemas_de_inventario(iconos)):
-        print(f"  ok   están los diez íconos, 16x16 y enfocables: {', '.join(CLAVES)}")
+        print(f"  ok   están los {len(CLAVES)} íconos, 16x16 y enfocables: {', '.join(CLAVES)}")
 
     # 2. abre a la derecha del ícono, con el texto que le toca
     b = js(ventana, 'return window.__p.caja(window.__p.boton("sep"));')
@@ -359,6 +375,7 @@ def revisar(ventana) -> list[str]:
     # 10. el de espejadas abre su globo sin dar vuelta la casilla
     casilla = js(ventana, """
       document.getElementById("avanzadas").open = true;
+      document.getElementById("campo-angulos").classList.remove("oculto");
       const c = document.getElementById("espejo");
       const antes = c.checked;
       window.__p.boton("espejo").click();
@@ -371,7 +388,7 @@ def revisar(ventana) -> list[str]:
     if not agregar(problemas):
         print("  ok   espejadas abre el globo sin tocar la casilla")
 
-    # 11. los diez abren con texto adentro y ninguno se sale de la ventana
+    # 11. todos abren con texto adentro y ninguno se sale de la ventana
     ventana.evaluate_js('document.querySelector(".panel-dibujo").click()')
     time.sleep(0.2)
     vacios, cortados = [], []
@@ -386,9 +403,9 @@ def revisar(ventana) -> list[str]:
     if vacios:
         agregar([f"globos vacíos o invisibles: {vacios}"])
     else:
-        print("  ok   los diez abren con texto adentro")
+        print(f"  ok   los {len(CLAVES)} abren con texto adentro")
     if not agregar(cortados):
-        print("  ok   ninguno de los diez se sale de la ventana mínima")
+        print(f"  ok   ninguno de los {len(CLAVES)} se sale de la ventana mínima")
 
     return fallas
 

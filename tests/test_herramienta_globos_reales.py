@@ -64,7 +64,7 @@ def test_inventario_sano_no_tiene_nada_que_decir(herramienta):
 def test_inventario_detecta_un_icono_faltante(herramienta):
     claves = [c for c in herramienta.CLAVES if c != "borde"]
     fallas = herramienta.problemas_de_inventario(iconos_sanos(claves))
-    assert any("diez esperados" in f for f in fallas)
+    assert any(f"{len(herramienta.CLAVES)} esperados" in f for f in fallas)
 
 
 def test_inventario_detecta_un_icono_de_otro_tamano(herramienta):
