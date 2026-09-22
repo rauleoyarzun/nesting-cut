@@ -194,16 +194,11 @@ select.control {
 .boton:disabled { opacity: .5; cursor: not-allowed; }
 .boton.crece { flex-grow: 1; }
 
-.avanzadas { border-top: 1px solid var(--borde); padding-top: 12px; }
-.avanzadas summary {
-  cursor: pointer; font-size: 13px; font-weight: 600; color: var(--texto-2);
-  list-style: none;
-}
-.avanzadas summary::-webkit-details-marker { display: none; }
-.avanzadas summary::before { content: "› "; }
-.avanzadas[open] summary::before { content: "⌄ "; }
-.avanzadas > .campo { margin-top: 14px; }
-.casilla { display: flex; gap: 8px; align-items: center; margin-top: 14px; font-size: 13px; }
+/* Sin `margin-top`: las dos casillas que hay viven adentro de un contenedor
+   que ya reparte su propio espacio -- el `gap` del panel de opciones y el de
+   `.alta-recorte`. El margen venía de cuando colgaban de un `<details>` sin
+   gap propio, y sumado al gap dejaba a las espejadas separadas del resto. */
+.casilla { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 
 .lista-recortes {
   list-style: none;

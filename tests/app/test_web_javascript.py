@@ -195,9 +195,19 @@ def _opciones_de_posiciones(html: str) -> str:
     return html[desde : html.index("</select>", desde)]
 
 
-@pytest.mark.parametrize("valor", ["4", "8", "16", "personalizado"])
-def test_el_desplegable_de_posiciones_tiene_las_cuatro_opciones(html, valor):
+@pytest.mark.parametrize("valor", ["4", "8", "16", "24", "personalizado"])
+def test_el_desplegable_de_posiciones_tiene_sus_opciones(html, valor):
     assert f'value="{valor}"' in _opciones_de_posiciones(html)
+
+
+def test_cada_grado_del_desplegable_lleva_su_simbolo(html):
+    """"cada 22,5" a secas no dice de qué: podrían ser milímetros. El grado
+    es notación, no un dibujito, y entra donde "grados" en palabras estiraba
+    la línea del desplegable."""
+    opciones = _opciones_de_posiciones(html)
+    assert "grados" not in opciones, opciones
+    for numero in ["0", "90", "180", "270", "45", "22,5", "15"]:
+        assert f"{numero}\N{DEGREE SIGN}" in opciones, numero
 
 
 def test_las_posiciones_arrancan_en_cuatro(html):
@@ -215,6 +225,18 @@ def test_las_posiciones_se_reparten_en_la_vuelta_entera(js):
 
     assert "360" in cuerpo
     assert "Array.from" in cuerpo
+
+
+def test_las_espejadas_van_pegadas_a_los_angulos(html):
+    """Espejar es otra manera de apoyar la misma pieza, igual que rotarla:
+    quien está decidiendo cuántas posiciones probar está decidiendo esto en
+    la misma frase. Estaba al final de todo, abajo de resolución."""
+    campo_angulos = html.index('id="campo-angulos"')
+    espejo = html.index('id="espejo"')
+    resolucion = html.index('id="resolucion"')
+    assert campo_angulos < espejo < resolucion, (
+        "la casilla de espejadas ya no está entre los ángulos y el resto"
+    )
 
 
 def test_personalizado_revela_el_campo_de_texto(js):
@@ -1647,28 +1669,6 @@ def test_el_campo_de_resolucion_arranca_en_uno(html):
     assert re.search(r'id="resolucion"[^>]*value="1"', html)
 
 
-def test_los_recortes_viven_en_el_estado_de_la_sesion(js):
-    assert "recortes: []" in js or "recortes: [ ]" in js
-
-
-def test_registrar_no_borra_los_recortes(js):
-    """Cambiar de archivo no tira los pedazos que hay contra la pared. Se
-    pierden al cerrar el programa, no al abrir otro dibujo."""
-    assert "recortes" not in _cuerpo_de_funcion(js, "registrar")
-
-
-def test_los_recortes_se_mandan_con_los_parametros(js):
-    assert "recortes: estado.recortes" in _cuerpo_de_funcion(js, "parametros")
-
-
-def test_la_casilla_de_veta_cruzada_se_apaga_en_un_material_sin_veta(js):
-    """Mira el cuerpo de la función y no el archivo: la primera versión de
-    este test afirmaba `"disabled" in js`, y esa cadena ya estaba en el
-    botón de guardar -- pasaba antes de que la casilla existiera."""
-    cuerpo = _cuerpo_de_funcion(js, "ajustarVetaCruzada")
-
-    assert '=== "libre"' in cuerpo
-    assert '$("r-cruzada").disabled' in cuerpo
 def test_el_material_arranca_en_el_que_mas_se_usa(js):
     """El selector se llenaba con el catálogo y se quedaba con el primero,
     que sale del orden del YAML. Elegir uno por nombre es lo que hace que el
@@ -1692,6 +1692,28 @@ def test_un_catalogo_sin_el_preferido_igual_elige_algo(js):
     )
 
 
+def test_los_recortes_viven_en_el_estado_de_la_sesion(js):
+    assert "recortes: []" in js or "recortes: [ ]" in js
+
+
+def test_registrar_no_borra_los_recortes(js):
+    """Cambiar de archivo no tira los pedazos que hay contra la pared. Se
+    pierden al cerrar el programa, no al abrir otro dibujo."""
+    assert "recortes" not in _cuerpo_de_funcion(js, "registrar")
+
+
+def test_los_recortes_se_mandan_con_los_parametros(js):
+    assert "recortes: estado.recortes" in _cuerpo_de_funcion(js, "parametros")
+
+
+def test_la_casilla_de_veta_cruzada_se_apaga_en_un_material_sin_veta(js):
+    """Mira el cuerpo de la función y no el archivo: la primera versión de
+    este test afirmaba `"disabled" in js`, y esa cadena ya estaba en el
+    botón de guardar -- pasaba antes de que la casilla existiera."""
+    cuerpo = _cuerpo_de_funcion(js, "ajustarVetaCruzada")
+
+    assert '=== "libre"' in cuerpo
+    assert '$("r-cruzada").disabled' in cuerpo
 
 
 def test_el_bloque_de_recortes_tiene_sus_controles(html):
@@ -1701,6 +1723,21 @@ def test_el_bloque_de_recortes_tiene_sus_controles(html):
         "btn-cancelar-recorte",
     ]:
         assert f'id="{id_}"' in html, id_
+
+
+def test_las_medidas_del_recorte_van_una_abajo_de_la_otra(html):
+    """Estaban los tres en un `.fila`, y `.fila > .campo` -- el que les da
+    `min-width: 0` -- no les llegaba, porque adentro del `.fila` colgaban
+    `.control` pelados. Resultado: el primero ocupaba el ancho entero y Alto
+    y Cantidad quedaban dibujados afuera del panel. Lo reportó el usuario
+    con una captura."""
+    desde = html.index('id="alta-recorte"')
+    hasta = html.index('data-error-de="recortes"', desde)
+    alta = html[desde:hasta]
+    medidas = alta[: alta.index('id="r-cruzada"')]
+    assert "fila" not in medidas, (
+        "las medidas del recorte volvieron a compartir una fila: " + medidas
+    )
 
 
 def test_el_reparto_de_placas_se_muestra_al_terminar(js):
@@ -1721,18 +1758,3 @@ def test_el_plural_de_placas_con_recortes_no_queda_fijo(js):
         'la rama con recortes sigue con "placas" pegado al literal, sin '
         "pluralizar cuando r.placas es 1"
     )
-def test_las_medidas_del_recorte_van_una_abajo_de_la_otra(html):
-    """Estaban los tres en un `.fila`, y `.fila > .campo` -- el que les da
-    `min-width: 0` -- no les llegaba, porque adentro del `.fila` colgaban
-    `.control` pelados. Resultado: el primero ocupaba el ancho entero y Alto
-    y Cantidad quedaban dibujados afuera del panel. Lo reportó el usuario
-    con una captura."""
-    desde = html.index('id="alta-recorte"')
-    hasta = html.index('data-error-de="recortes"', desde)
-    alta = html[desde:hasta]
-    medidas = alta[: alta.index('id="r-cruzada"')]
-    assert "fila" not in medidas, (
-        "las medidas del recorte volvieron a compartir una fila: " + medidas
-    )
-
-

@@ -15,7 +15,7 @@ from nesting_app import rutas
 IDS_OBLIGATORIOS = [
     "pantalla-principal", "nombre-archivo", "btn-archivo", "resumen-archivo",
     "link-descartes", "material", "sep", "borde", "copias", "esfuerzo",
-    "avanzadas", "btn-acomodar", "btn-cancelar", "btn-guardar",
+    "btn-acomodar", "btn-cancelar", "btn-guardar",
     "barra-avance", "texto-avance", "resultado",
     "tab-preview", "tab-revision", "lienzo", "placa-actual",
     "pantalla-materiales", "tabla-materiales", "form-material",
@@ -82,6 +82,14 @@ def test_el_esfuerzo_arranca_en_una_pasada(html):
     assert select.count("selected") == 1, "hay más de una opción marcada"
 
 
+def test_no_hay_opciones_escondidas(html):
+    """Eran nueve opciones con cuatro tapadas atrás de un `<details>`, y las
+    tapadas -- ángulos, resolución, espejadas -- son justo las que cambian
+    el resultado. El panel ya scrollea: esconderlas no ahorraba nada."""
+    assert "<details" not in html
+    assert "Opciones avanzadas" not in html
+
+
 def test_el_catalogo_se_abre_desde_el_campo_material(html):
     """Arriba a la derecha, separado de todo, nadie lo encuentra: lo reportó
     el usuario. El momento en que a alguien le falta un material es el
@@ -138,6 +146,13 @@ def test_la_revision_tiene_con_que_acercarse(html, id_):
     assert f'id="{id_}"' in html
 
 
+PERMITIDOS = "\N{DEGREE SIGN}"
+"""El grado cae en la categoría "So" igual que un emoji, y no es un emoji:
+es notación, se dibuja igual en todos lados y es lo que alguien espera leer
+detrás de un 45. La regla es contra los dibujitos, no contra los símbolos
+que el texto necesita."""
+
+
 @pytest.mark.parametrize("archivo", [
     "index.html", "app.js", "materiales.js", "info.js",
 ])
@@ -155,7 +170,8 @@ def test_no_hay_emojis_en_la_interfaz(archivo):
     texto = (rutas.recurso("web") / archivo).read_text(encoding="utf-8")
     sospechosos = [
         c for c in texto
-        if unicodedata.category(c) == "So" or "\U0001F000" <= c <= "\U0001FAFF"
+        if c not in PERMITIDOS
+        and (unicodedata.category(c) == "So" or "\U0001F000" <= c <= "\U0001FAFF")
     ]
     assert not sospechosos, (
         f"hay símbolos que no son texto en {archivo}: {sospechosos}"

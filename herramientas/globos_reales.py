@@ -41,8 +41,8 @@ from nesting_app.archivos import Deposito
 from nesting_app.jobs import Registro
 
 CLAVES = ["archivo", "material", "recortes", "sep", "borde", "copias",
-          "esfuerzo", "posiciones", "angulos", "tol-cierre", "resolucion",
-          "espejo"]
+          "esfuerzo", "posiciones", "angulos", "espejo", "tol-cierre",
+          "resolucion"]
 """Una por opción, igual al `data-info` de su botón. `info.js` tiene la
 misma lista escrita a mano; si alguna vez difieren es una señal de que se
 agregó una opción sin su globo, o al revés.
@@ -266,16 +266,13 @@ def revisar(ventana) -> list[str]:
 
     ventana.evaluate_js(PRELUDIO)
     instalar_contador_de_eventos(ventana)
-    # Las opciones avanzadas están plegadas: un <details> cerrado no dibuja
-    # a sus hijos, así que sin esto Ángulos, Tolerancia de cierre,
-    # Resolución y espejadas no existirían todavía para el DOM.
-    # Y el campo de Ángulos, además, arranca con la clase `oculto`: desde que
-    # Posiciones es un desplegable, el cuadro de texto de ángulos sólo se
-    # revela con la opción `Personalizado`. Escondido mide 0x0, así que su
-    # globo se anclaría contra una caja vacía y las medidas no querrían decir
-    # nada.
+    # El campo de Ángulos arranca con la clase `oculto`: desde que Posiciones
+    # es un desplegable, el cuadro de texto de ángulos sólo se revela con la
+    # opción `Personalizado`. Escondido mide 0x0, así que su globo se
+    # anclaría contra una caja vacía y las medidas no querrían decir nada.
+    # (El resto del panel ya no se despliega: el `<details>` de opciones
+    # avanzadas se fue y las nueve opciones están siempre a la vista.)
     ventana.evaluate_js("""
-      document.getElementById("avanzadas").open = true;
       document.getElementById("campo-angulos").classList.remove("oculto");
     """)
     time.sleep(0.4)
@@ -374,7 +371,6 @@ def revisar(ventana) -> list[str]:
 
     # 10. el de espejadas abre su globo sin dar vuelta la casilla
     casilla = js(ventana, """
-      document.getElementById("avanzadas").open = true;
       document.getElementById("campo-angulos").classList.remove("oculto");
       const c = document.getElementById("espejo");
       const antes = c.checked;
