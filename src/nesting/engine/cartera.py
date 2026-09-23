@@ -8,8 +8,9 @@ misma pasada golosa de siempre (`_pack_once`), y gana la de menor
 de en qué orden terminan.
 
 La base es la pasada de hoy y se evalúa primero, sola. Si ya alcanza la cota
-por área no se busca nada más. Si no, se evalúan tandas de `config.workers`
-variantes, en el orden fijo de la spec (4.1). Recuperación y compactación
+por área no se busca nada más. Si no, se evalúan tandas de
+`batch_size(config.workers)` variantes -- `N`, pero nunca menos de
+`MIN_BATCH` --, en el orden fijo de la spec (4.1). Recuperación y compactación
 corren una sola vez, sobre la ganadora y todavía con compuestas, y recién
 después se desarma.
 
@@ -55,7 +56,7 @@ from nesting.model.part import Part
 from nesting.model.sheet import SheetSupply
 
 EFFORT_BATCHES: dict[str, int] = {"rapido": 0, "normal": 1, "lento": 3}
-"""Cuántas tandas de `NestConfig.workers` variantes se prueban después de la base.
+"""Cuántas tandas de `batch_size(NestConfig.workers)` variantes se prueban después de la base.
 
 Reemplaza a `EFFORT_RESTARTS` (1, 3 y 12 pasadas). Los reintentos de antes
 sólo permutaban el orden de inserción, y seis copias idénticas permutadas
@@ -152,7 +153,8 @@ entre niveles de esfuerzo a una misma resolución, no como pronóstico de
 cuánto va a tardar una corrida con los valores de hoy.
 
 `pack()` garantiza `lento <= normal <= rapido` por construcción (ver el
-superconjunto de reintentos más abajo), nunca por suerte de la semilla.
+prefijo de variantes al principio de este docstring y `VariantSource.batch`),
+nunca por suerte de la semilla.
 """
 
 QUERY_REPORT_EVERY = 25
@@ -238,11 +240,12 @@ def planned_variants(effort: str, workers: int) -> int:
 def wall_passes(effort: str, workers: int) -> float:
     """Cuántas pasadas golosas "de reloj" cuesta la cartera, para el tiempo estimado previo.
 
-    La base es una pasada. Cada tanda son `workers` variantes repartidas en
-    `workers` núcleos: la previsión de consultas se multiplica por las
-    variantes de la tanda y se divide por `N` (spec de pares y cartera, 6).
-    Es una cota de arriba: si la base iguala la cota por área, las tandas
-    no corren.
+    La base es una pasada. Cada tanda son `batch_size(workers)` variantes
+    -- `N`, pero nunca menos de `MIN_BATCH` -- repartidas en `N` núcleos:
+    ⌈tanda / N⌉ vueltas de una pasada cada una (spec de pares y cartera,
+    6). Con 12 núcleos o más es una vuelta por tanda; con 4, tres. Es una
+    cota de arriba: si la base iguala la cota por área, las tandas no
+    corren.
     """
     n = max(1, workers)
     # Las variantes de una tanda se reparten en `n` núcleos: son
@@ -254,8 +257,8 @@ def wall_forecast(parts: Sequence[Part], supply: SheetSupply, config: NestConfig
     """Las consultas "de reloj" de la cartera: lo que tarda en un núcleo, contando el paralelo.
 
     Es la previsión de arranque del plan 2 para UNA pasada (con recuperación
-    y compactación), más una pasada golosa por cada tanda: cada tanda son
-    `N` variantes en `N` núcleos. `initial_forecast` cuenta consultas
+    y compactación), más ⌈batch_size(N) / N⌉ pasadas golosas por cada tanda
+    (ver `wall_passes`). `initial_forecast` cuenta consultas
     TOTALES, sumadas entre procesos, y sirve para la barra; ésta sirve para
     multiplicarla por los segundos que tarda una consulta en UN núcleo.
     """

@@ -321,5 +321,7 @@ def test_sobre_el_marco_de_la_banqueta_aparecen_el_diagonal_y_el_apilado():
             for t in encontrados
         )
 
-    assert hay(1511.0, 560.0), [(round(t.width), round(t.height)) for t in encontrados]
-    assert hay(1055.0, 879.0), [(round(t.width), round(t.height)) for t in encontrados]
+    # Las cajas de después del acercamiento (`SLIDE_MARGIN_MM`): B queda a
+    # `sep` y no a lo que dejó el raster. Antes eran 1511 x 560 y 1055 x 879.
+    assert hay(1508.0, 560.0), [(round(t.width), round(t.height)) for t in encontrados]
+    assert hay(1056.0, 875.0), [(round(t.width), round(t.height)) for t in encontrados]

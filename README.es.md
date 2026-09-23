@@ -16,7 +16,7 @@ franja que queda libre siga entera para el próximo trabajo.
 
 [![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-informational.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-informational.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-1028-informational.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-1453-informational.svg)](tests/)
 
 ---
 
@@ -153,7 +153,7 @@ mismos parámetros.
 | Borde | `--borde` | Margen contra el borde de la placa. |
 | Copias | `--copias` | Cuántas veces repetir todo el contenido del archivo. |
 | Esfuerzo | `--esfuerzo` | `rapido` (una pasada), `normal` (la pasada más una tanda de al menos 12 variantes -- tantas como núcleos si hay más de 12 -- probando las piezas repetidas grandes encastradas de a pares con distintos tipos de encastre, y si no hay, otros órdenes) o `lento` (tres tandas: más tipos de par y orientaciones perturbadas). |
-| Núcleos | `--nucleos` | Cuántos núcleos usa para probar en paralelo las variantes de cada tanda. Arranca en todos menos dos, con un tope por memoria (cada proceso usa unos 2300 MB). Cada tanda prueba como mínimo 12 variantes: con menos de 12 núcleos corren las mismas 12 en varias vueltas y sólo cambia el tiempo; con 12 o más puede probar variantes de más, y ahí sí el resultado puede cambiar. |
+| Núcleos | `--nucleos` | Cuántos núcleos usa para probar en paralelo las variantes de cada tanda. Arranca en todos menos dos, con un tope por memoria (cada proceso usa unos 2300 MB). Cada tanda prueba como mínimo 12 variantes: con menos de 12 núcleos corren las mismas 12 en varias vueltas y sólo cambia el tiempo; con más de 12 prueba variantes de más, y ahí sí el resultado puede cambiar. |
 | Posiciones | — | En cuántas posiciones puede girar cada pieza, repartidas en la vuelta entera: 4, 8 o 16. `Personalizado` revela el campo Ángulos para escribir la lista a mano. **Sólo en la interfaz.** Con la veta respetada queda fija en 0° y 180°. |
 | Ángulos | `--angulos` | Rotaciones candidatas, separadas por coma. En la pantalla vive detrás de `Posiciones → Personalizado`. |
 | Permitir espejadas | `--sin-espejo` | Si una pieza se puede dar vuelta como un guante. La pantalla lo trae activado; el flag lo apaga. |
@@ -201,7 +201,8 @@ madera de verdad.
 
 ```bash
 .venv/bin/pip install -e ".[dev]"    # pytest, httpx y pyinstaller
-.venv/bin/pytest                     # la suite entera (1028, ~7 min)
+.venv/bin/pytest                     # la suite por omisión (1453, ~5 min)
+.venv/bin/pytest -m lento            # las lentas, que quedan afuera por omisión (3, de minutos cada una)
 .venv/bin/pytest tests/app           # sólo la interfaz (~10 s)
 ```
 

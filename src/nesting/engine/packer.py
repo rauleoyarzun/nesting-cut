@@ -561,7 +561,8 @@ def _restarts_for(config: NestConfig) -> int:
 
     Antes era `EFFORT_RESTARTS[config.effort]`. Ahora cada variante de la
     cartera es una pasada, así que son `planned_variants`: la base más las
-    tandas de `config.workers`. `initial_forecast` lo usa para la previsión
+    tandas de `batch_size(config.workers)` variantes (`N`, pero nunca menos
+    de `cartera.MIN_BATCH`). `initial_forecast` lo usa para la previsión
     de arranque, que cuenta consultas TOTALES -- sumadas entre procesos, como
     las cuenta el avance --; la estimación previa de tiempo usa
     `cartera.wall_forecast` (Tarea 7), que las divide por los núcleos.

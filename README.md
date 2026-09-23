@@ -16,7 +16,7 @@ possible**, so the strip that is left stays whole for the next job.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-informational.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-1028-informational.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-1453-informational.svg)](tests/)
 
 ---
 
@@ -155,7 +155,7 @@ parameters.
 | Borde | `--borde` | Margin against the edge of the sheet. |
 | Copias | `--copias` | How many times to repeat the entire contents of the file. |
 | Esfuerzo | `--esfuerzo` | `rapido` (one pass), `normal` (that pass plus one batch of at least 12 variants -- as many as cores when there are more than 12 -- trying the large repeated parts nested in pairs with different kinds of interlock, and when there are none, other insertion orders) or `lento` (three batches: more pair types and perturbed orientations). |
-| Núcleos | `--nucleos` | How many cores to use to try the variants of each batch in parallel. Starts at all but two, capped by memory (each process uses about 2300 MB). Each batch tries at least 12 variants: with fewer than 12 cores the same 12 just run in more rounds and only the time changes; with 12 or more it can try extra variants, and then the result can change too. |
+| Núcleos | `--nucleos` | How many cores to use to try the variants of each batch in parallel. Starts at all but two, capped by memory (each process uses about 2300 MB). Each batch tries at least 12 variants: with fewer than 12 cores the same 12 just run in more rounds and only the time changes; with more than 12 it tries extra variants, and then the result can change too. |
 | Posiciones | — | How many positions each part can rotate to, spread evenly across the full turn: 4, 8 or 16. `Personalizado` reveals the Ángulos field to type the list by hand. **Interface only.** With the grain respected it is locked at 0° and 180°. |
 | Ángulos | `--angulos` | Candidate rotations, comma separated. On screen it now lives behind `Posiciones → Personalizado`. |
 | Permitir espejadas | `--sin-espejo` | Whether a part may be flipped over like a glove. The screen has it on; the flag turns it off. |
@@ -203,7 +203,8 @@ cuts real wood.
 
 ```bash
 .venv/bin/pip install -e ".[dev]"    # pytest, httpx and pyinstaller
-.venv/bin/pytest                     # the whole suite (1028, ~7 min)
+.venv/bin/pytest                     # the default suite (1453, ~5 min)
+.venv/bin/pytest -m lento            # the slow ones, left out by default (3, minutes each)
 .venv/bin/pytest tests/app           # the interface only (~10 s)
 ```
 

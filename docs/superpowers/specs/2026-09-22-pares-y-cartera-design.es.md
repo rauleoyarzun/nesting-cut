@@ -331,7 +331,8 @@ honesta con placas de distinto tamaño no es esa.
   no lo es; sin espejo la espejada no lo es; `g` lleva cada miembro sobre la
   representante (diferencia simétrica < 1 mm²).
 - `pares`: sobre el marco de la banqueta aparecen el tipo diagonal (caja
-  1511×560 ± 5 mm) y el apilado (1055×879 ± 5 mm); todo candidato cumple
+  ≈1508×560 ± 5 mm) y el apilado (≈1056×875 ± 5 mm; eran 1511×560 y
+  1055×879 antes de acercar B a `sep`); todo candidato cumple
   `sep ≤ separación < 2·sep`; con la veta respetada ningún candidato tiene
   B a 90°; la compuesta es un solo polígono y conserva los agujeros.
 - `componer`: para transformaciones al azar, aplicar `componer(T, t)` es

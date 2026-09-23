@@ -319,8 +319,9 @@ sheets of different sizes is not that.
   one class with a free config; with grain respected the 90° one is not; with
   no mirror the mirrored one is not; `g` takes each member onto the
   representative (symmetric difference < 1 mm²).
-- `pares`: on the bench frame the diagonal type (box 1511×560 ± 5 mm) and the
-  stacked one (1055×879 ± 5 mm) show up; every candidate satisfies
+- `pares`: on the bench frame the diagonal type (box ≈1508×560 ± 5 mm) and the
+  stacked one (≈1056×875 ± 5 mm; 1511×560 and 1055×879 before sliding B to
+  `sep`) show up; every candidate satisfies
   `sep ≤ separation < 2·sep`; with grain respected no candidate has B at 90°;
   the composite is a single polygon and keeps the holes.
 - `componer`: for random transforms, applying `componer(T, t)` equals
