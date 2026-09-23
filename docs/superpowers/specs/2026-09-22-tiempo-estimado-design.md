@@ -56,6 +56,11 @@ The forecast is built per phase and corrected as more becomes known:
 - **When the first attempt ends:** the real query cost of one attempt is
   known; remaining attempts are forecast the same, and the real sheet count
   replaces the estimated one.
+- **With the portfolio, as each variant ends:** the remaining ones are
+  forecast as the average of those already finished (cut ones included), not
+  as the base: cut and pair variants cost much less, and with the base alone
+  "Faltan aprox." came out almost three times too high. The final phase is
+  forecast from the sheets of the best finished variant.
 - **On entering recovery and compaction:** the sheets and their parts are
   known, so those phases' forecast becomes exact as an upper bound.
 

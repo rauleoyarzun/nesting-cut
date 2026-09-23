@@ -57,6 +57,11 @@ La previsión se construye por fases y se corrige a medida que se sabe más:
 - **Al terminar el primer intento:** ya se sabe cuántas consultas costó un
   intento real; los intentos restantes se prevén iguales, y la cantidad
   real de placas reemplaza a la estimada.
+- **Con la cartera, al terminar cada variante:** las que faltan se prevén
+  como el promedio de las ya terminadas (las cortadas también), no como la
+  base: las cortadas y las de pares cuestan mucho menos, y con la base sola
+  "Faltan aprox." salía casi tres veces alto. El tramo final se prevé con
+  las placas de la mejor variante terminada.
 - **Al entrar en recuperación y en compactación:** se conocen las placas y
   sus piezas, así que la previsión de esas fases pasa a ser exacta como cota
   superior.

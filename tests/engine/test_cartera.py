@@ -375,6 +375,90 @@ def test_el_avance_de_la_cartera_cuenta_combinaciones():
     assert all(a.placa_minima >= 1 for a in de_cartera)
 
 
+
+# --- la previsión se corrige con lo que cuestan las variantes ------------------
+
+def _salida(indice, consultas, placas=2):
+    """Un `Outcome` de mentira: sólo importan sus consultas y su costo."""
+    from nesting.engine.cartera import Outcome
+    from nesting.engine.packer import CostoLayout, PackResult
+
+    packed = PackResult(sheets=[PLACA] * placas, utilization=[0.0] * placas)
+    return Outcome(indice, packed, CostoLayout(placas, 0.0, 0.0), consultas)
+
+
+def _progreso_de_mentira(planned, final=100):
+    from nesting.engine.cartera import _Progress
+
+    avances = []
+    progreso = _Progress(lambda a: avances.append(a) or True, totales=7, planned=planned,
+                         initial_queries=10**6, final_forecast=lambda packed: final)
+    return progreso, avances
+
+
+def _terminar(progreso, indice, consultas, placas=2):
+    progreso.record(("variante", indice), consultas)
+    progreso.variant_done(indice, _salida(indice, consultas, placas) if placas else None)
+
+
+def test_la_prevision_baja_cuando_las_variantes_salen_mas_baratas_que_la_base():
+    """Revisión final: después de la base se preveía `base × (variantes + 1)`
+    y no se corregía nunca; las variantes cortadas y las de pares cuestan
+    mucho menos, y "Faltan aprox." quedaba ~2.7 veces alto."""
+    progreso, avances = _progreso_de_mentira(planned=5)
+    progreso.record("base", 1000)
+    progreso.base_done(_salida(0, 1000))
+    progreso.emit()
+    tras_la_base = avances[-1].consultas_previstas
+    assert tras_la_base == 1000 + 4 * 1000 + 100
+
+    _terminar(progreso, 1, 200)
+    _terminar(progreso, 2, 100, placas=None)  # cortada: cuenta en el promedio
+    assert avances[-1].consultas_hechas == 1300
+    assert avances[-1].consultas_previstas == 1300 + 2 * 150 + 100
+    assert avances[-1].consultas_previstas < tras_la_base
+
+
+def test_una_variante_en_curso_cuenta_lo_que_lleva_si_ya_pasa_del_promedio():
+    progreso, avances = _progreso_de_mentira(planned=4)
+    progreso.record("base", 1000)
+    progreso.base_done(_salida(0, 1000))
+    _terminar(progreso, 1, 200)
+    progreso.record(("variante", 2), 500)
+    progreso.emit()
+    assert avances[-1].consultas_previstas == 1200 + 500 + 200 + 100
+    assert avances[-1].consultas_previstas >= avances[-1].consultas_hechas
+
+
+def test_la_mejor_variante_trae_su_propio_tramo_final():
+    from nesting.engine.cartera import _Progress
+
+    avances = []
+    progreso = _Progress(lambda a: avances.append(a) or True, totales=7, planned=3,
+                         initial_queries=1,
+                         final_forecast=lambda packed: 10 * packed.sheets_used)
+    progreso.record("base", 1000)
+    progreso.base_done(_salida(0, 1000, placas=3))
+    _terminar(progreso, 1, 400, placas=2)
+    assert avances[-1].consultas_previstas == 1400 + 400 + 20
+
+
+def test_el_tramo_final_se_preve_con_su_propia_cuenta_y_termina_exacto():
+    progreso, avances = _progreso_de_mentira(planned=2)
+    progreso.record("base", 1000)
+    progreso.base_done(_salida(0, 1000))
+    _terminar(progreso, 1, 300)
+
+    progreso.final(_salida(1, 300).packed)
+    assert avances[-1].consultas_previstas == 1300 + 100
+    progreso.replan_final(40)
+    assert avances[-1].consultas_previstas == 1300 + 40
+    progreso.record("final", 25)
+    progreso.finish()
+    assert avances[-1].consultas_previstas == avances[-1].consultas_hechas == 1325
+    assert all(a.consultas_previstas >= a.consultas_hechas for a in avances)
+
+
 # --- reloj: cuántas pasadas cuesta la cartera, para el tiempo estimado ------
 
 from nesting.engine.cartera import wall_forecast, wall_passes

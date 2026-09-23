@@ -750,15 +750,24 @@ class _Progress:
     """
 
     def __init__(self, progreso: Callable[[Avance], bool] | None,
-                 totales: int, planned: int, initial_queries: int) -> None:
+                 totales: int, planned: int, initial_queries: int,
+                 final_forecast: Callable[[PackResult], int] | None = None) -> None:
         self._progreso = progreso
         self._totales = totales
         self._planned = planned
         self._queries: dict[object, int] = {}
-        # La previsión de arranque del plan 2 (`initial_forecast`), que con
-        # `_restarts_for` apuntando a `planned_variants` cuenta una pasada
-        # por variante prevista, más la recuperación y la compactación.
+        # La previsión de arranque del plan 2 (`initial_forecast`): una
+        # pasada por variante prevista, más la recuperación y la
+        # compactación. Vale hasta que termina la base; en la cartera la
+        # previsión se rehace en cada aviso (`_portfolio_forecast`), y en el
+        # tramo final la fijan `final` y `replan_final`.
         self._planned_queries = initial_queries
+        self._final_forecast = final_forecast or (lambda packed: 0)
+        # Lo que se prevé que cueste el tramo final sobre la mejor variante
+        # terminada hasta ahora, y el costo con que se eligió esa mejor.
+        self._final_queries = 0
+        self._best_cost: CostoLayout | None = None
+        self._finished: set[object] = set()
         self._phase = "base"
         self._ubicadas = 0
         self._placa = 1
@@ -811,30 +820,65 @@ class _Progress:
     def base_done(self, outcome: Outcome) -> None:
         self._phase = "cartera"
         self._done = 1
+        self._finished.add("base")
         self._best_sheets = outcome.packed.sheets_used
-        # Ya se sabe cuánto costó una pasada de verdad: las que faltan se
-        # prevén iguales, más una para el tramo final.
-        self._planned_queries = outcome.queries * (self._planned + 1)
+        self._best_cost = outcome.cost
+        self._final_queries = self._final_forecast(outcome.packed)
 
-    def variant_done(self, outcome: Outcome | None) -> None:
+    def variant_done(self, index: int, outcome: Outcome | None) -> None:
         self._done += 1
+        self._finished.add(("variante", index))
         if outcome is not None:
             self._best_sheets = min(self._best_sheets, outcome.packed.sheets_used)
+            if self._best_cost is None or outcome.cost < self._best_cost:
+                self._best_cost = outcome.cost
+                self._final_queries = self._final_forecast(outcome.packed)
         self.emit()
 
-    def final(self) -> None:
+    def _portfolio_forecast(self) -> int:
+        """Lo hecho, más lo que se prevé que falte de la cartera y del tramo final.
+
+        Cada variante que falta se prevé como el promedio de las de la
+        cartera ya terminadas -- las cortadas también: cortar es parte de lo
+        que cuestan -- o, antes de que termine ninguna, como la base. Una
+        variante en curso cuenta lo que lleva si ya pasó ese promedio. La
+        base sola exageraba: las variantes cortadas y las de pares cuestan
+        mucho menos, y "Faltan aprox." salía casi tres veces alto.
+        """
+        finished = [self._queries.get(slot, 0) for slot in self._finished]
+        variants = [self._queries.get(slot, 0) for slot in self._finished if slot != "base"]
+        average = (sum(variants) / len(variants) if variants
+                   else float(self._queries.get("base", 0)))
+        running = [total for slot, total in self._queries.items()
+                   if slot not in self._finished]
+        waiting = max(0, self._planned - self._done - len(running))
+        pending = sum(max(total, average) for total in running) + waiting * average
+        return sum(finished) + math.ceil(pending) + self._final_queries
+
+    def final(self, packed: PackResult) -> None:
+        """Entra al tramo final con la ganadora `packed`, todavía con compuestas.
+
+        La previsión es lo hecho más la cuenta del tramo final sobre ese
+        acomodo; las tandas que la cota salteó ya no cuentan.
+        """
         self._phase = "final"
-        self._planned_queries = self.queries + max(self._queries.get("base", 0), 1)
+        self._planned_queries = self.queries + self._final_forecast(packed)
+        self.emit()
+
+    def replan_final(self, remaining: int) -> None:
+        """El `prever` de la recuperación: lo que falta del tramo final, rehecho."""
+        self._planned_queries = self.queries + remaining
         self.emit()
 
     def finish(self) -> None:
         """El último aviso: todo lo consultado ya está contado.
 
-        Sin esto, un tramo final más barato que la base (la previsión de
-        `final` cuenta una pasada entera) dejaría el último `Avance` con
-        previstas de más, y quien estime el tiempo vería trabajo pendiente
-        en un `pack` que ya terminó. `Avance.consultas_previstas` promete
-        que en el último aviso son iguales a las hechas.
+        Sin esto, un tramo final más barato que lo previsto (la recuperación
+        se prevé con un intento por placa anterior) dejaría el último
+        `Avance` con previstas de más, y quien estime el tiempo vería
+        trabajo pendiente en un `pack` que ya terminó.
+        `Avance.consultas_previstas` promete que en el último aviso son
+        iguales a las hechas.
         """
         self._planned_queries = self.queries
         self.emit()
@@ -843,11 +887,13 @@ class _Progress:
         if self._progreso is None:
             return
         hechas = self.queries
+        previstas = (self._portfolio_forecast() if self._phase == "cartera"
+                     else self._planned_queries)
         comunes = dict(
             intentos=self._planned,
             totales=self._totales,
             consultas_hechas=hechas,
-            consultas_previstas=max(self._planned_queries, hechas),
+            consultas_previstas=max(previstas, hechas),
         )
         if self._phase == "base":
             avance = Avance(intento=1, ubicadas=self._ubicadas, placa=self._placa, **comunes)
@@ -975,7 +1021,7 @@ class _Evaluator:
                 variant, parts, supply, self._config, self._factory,
                 progress.watch(("variante", variant.index), lambda: mejor),
             )
-            progress.variant_done(outcome)
+            progress.variant_done(variant.index, outcome)
             if outcome is not None:
                 outcomes.append(outcome)
                 mejor = min(mejor, outcome.cost.placas_nuevas)
@@ -1029,7 +1075,7 @@ class _Evaluator:
             for future in done:
                 index, outcome, total = future.result()
                 progress.record(("variante", index), total)
-                progress.variant_done(outcome)
+                progress.variant_done(index, outcome)
                 if outcome is not None:
                     outcomes.append(outcome)
                     if outcome.cost.placas_nuevas < self._best.value:
@@ -1043,6 +1089,30 @@ class _Evaluator:
         return sorted(outcomes, key=lambda o: o.index)
 
 
+def _final_forecast(packed: PackResult, config: NestConfig) -> int:
+    """Consultas previstas del tramo final sobre `packed`: recuperación y compactación.
+
+    Las mismas cuentas de `prevision` que usa la recuperación para su
+    `prever`, sobre las placas de verdad: un intento por placa anterior con
+    las piezas de la última adelante, y una pasada sobre la última.
+    """
+    used = packed.sheets_used
+    if used == 0:
+        return 0
+    per_sheet = [0] * used
+    for placement in packed.placements:
+        per_sheet[placement.sheet] += 1
+    on_last = per_sheet[-1]
+    recovery = prevision.forecast_recovery(
+        [(per_sheet[k], len(orientations(packed.sheets[k], config))) for k in range(used - 1)],
+        on_last,
+    ) if on_last else 0
+    compaction = prevision.forecast_compaction(
+        on_last, len(orientations(packed.sheets[-1], config))
+    )
+    return recovery + compaction
+
+
 def _finish(best: Outcome, winner: Variant, parts: Sequence[Part], supply: SheetSupply,
             config: NestConfig, factory: Callable[[], Oracle], progress: _Progress) -> PackResult:
     """Recuperación y compactación sobre la ganadora, todavía con compuestas, y desarmar.
@@ -1052,7 +1122,7 @@ def _finish(best: Outcome, winner: Variant, parts: Sequence[Part], supply: Sheet
     una al terminar. Cancelar corta en cualquiera de esos avisos, y también
     en la próxima consulta (`_WatchedOracle`).
     """
-    progress.final()
+    progress.final(best.packed)
     watch = progress.watch("final", _never_beaten, emit=False)
     counter = _QueryCounter(watch)
     watched = _WatchedFactory(factory, counter, watch, 0)
@@ -1060,10 +1130,21 @@ def _finish(best: Outcome, winner: Variant, parts: Sequence[Part], supply: Sheet
     def aviso(ubicadas: int, placa: int) -> None:
         progress.emit()
 
+    last_choices = (len(orientations(best.packed.sheets[-1], config))
+                    if best.packed.sheets else 0)
+
+    def prever(recovery_left: int, pending: int) -> None:
+        # Antes de cada intento de la recuperación: lo que falta de ella,
+        # más la compactación de las piezas que quedarían en la última.
+        progress.replan_final(
+            recovery_left + prevision.forecast_compaction(pending, last_choices)
+        )
+
     avisar = aviso if progress.listening else None
     working = list(winner.order)
     result = _recuperar_de_la_ultima_placa(best.packed, working, config, watched,
-                                           supply.material_name, avisar)
+                                           supply.material_name, avisar,
+                                           prever if progress.listening else None)
     result = _compact_last_sheet(result, working, config, watched,
                                  supply.material_name, avisar)
     counter.flush()
@@ -1098,7 +1179,8 @@ def run_portfolio(
     size = batch_size(config.workers)
     planned = planned_variants(config.effort, config.workers)
     progress = _Progress(progreso, len(parts), planned,
-                         initial_forecast(parts, supply, config))
+                         initial_forecast(parts, supply, config),
+                         lambda packed: _final_forecast(packed, config))
 
     best = evaluate(base, parts, supply, config, oracle_factory,
                     progress.watch("base", _never_beaten, emit=False), aviso=progress.placed)
