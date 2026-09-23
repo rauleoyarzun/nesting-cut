@@ -7,6 +7,7 @@ same code drives the throwaway shelf engine and the real raster engine.
 import random
 import time
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 
 from nesting.engine.oracle import NestConfig, Oracle, Weights, transformed_bbox
@@ -300,6 +301,28 @@ def _pack_once(
     return result
 
 
+QUERY_THREADS = 4
+"""Cuántos hilos consultan las orientaciones de una pieza a la vez (fase 2, idea B)."""
+
+_query_pool: ThreadPoolExecutor | None = None
+
+
+def _query_orientations(oracle, part, choices):
+    """Todas las consultas de una pieza, en hilos, en el orden de `choices`.
+
+    Las máscaras se piden antes, desde este hilo: `MaskCache` no es seguro
+    entre hilos para las altas, y `best_placement` es de sólo lectura sobre
+    todo lo demás (la grilla, el árbitro).
+    """
+    global _query_pool
+    warm = getattr(oracle, "warm", None)
+    if warm is not None:
+        warm(part, choices)
+    if _query_pool is None:
+        _query_pool = ThreadPoolExecutor(max_workers=QUERY_THREADS)
+    return list(_query_pool.map(lambda c: oracle.best_placement(part, c[0], c[1]), choices))
+
+
 def _best_over_orientations(
     oracle: Oracle,
     part: Part,
@@ -308,17 +331,16 @@ def _best_over_orientations(
 ) -> tuple[float, bool, float, float] | None:
     """Ask the oracle about every orientation and keep the best-scoring one.
 
-    Con `rank > 0` se queda con la `rank`-ésima mejor (o con la peor que
-    entra, si hay menos). El camino de `rank == 0` es el de siempre, tal
-    cual: la primera de `choices` con el puntaje más alto. Se deja separado
-    a propósito para que ninguna corrida sin perturbación pueda cambiar un
-    solo número por culpa de esto.
+    Con `rank > 0`, la `rank`-ésima mejor (o la peor que entra). Las
+    consultas corren en hilos (`_query_orientations`), pero la elección se
+    hace sobre los resultados en el orden de `choices`: en empate gana la
+    primera, igual que antes.
     """
+    answers = _query_orientations(oracle, part, choices)
     if rank == 0:
         best: tuple[float, bool, float, float] | None = None
         best_score = float("-inf")
-        for angle, mirror in choices:
-            spot = oracle.best_placement(part, angle, mirror)
+        for (angle, mirror), spot in zip(choices, answers):
             if spot is None:
                 continue
             x, y, score = spot
@@ -327,13 +349,11 @@ def _best_over_orientations(
                 best = (angle, mirror, x, y)
         return best
 
-    spots: list[tuple[float, int, float, bool, float, float]] = []
-    for position, (angle, mirror) in enumerate(choices):
-        spot = oracle.best_placement(part, angle, mirror)
-        if spot is None:
-            continue
-        x, y, score = spot
-        spots.append((-score, position, angle, mirror, x, y))
+    spots = [
+        (-spot[2], position, angle, mirror, spot[0], spot[1])
+        for position, ((angle, mirror), spot) in enumerate(zip(choices, answers))
+        if spot is not None
+    ]
     if not spots:
         return None
     spots.sort()

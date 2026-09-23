@@ -172,6 +172,11 @@ class RasterOracle:
         self._arbitro = ArbitroExacto(sheet_w, sheet_h, config.sep, config.margin)
         self._radio_optimista = radio_optimista(config.sep, config.resolution)
 
+    def warm(self, part: Part, choices) -> None:
+        """Pide todas las máscaras desde el hilo que llama, antes de consultar en hilos."""
+        for angle, mirror in choices:
+            self._masks(part, angle, mirror)
+
     def best_placement(
         self, part: Part, angle: float, mirror: bool
     ) -> tuple[float, float, float] | None:

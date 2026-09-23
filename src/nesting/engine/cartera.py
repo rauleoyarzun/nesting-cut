@@ -24,6 +24,7 @@ import pickle
 import queue
 import random
 import sys
+import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
@@ -592,10 +593,15 @@ class _QueryCounter:
         self.total = 0
         self._reported = 0
         self._watch = watch
+        self._lock = threading.Lock()
 
     def add(self) -> None:
-        self.total += 1
-        if self.total - self._reported >= self._watch.report_every:
+        # Con las consultas en hilos (fase 2, idea B), `+= 1` desde varios
+        # hilos a la vez puede perder cuentas.
+        with self._lock:
+            self.total += 1
+            due = self.total - self._reported >= self._watch.report_every
+        if due:
             self.flush()
 
     def flush(self) -> None:
@@ -626,6 +632,11 @@ class _WatchedOracle:
             raise Cancelado("el trabajo se canceló")
         self._counter.add()
         return self._inner.best_placement(part, angle, mirror)
+
+    def warm(self, part: Part, choices) -> None:
+        warm = getattr(self._inner, "warm", None)
+        if warm is not None:
+            warm(part, choices)
 
     def place(self, part: Part, angle: float, mirror: bool, x: float, y: float) -> None:
         self._inner.place(part, angle, mirror, x, y)
