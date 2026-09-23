@@ -12,8 +12,7 @@ from pathlib import Path
 
 from nesting.engine.oracle import NestConfig
 from nesting.engine.packer import PartTooLargeError, layout_cost, pack, replicate
-from nesting.engine.raster.masks import MaskCache
-from nesting.engine.raster.oracle import RasterOracle
+from nesting.engine.raster.oracle import RasterOracleFactory
 from nesting.engine.shelf_oracle import ShelfOracle
 from nesting.geometry.nesting_tree import OverlappingContourError
 from nesting.geometry.verify import verify
@@ -52,13 +51,14 @@ def _new_raster_factory():
     Masks depend only on (part, angle, mirror, resolution, sep) -- never on
     sheet state -- so one cache shared by every `RasterOracle` `pack()`
     constructs (one per sheet, and one per retry once effort levels exist)
-    avoids re-rasterizing the same orientation over and over. A closure
-    keeps this a plain `Callable[[], Oracle]` from `pack()`'s point of view,
-    so `pack()` itself stays engine-agnostic. Built fresh per file so the
+    avoids re-rasterizing the same orientation over and over.
+    `RasterOracleFactory` keeps this a plain `Callable[[], Oracle]` from
+    `pack()`'s point of view, so `pack()` itself stays engine-agnostic, and
+    unlike a closure it can be sent to the portfolio's worker processes.
+    Built fresh per file so the
     cache doesn't grow across unrelated files for the rest of the bench run.
     """
-    cache = MaskCache()
-    return lambda: RasterOracle(cache=cache)
+    return RasterOracleFactory()
 
 
 @dataclass(frozen=True)

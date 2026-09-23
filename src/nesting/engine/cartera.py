@@ -19,10 +19,14 @@ Spec: docs/superpowers/specs/2026-09-22-pares-y-cartera-design.es.md, sección 4
 import heapq
 import itertools
 import math
+import multiprocessing
+import pickle
+import queue
 import random
 import sys
 import time
 from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import dataclass
 
 from nesting.engine import pares
@@ -155,6 +159,10 @@ Informar cada consulta haría que el aviso cueste más que la consulta en las
 placas vacías; cada 25, en la pasada más rápida medida, es un aviso cada
 pocas décimas de segundo.
 """
+
+POLL_SECONDS = 0.2
+"""Cada cuánto el proceso principal junta los avisos de los procesos y
+avisa. Es también cuánto puede tardar en notarse un "cancelar"."""
 
 ORIENTATION_RANKS = 3
 """Entre cuántas orientaciones de mejor puntaje elige la perturbación de `lento`."""
@@ -717,26 +725,90 @@ class _Progress:
 
 # --- evaluar tandas -----------------------------------------------------------
 
-class _Evaluator:
-    """Evalúa tandas de variantes. En esta versión, una detrás de otra.
+_worker: dict = {}
+"""El estado de un proceso del pool: lo llena `_init_worker` una vez."""
 
-    Es un administrador de contexto porque la Tarea 6 le agrega un pool de
-    procesos que hay que cerrar pase lo que pase.
+
+def _init_worker(factory, cancel, best, reports) -> None:
+    """Corre una vez en cada proceso nuevo del pool.
+
+    La fábrica, el evento de cancelar, el mejor `placas_nuevas` y la cola de
+    avisos llegan acá y no con cada variante: los objetos de sincronización
+    de `multiprocessing` sólo se pueden pasar por herencia al crear el
+    proceso, y la fábrica, pasada una sola vez, conserva su `MaskCache` entre
+    todas las variantes que ese proceso evalúe.
+    """
+    _worker.update(factory=factory, cancel=cancel, best=best, reports=reports)
+
+
+def _run_in_worker(variant: Variant, parts: Sequence[Part], supply: SheetSupply,
+                   config: NestConfig) -> tuple[int, Outcome | None, int]:
+    reports = _worker["reports"]
+    last = [0]
+
+    def on_queries(total: int) -> None:
+        last[0] = total
+        reports.put((variant.index, total))
+
+    watch = _Watch(
+        cancelled=_worker["cancel"].is_set,
+        best_new_sheets=lambda: _worker["best"].value,
+        on_queries=on_queries,
+    )
+    outcome = evaluate(variant, parts, supply, config, _worker["factory"], watch)
+    # El total viaja también con el resultado: la cola es asíncrona, y el
+    # último mensaje puede llegar después de que el principal vio terminar
+    # a la variante.
+    return variant.index, outcome, last[0]
+
+
+class _Evaluator:
+    """Evalúa tandas de variantes: acá mismo, o en un pool de procesos `spawn`.
+
+    Con un proceso, o con una tanda de una sola variante, corre acá, una
+    detrás de otra. Si no, en un `ProcessPoolExecutor` que se crea la
+    primera vez que hace falta y se reusa entre tandas. Es un administrador
+    de contexto para que el pool se cierre pase lo que pase -- cancelación
+    incluida -- sin dejar ningún proceso vivo.
     """
 
-    def __init__(self, config: NestConfig, factory: Callable[[], Oracle]) -> None:
+    def __init__(self, config: NestConfig, factory: Callable[[], Oracle],
+                 processes: int | None = None) -> None:
         self._config = config
         self._factory = factory
+        self._processes = max(1, config.workers if processes is None else processes)
+        # `spawn` en todas las plataformas: en Linux el por omisión es
+        # `fork`, y un proceso hecho con fork hereda hilos y cerrojos a medio
+        # tomar del principal (el servidor de la interfaz tiene varios).
+        self._context = multiprocessing.get_context("spawn")
+        self._pool: ProcessPoolExecutor | None = None
+        self._cancel = None
+        self._best = None
+        self._reports = None
 
     def __enter__(self) -> "_Evaluator":
         return self
 
     def __exit__(self, *exc) -> bool:
+        if self._pool is not None:
+            # Primero el evento: un proceso a mitad de una variante lo ve en
+            # su próxima consulta y levanta `Cancelado`, así que `shutdown`
+            # no espera a que termine una pasada entera.
+            self._cancel.set()
+            self._pool.shutdown(wait=True, cancel_futures=True)
+            self._pool = None
+            self._reports.close()
+            self._reports.join_thread()
         return False
 
     def run(self, batch: Sequence[Variant], parts: Sequence[Part], supply: SheetSupply,
             best_new_sheets: int, progress: _Progress) -> list[Outcome]:
         """Los resultados de la tanda que no se cortaron, en orden de índice."""
+        if self._processes == 1 or len(batch) <= 1:
+            return self._run_here(batch, parts, supply, best_new_sheets, progress)
+        return self._run_in_pool(batch, parts, supply, best_new_sheets, progress)
+
+    def _run_here(self, batch, parts, supply, best_new_sheets, progress) -> list[Outcome]:
         mejor = best_new_sheets
         outcomes: list[Outcome] = []
         for variant in batch:
@@ -749,6 +821,65 @@ class _Evaluator:
                 outcomes.append(outcome)
                 mejor = min(mejor, outcome.cost.placas_nuevas)
         return outcomes
+
+    def _start_pool(self) -> None:
+        try:
+            pickle.dumps(self._factory)
+        except Exception as error:
+            raise TypeError(
+                "para probar variantes en paralelo, la fábrica de oráculos tiene "
+                "que poder mandarse a otro proceso, y ésta no se puede serializar "
+                "(una lambda que captura un MaskCache no se puede). Usá "
+                "nesting.engine.raster.oracle.RasterOracleFactory, una clase, o "
+                "NestConfig(workers=1)."
+            ) from error
+        self._cancel = self._context.Event()
+        self._best = self._context.Value("q", 0)
+        self._reports = self._context.Queue()
+        self._pool = ProcessPoolExecutor(
+            max_workers=self._processes,
+            mp_context=self._context,
+            initializer=_init_worker,
+            initargs=(self._factory, self._cancel, self._best, self._reports),
+        )
+
+    def _drain(self, progress: _Progress) -> None:
+        while True:
+            try:
+                index, total = self._reports.get_nowait()
+            except queue.Empty:
+                return
+            progress.record(("variante", index), total)
+
+    def _run_in_pool(self, batch, parts, supply, best_new_sheets, progress) -> list[Outcome]:
+        if self._pool is None:
+            self._start_pool()
+        # "Cortar lo que ya perdió": el menor `placas_nuevas` terminado. Sólo
+        # lo escribe este proceso, y sólo para bajarlo; los del pool lo leen.
+        self._best.value = best_new_sheets
+        pending = {
+            self._pool.submit(_run_in_worker, variant, list(parts), supply, self._config)
+            for variant in batch
+        }
+        outcomes: list[Outcome] = []
+        while pending:
+            done, pending = wait(pending, timeout=POLL_SECONDS, return_when=FIRST_COMPLETED)
+            self._drain(progress)
+            for future in done:
+                index, outcome, total = future.result()
+                progress.record(("variante", index), total)
+                progress.variant_done(outcome)
+                if outcome is not None:
+                    outcomes.append(outcome)
+                    if outcome.cost.placas_nuevas < self._best.value:
+                        self._best.value = outcome.cost.placas_nuevas
+            if not done:
+                # Nadie terminó en este intervalo, pero las consultas sí
+                # subieron, y sólo avisando se entera el principal de que le
+                # pidieron cancelar.
+                progress.emit()
+        self._drain(progress)
+        return sorted(outcomes, key=lambda o: o.index)
 
 
 def _finish(best: Outcome, winner: Variant, parts: Sequence[Part], supply: SheetSupply,

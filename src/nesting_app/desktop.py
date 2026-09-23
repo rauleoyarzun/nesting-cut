@@ -5,6 +5,7 @@ queda es un servidor HTTP que sirve exactamente igual detrás de un dominio.
 """
 
 import argparse
+import multiprocessing
 import os
 import secrets
 import sys
@@ -550,6 +551,8 @@ def _autotest() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Antes que nada, incluido argparse: ver `nesting.cli.main`.
+    multiprocessing.freeze_support()
     parser = argparse.ArgumentParser(prog="nest-app")
     parser.add_argument(
         "--autotest", action="store_true",

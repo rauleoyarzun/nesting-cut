@@ -1,6 +1,7 @@
 """Command line entry point: read, nest, verify, write."""
 
 import argparse
+import multiprocessing
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -21,8 +22,7 @@ from nesting.params import (
     mensaje_cli,
     validar,
 )
-from nesting.engine.raster.masks import MaskCache
-from nesting.engine.raster.oracle import RasterOracle
+from nesting.engine.raster.oracle import RasterOracleFactory
 from nesting.geometry.nesting_tree import OverlappingContourError
 from nesting.geometry.verify import verify
 from nesting.io.ai_reader import read_ai
@@ -47,6 +47,10 @@ EXIT_VERIFICATION_FAILED = 2
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Antes que nada, incluido argparse: en el ejecutable congelado, un
+    # proceso del pool arranca este mismo binario con argumentos que sólo
+    # `freeze_support` entiende. Fuera de un ejecutable no hace nada.
+    multiprocessing.freeze_support()
     args = _parse_args(argv)
 
     try:
@@ -225,18 +229,15 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_INPUT_ERROR
 
     try:
-        # One `MaskCache` shared by every `RasterOracle` this `pack()` call
-        # constructs (one per sheet, and one per retry attempt at effort
-        # levels above "rapido"): masks depend only on
-        # (part, angle, mirror, resolution, sep), never on sheet state, so
-        # there is no reason to re-rasterize the same orientation for every
-        # sheet or every retry.
-        cache = MaskCache()
         # Por `a_supply` y no a mano: es el que sabe aplicar la veta de la
         # corrida. Armarlo acá con `material.stock_sheet()` era la segunda
         # copia de una regla que ahora tiene una sola.
         supply = a_supply(params, material)
-        result = pack(parts, supply, config, lambda: RasterOracle(cache=cache))
+        # Una sola fábrica para todo el `pack()`: sus oráculos comparten un
+        # `MaskCache`, porque las máscaras dependen sólo de (pieza, ángulo,
+        # espejo, resolución, sep) y nunca del estado de la placa. Y se puede
+        # mandar a los procesos de la cartera, que una lambda no.
+        result = pack(parts, supply, config, RasterOracleFactory())
     except (PartTooLargeError, ValueError) as error:
         # `rasterize` (nesting.engine.raster.masks) raises `ValueError` for a
         # resolution too fine to allocate a mask (e.g. --resolucion 0.005):

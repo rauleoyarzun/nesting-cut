@@ -11,6 +11,7 @@ import numpy as np
 from nesting.engine.exact import ArbitroExacto
 from nesting.engine.oracle import NestConfig
 from nesting.engine.raster.masks import (
+    DEFAULT_CACHE_BUDGET_BYTES,
     MaskCache,
     PartMasks,
     contact_band_px,
@@ -431,3 +432,31 @@ class RasterOracle:
         px = round((x - self._config.margin + masks.origin[0]) / resolution)
         py = round((y - self._config.margin + masks.origin[1]) / resolution)
         return (px, py)
+
+
+class RasterOracleFactory:
+    """Fabrica `RasterOracle`s que comparten un `MaskCache`, y viaja a otros procesos.
+
+    Lo que usaban la CLI y la interfaz -- `lambda: RasterOracle(cache=cache)`
+    -- no se puede serializar, y un proceso creado con `spawn` sólo recibe
+    lo que se serializa. Esta fábrica viaja SIN su caché: del otro lado arma
+    uno propio la primera vez que se la usa. La cartera la manda una sola
+    vez por proceso, en el inicializador del pool (`cartera._init_worker`),
+    así que ese caché sirve para todas las variantes que ese proceso evalúe.
+    """
+
+    def __init__(self, max_bytes: int = DEFAULT_CACHE_BUDGET_BYTES) -> None:
+        self._max_bytes = max_bytes
+        self._cache: MaskCache | None = None
+
+    @property
+    def cache(self) -> MaskCache:
+        if self._cache is None:
+            self._cache = MaskCache(self._max_bytes)
+        return self._cache
+
+    def __call__(self) -> RasterOracle:
+        return RasterOracle(cache=self.cache)
+
+    def __getstate__(self) -> dict:
+        return {"_max_bytes": self._max_bytes, "_cache": None}

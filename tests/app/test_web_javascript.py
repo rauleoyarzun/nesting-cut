@@ -2277,3 +2277,17 @@ def test_el_texto_de_cuanto_tarda(js):
         js, ["textoDeTarda"], [], "[textoDeTarda(10), textoDeTarda(3), textoDeTarda(0)]"
     )
     assert obtenidos == ["Tarda aprox. 10 min", "Tarda aprox. 3 min", "Tarda menos de 2 min"]
+
+
+def test_el_avance_de_la_cartera_dice_combinaciones_y_placa_minima(js):
+    """En paralelo, "ubicadas 12 de 57" deja de tener sentido: hay doce
+    variantes a la vez, cada una con su cuenta."""
+    cuerpo = _cuerpo_de_funcion(js, "textoDeAvance")
+    assert "a.combinaciones" in cuerpo
+    assert "Probando combinaciones" in cuerpo
+    assert "a.combinaciones_hechas" in cuerpo
+    assert "placa mínima hasta ahora" in cuerpo
+    assert "a.placa_minima" in cuerpo
+    assert cuerpo.index("a.compactando") < cuerpo.index("a.combinaciones"), (
+        "compactando manda: es el tramo final, después de la cartera"
+    )

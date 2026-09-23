@@ -17,8 +17,7 @@ from nesting.engine.packer import (
     probe_query_seconds,
     replicate,
 )
-from nesting.engine.raster.masks import MaskCache
-from nesting.engine.raster.oracle import RasterOracle
+from nesting.engine.raster.oracle import RasterOracleFactory
 from nesting.geometry.verify import verify
 from nesting.io.ai_reader import read_ai
 from nesting.io.diagnostic import write_diagnostic
@@ -231,7 +230,7 @@ def estimar_segundos(piezas, supply, config) -> float | None:
     ver `probe_query_seconds`.
     """
     por_consulta = probe_query_seconds(
-        piezas, supply, config, lambda: RasterOracle(cache=MaskCache())
+        piezas, supply, config, RasterOracleFactory()
     )
     if por_consulta is None:
         return None
@@ -361,10 +360,9 @@ def acomodar(
 
         piezas = replicate(piezas, params.copias)
         config = a_config(params)
-        cache = MaskCache()
         supply = a_supply(params, material)
         resultado = pack(
-            piezas, supply, config, lambda: RasterOracle(cache=cache), progreso=progreso
+            piezas, supply, config, RasterOracleFactory(), progreso=progreso
         )
 
         violaciones = verify(

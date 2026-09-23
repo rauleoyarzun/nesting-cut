@@ -874,6 +874,12 @@ async function sondear() {
 
 function textoDeAvance(a) {
   if (a.compactando) return "Compactando la última placa…";
+  if (a.combinaciones) {
+    return (
+      `Probando combinaciones ${a.combinaciones_hechas} de ${a.combinaciones} · ` +
+      `placa mínima hasta ahora: ${a.placa_minima}`
+    );
+  }
   const intento = a.intentos > 1 ? `Intento ${a.intento} de ${a.intentos} · ` : "";
   return `${intento}ubicadas ${a.ubicadas} de ${a.totales} · placa ${a.placa}`;
 }

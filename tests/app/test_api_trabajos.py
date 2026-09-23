@@ -185,6 +185,7 @@ def test_el_avance_se_ve_mientras_corre(cliente, tmp_path):
     assert visto["totales"] == 120
     from nesting.engine.cartera import planned_variants
     assert visto["intentos"] == planned_variants("lento", 1)
+    assert {"combinaciones", "combinaciones_hechas", "placa_minima"} <= set(visto)
 
 
 def test_un_trabajo_que_no_existe_da_404(cliente):

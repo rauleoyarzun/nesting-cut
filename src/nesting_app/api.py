@@ -366,6 +366,9 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
             "compactando": avance.compactando,
             "consultas_hechas": avance.consultas_hechas,
             "consultas_previstas": avance.consultas_previstas,
+            "combinaciones": avance.combinaciones,
+            "combinaciones_hechas": avance.combinaciones_hechas,
+            "placa_minima": avance.placa_minima,
         }
 
     @app.post("/api/trabajos")

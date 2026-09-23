@@ -679,3 +679,16 @@ def test_la_cerradura_esta_por_afuera_de_la_que_entrega_el_token():
     assert "_ConToken" in armado, (
         "el chequeo de Host dejó de envolver a lo que sirve el token"
     )
+
+
+def test_freeze_support_es_lo_primero_que_hace_main(monkeypatch):
+    """El ejecutable arranca por acá. Un proceso `spawn` del pool vuelve a
+    ejecutar este mismo binario con una marca que sólo `freeze_support`
+    entiende: tiene que llamarse antes de que argparse la rechace."""
+    import multiprocessing
+
+    llamadas = []
+    monkeypatch.setattr(multiprocessing, "freeze_support", lambda: llamadas.append(1))
+    with pytest.raises(SystemExit):
+        desktop.main(["--no-existe-esta-opcion"])
+    assert llamadas == [1]

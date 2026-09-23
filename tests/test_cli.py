@@ -705,3 +705,19 @@ def test_una_veta_desconocida_es_error_de_uso(tmp_path):
         ])
 
     assert salida.value.code == 1
+
+
+def test_freeze_support_es_lo_primero_que_hace_main(monkeypatch):
+    """PyInstaller lo exige para `spawn`: sin esto, cada proceso del pool
+    del ejecutable vuelve a arrancar la CLI entera en vez de ser un proceso
+    del pool. En el repo funciona igual con o sin él, por eso hace falta un
+    test que lo mire."""
+    import multiprocessing
+
+    import nesting.cli
+
+    llamadas = []
+    monkeypatch.setattr(multiprocessing, "freeze_support", lambda: llamadas.append(1))
+    with pytest.raises(SystemExit):
+        nesting.cli.main(["--no-existe-esta-opcion"])
+    assert llamadas == [1]

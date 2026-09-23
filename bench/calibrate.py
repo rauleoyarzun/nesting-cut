@@ -35,8 +35,7 @@ from nesting.engine.packer import (
     probe_query_seconds,
     replicate,
 )
-from nesting.engine.raster.masks import MaskCache
-from nesting.engine.raster.oracle import RasterOracle
+from nesting.engine.raster.oracle import RasterOracle, RasterOracleFactory
 from nesting.engine.shelf_oracle import ShelfOracle
 from nesting.model.material import DEFAULT_MATERIALS_PATH, VETA_LIBRE, VETA_RESPETAR, Material, load_materials
 from nesting.model.sheet import SheetSupply
@@ -209,17 +208,16 @@ def measure_fill_factor(
         parts = _parts_of(path, copies)
         supply = SheetSupply(stock=material.stock_sheet(), material_name=material.name)
         probe = probe_query_seconds(
-            parts, supply, config, lambda: RasterOracle(cache=MaskCache())
+            parts, supply, config, RasterOracleFactory()
         )
         if probe is None:
             print(f"aviso: {path.name} no deja ninguna orientación con esta veta; se salta")
             continue
         forecast = initial_forecast(parts, supply, config)
         avances = []
-        cache = MaskCache()
         try:
             result = pack(
-                parts, supply, config, lambda: RasterOracle(cache=cache),
+                parts, supply, config, RasterOracleFactory(),
                 progreso=lambda a: avances.append(a) or True,
             )
         except FILE_ERRORS as error:
