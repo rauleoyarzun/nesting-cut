@@ -280,6 +280,8 @@ select.control {
    más que los 284 px útiles del panel. Se desbordaban 124 px: el campo
    "Alto" quedaba dibujado fuera de la tarjeta blanca. */
 .fila > .campo { flex-grow: 1; min-width: 0; }
+/* "[ 12 ▾ ] de 14": el texto al lado del desplegable, centrado con él. */
+.fila-nucleos { align-items: center; }
 /* La flechita del input numérico choca con la unidad que ya está al lado,
    y en una medida en milímetros no sirve de nada: se escribe, no se
    incrementa de a uno. */

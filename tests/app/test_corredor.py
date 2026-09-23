@@ -306,6 +306,19 @@ def test_el_aviso_del_contorno_de_placa_llega_hasta_el_trabajo(tmp_path, deposit
         registro.cerrar()
 
 
+def test_los_nucleos_recortados_quedan_en_los_avisos(tmp_path, deposito, monkeypatch):
+    from nesting.engine import workers
+
+    monkeypatch.setattr(workers, "machine", lambda: workers.Machine(4, 2, 2))
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+    carpeta = tmp_path / "salida"
+    carpeta.mkdir()
+
+    resultado = corredor.acomodar(fuente, params(nucleos=9), lambda a: True, carpeta)
+
+    assert any("se pidieron 9 núcleos" in aviso for aviso in resultado.avisos)
+
+
 def test_un_esfuerzo_desconocido_no_pierde_los_avisos_ya_calculados(
     tmp_path, deposito
 ):

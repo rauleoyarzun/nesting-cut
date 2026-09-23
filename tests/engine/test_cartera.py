@@ -296,3 +296,38 @@ def test_el_avance_de_la_cartera_cuenta_combinaciones():
     assert all(a.combinaciones == planned_variants("normal", 2) for a in de_cartera)
     assert max(a.combinaciones_hechas for a in de_cartera) >= 2
     assert all(a.placa_minima >= 1 for a in de_cartera)
+
+
+# --- reloj: cuántas pasadas cuesta la cartera, para el tiempo estimado ------
+
+from nesting.engine.cartera import wall_forecast, wall_passes
+
+
+def test_las_pasadas_de_reloj_multiplican_por_la_tanda_y_dividen_por_n():
+    """Spec 6: el tiempo estimado previo multiplica por las variantes de la
+    tanda y divide por N. Con la tanda de N variantes en N núcleos, cada
+    tanda cuesta una pasada de reloj."""
+    assert wall_passes("rapido", 12) == 1.0
+    assert wall_passes("normal", 12) == 2.0
+    assert wall_passes("lento", 4) == 4.0
+    assert wall_passes("normal", 1) == 2.0
+
+
+def test_la_prevision_de_reloj_suma_una_pasada_por_tanda_y_no_depende_de_n():
+    rapido = wall_forecast(siete(), PLAN, config(effort="rapido", workers=4))
+    normal = wall_forecast(siete(), PLAN, config(effort="normal", workers=4))
+    lento = wall_forecast(siete(), PLAN, config(effort="lento", workers=4))
+
+    pasada = normal - rapido
+    assert pasada > 0
+    assert lento == pytest.approx(rapido + 3 * pasada)
+    assert wall_forecast(siete(), PLAN, config(effort="normal", workers=1)) == pytest.approx(normal)
+
+
+def test_la_prevision_de_reloj_de_rapido_es_la_de_arranque():
+    """Con una sola pasada no hay nada que repartir: la cuenta del plan 2
+    tiene que salir intacta."""
+    from nesting.engine.packer import initial_forecast
+
+    cfg = config(effort="rapido", workers=4)
+    assert wall_forecast(siete(), PLAN, cfg) == initial_forecast(siete(), PLAN, cfg)

@@ -79,6 +79,26 @@ def test_units_override_recovers_a_unitless_file(tmp_path):
     assert out.exists()
 
 
+def test_nucleos_cero_es_un_error_de_entrada(tmp_path, capsys):
+    source = write_input(tmp_path, [(0, 0, 100)])
+    code = run([source, "--material", "test", "--materiales", catalogue(tmp_path),
+                "--nucleos", "0", "-o", tmp_path / "out.dxf"])
+    assert code == 1
+    assert "--nucleos tiene que ser >= 1" in capsys.readouterr().err
+
+
+def test_nucleos_de_mas_se_recortan_con_un_aviso(tmp_path, capsys, monkeypatch):
+    from nesting.engine import workers
+
+    monkeypatch.setattr(workers, "machine", lambda: workers.Machine(4, 2, 2))
+    source = write_input(tmp_path, [(0, 0, 100)])
+    code = run([source, "--material", "test", "--materiales", catalogue(tmp_path),
+                "--esfuerzo", "rapido", "--nucleos", "9", "-o", tmp_path / "out.dxf"])
+    assert code == 0
+    salida = capsys.readouterr().out
+    assert "aviso: se pidieron 9 núcleos" in salida
+
+
 def test_a_part_bigger_than_the_sheet_exits_with_one(tmp_path, capsys):
     source = write_input(tmp_path, [(0, 0, 5000)])
     code = run([source, "--material", "test", "--materiales", catalogue(tmp_path),

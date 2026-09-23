@@ -17,6 +17,7 @@ from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from nesting.engine import workers
 from nesting.model.material import Material
 from nesting.params import NestParams, ParamsInvalidosError, Recorte, validar
 from nesting_app import corredor, materials_store, rutas
@@ -111,6 +112,7 @@ class ParamsEntrada(BaseModel):
     esfuerzo: str = "normal"
     recortes: list[RecorteEntrada] = Field(default_factory=list)
     veta: Literal["respetar", "libre"] | None = None
+    nucleos: int | None = None
 
     def a_params(self) -> NestParams:
         return NestParams(
@@ -126,6 +128,7 @@ class ParamsEntrada(BaseModel):
             esfuerzo=self.esfuerzo,
             recortes=tuple(r.a_recorte() for r in self.recortes),
             veta=self.veta,
+            nucleos=self.nucleos,
         )
 
 
@@ -190,6 +193,18 @@ class _ExigirTokenEnApi:
 def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
     app = FastAPI(title="nesting", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(_ExigirTokenEnApi, token=token)
+
+    # --- sistema --------------------------------------------------------------
+
+    @app.get("/api/sistema")
+    def sistema() -> dict:
+        """Cuántos núcleos hay, hasta cuántos se pueden usar y cuántos por omisión.
+
+        El tope sale de los núcleos y de la memoria (`nesting.engine.workers`):
+        la pantalla lo usa como último valor del desplegable.
+        """
+        maquina = workers.machine()
+        return {"nucleos": maquina.cpus, "tope": maquina.cap, "omision": maquina.default}
 
     # --- materiales ---------------------------------------------------------
 

@@ -20,6 +20,7 @@ from nesting.params import (
     a_config,
     a_supply,
     mensaje_cli,
+    nucleos_efectivos,
     validar,
 )
 from nesting.engine.raster.oracle import RasterOracleFactory
@@ -131,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
         resolucion=args.resolucion,
         esfuerzo=args.esfuerzo,
         veta=args.veta,
+        nucleos=args.nucleos,
     )
     try:
         # Segunda pasada, con el material: la única regla que falta es la de
@@ -139,6 +141,13 @@ def main(argv: list[str] | None = None) -> int:
     except ParamsInvalidosError as error:
         print(f"error: {mensaje_cli(error.rota)}", file=sys.stderr)
         return EXIT_INPUT_ERROR
+
+    # `a_config` ya recorta los núcleos al tope de la máquina
+    # (`nucleos_efectivos`, `nesting.params`); acá sólo hace falta avisar
+    # cuando el recorte pasó.
+    _, aviso_nucleos = nucleos_efectivos(params)
+    if aviso_nucleos is not None:
+        print(f"aviso: {aviso_nucleos}")
     config = a_config(params)
 
     try:
@@ -419,6 +428,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                              "acomoda un poco mejor pero tarda mucho más")
     parser.add_argument("--esfuerzo", choices=sorted(EFFORT_BATCHES), default="normal",
                         help="cuánto tiempo dedicarle a mejorar el resultado")
+    parser.add_argument("--nucleos", type=int, default=None,
+                        help="cuántos núcleos usar para probar combinaciones en "
+                             "paralelo (por omisión, todos menos dos)")
     parser.add_argument("--preview", type=Path, default=None,
                         help="ruta del PNG de previsualización a generar")
     parser.add_argument("--diagnostico", type=Path, default=None,

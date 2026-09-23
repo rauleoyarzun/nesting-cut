@@ -126,6 +126,30 @@ def test_un_parametro_invalido_se_rechaza_nombrando_el_campo(cliente, tmp_path):
     assert respuesta.json()["detail"]["campo"] == "sep"
 
 
+def test_el_sistema_dice_nucleos_tope_y_omision(cliente, monkeypatch):
+    from nesting.engine import workers
+
+    monkeypatch.setattr(workers, "machine", lambda: workers.Machine(14, 12, 12))
+    assert cliente.get("/api/sistema").json() == {"nucleos": 14, "tope": 12, "omision": 12}
+
+
+def test_nucleos_viaja_hasta_los_parametros():
+    from nesting_app.api import ParamsEntrada
+
+    assert ParamsEntrada(material="mdf18", nucleos=3).a_params().nucleos == 3
+    assert ParamsEntrada(material="mdf18").a_params().nucleos is None
+
+
+def test_nucleos_cero_se_rechaza_debajo_de_su_campo(cliente, tmp_path):
+    fuente_id = fuente_de(cliente, tmp_path)
+    respuesta = cliente.post("/api/trabajos", json={
+        "fuente_id": fuente_id,
+        "params": {"material": "mdf18", "esfuerzo": "rapido", "nucleos": 0},
+    })
+    assert respuesta.status_code == 422
+    assert respuesta.json()["detail"]["campo"] == "nucleos"
+
+
 def test_un_material_que_no_existe_da_404(cliente, tmp_path):
     fuente_id = fuente_de(cliente, tmp_path)
 
@@ -183,8 +207,9 @@ def test_el_avance_se_ve_mientras_corre(cliente, tmp_path):
     cliente.post(f"/api/trabajos/{trabajo_id}/cancelar")
     assert visto is not None
     assert visto["totales"] == 120
+    from nesting.engine import workers
     from nesting.engine.cartera import planned_variants
-    assert visto["intentos"] == planned_variants("lento", 1)
+    assert visto["intentos"] == planned_variants("lento", workers.machine().default)
     assert {"combinaciones", "combinaciones_hechas", "placa_minima"} <= set(visto)
 
 
@@ -407,6 +432,27 @@ def test_estimar_con_un_catalogo_roto_da_500_y_no_null(tmp_path, monkeypatch):
 
     registro.cerrar()
     assert respuesta.status_code == 500
+
+
+def test_estimar_cuenta_las_tandas_y_los_nucleos(cliente, tmp_path, monkeypatch):
+    """Spec 6: el tiempo estimado previo multiplica por las variantes de la
+    tanda y divide por N. El cuerpo es el `PedidoTrabajo` que el plan 2 usa
+    para `/api/estimar`."""
+    from nesting.engine import cartera
+
+    vistas = []
+    real = cartera.wall_passes
+    monkeypatch.setattr(cartera, "wall_passes", lambda e, n: vistas.append((e, n)) or real(e, n))
+    fuente_id = fuente_de(cliente, tmp_path)
+
+    respuesta = cliente.post("/api/estimar", json={
+        "fuente_id": fuente_id,
+        "params": {"material": "mdf18", "esfuerzo": "lento", "nucleos": 1},
+    })
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["segundos"] is not None
+    assert ("lento", 1) in vistas
 
 
 def test_estimar_exige_el_token(cliente):

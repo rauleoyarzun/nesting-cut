@@ -27,9 +27,9 @@ import sys
 import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from nesting.engine import pares
+from nesting.engine import pares, prevision
 from nesting.engine.iguales import Clase, find_classes
 from nesting.engine.oracle import NestConfig, Oracle
 from nesting.engine.packer import (
@@ -43,6 +43,7 @@ from nesting.engine.packer import (
     _pack_once,
     _perturb,
     _recuperar_de_la_ultima_placa,
+    _usable_area,
     initial_forecast,
     layout_cost,
     orientations,
@@ -215,6 +216,44 @@ def cota_minima(parts: Sequence[Part], supply: SheetSupply, margin: float) -> in
 def planned_variants(effort: str, workers: int) -> int:
     """Cuántas variantes prevé la cartera, base incluida, si no corta por la cota."""
     return 1 + EFFORT_BATCHES[effort] * batch_size(workers)
+
+
+def wall_passes(effort: str, workers: int) -> float:
+    """Cuántas pasadas golosas "de reloj" cuesta la cartera, para el tiempo estimado previo.
+
+    La base es una pasada. Cada tanda son `workers` variantes repartidas en
+    `workers` núcleos: la previsión de consultas se multiplica por las
+    variantes de la tanda y se divide por `N` (spec de pares y cartera, 6).
+    Es una cota de arriba: si la base iguala la cota por área, las tandas
+    no corren.
+    """
+    n = max(1, workers)
+    # Las variantes de una tanda se reparten en `n` núcleos: son
+    # ⌈tanda / n⌉ vueltas, cada una del tiempo de una pasada.
+    return 1.0 + EFFORT_BATCHES[effort] * math.ceil(batch_size(workers) / n)
+
+
+def wall_forecast(parts: Sequence[Part], supply: SheetSupply, config: NestConfig) -> float:
+    """Las consultas "de reloj" de la cartera: lo que tarda en un núcleo, contando el paralelo.
+
+    Es la previsión de arranque del plan 2 para UNA pasada (con recuperación
+    y compactación), más una pasada golosa por cada tanda: cada tanda son
+    `N` variantes en `N` núcleos. `initial_forecast` cuenta consultas
+    TOTALES, sumadas entre procesos, y sirve para la barra; ésta sirve para
+    multiplicarla por los segundos que tarda una consulta en UN núcleo.
+    """
+    if not parts:
+        return 0.0
+    una = initial_forecast(parts, supply, replace(config, effort="rapido"))
+    sheets = prevision.estimate_sheets(
+        sum(p.area for p in parts),
+        [_usable_area(s, config.margin) for s in supply.scraps],
+        _usable_area(supply.stock, config.margin),
+    )
+    pasada = prevision.forecast_greedy_pass(
+        len(parts), len(orientations(supply.stock, config)), sheets
+    )
+    return una + (wall_passes(config.effort, config.workers) - 1.0) * pasada
 
 
 def smallest_combinations(

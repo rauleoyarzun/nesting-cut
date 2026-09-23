@@ -27,6 +27,7 @@ IDS_OBLIGATORIOS = [
     "btn-materiales", "cuenta-piezas", "pista-avance", "titulo-error",
     "btn-copiar-error", "btn-cerrar-error", "titulo-form", "error-material",
     "angulos", "tol-cierre", "resolucion", "espejo", "globo-info",
+    "nucleos", "nucleos-total",
 ]
 
 
@@ -59,7 +60,7 @@ def test_el_html_declara_espanol(html):
 def test_todo_campo_tiene_su_etiqueta(html):
     """Un input sin label es invisible para un lector de pantalla y su texto
     no se puede clickear para enfocarlo."""
-    for campo in ("sep", "borde", "copias", "material", "esfuerzo",
+    for campo in ("sep", "borde", "copias", "material", "esfuerzo", "nucleos",
                   "r-ancho", "r-alto", "r-cantidad",
                   "m-nombre", "m-ancho", "m-alto"):
         assert f'for="{campo}"' in html, f"falta el label de {campo}"
@@ -417,3 +418,21 @@ def test_ninguna_regla_usa_z_index(css):
         f"estas reglas declaran z-index: {con_z}. El orden de pintado del "
         "globo dejó de estar garantizado por el orden del documento"
     )
+
+
+def test_nucleos_va_debajo_de_esfuerzo(html):
+    assert html.index('id="esfuerzo"') < html.index('id="nucleos"') < html.index('id="posiciones"')
+
+
+def test_nucleos_tiene_su_boton_de_informacion(html):
+    assert 'data-info="nucleos"' in html
+
+
+def test_los_textos_de_esfuerzo_ya_no_hablan_de_pasadas_fijas(html):
+    """Normal y lento dejaron de ser "tres" y "doce" pasadas: ahora son
+    tandas de tantas combinaciones como núcleos."""
+    select = html[html.index('id="esfuerzo"'):html.index("</select>", html.index('id="esfuerzo"'))]
+    assert "tres pasadas" not in select and "doce pasadas" not in select
+    assert "Rápido — una pasada" in select
+    assert "Normal — una tanda de combinaciones" in select
+    assert "Lento — tres tandas de combinaciones" in select

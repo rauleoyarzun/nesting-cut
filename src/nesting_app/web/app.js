@@ -726,6 +726,7 @@ function parametros() {
     tol_cierre: Number($("tol-cierre").value),
     resolucion: Number($("resolucion").value),
     esfuerzo: $("esfuerzo").value,
+    nucleos: Number($("nucleos").value) || null,
     recortes: estado.recortes,
     veta: vetaDeLaCorrida(),
   };
@@ -1127,6 +1128,23 @@ async function refrescarMateriales() {
   return datos.materiales;
 }
 
+// Cuántos núcleos hay y hasta cuántos se pueden usar. Si la ruta falla, el
+// desplegable queda vacío y `parametros()` manda `null`: el servidor usa
+// su valor por omisión, que es el mismo que este desplegable mostraría.
+async function cargarSistema() {
+  const datos = await apiJson("/api/sistema");
+  const select = $("nucleos");
+  select.innerHTML = "";
+  for (let n = 1; n <= datos.tope; n++) {
+    const opcion = document.createElement("option");
+    opcion.value = String(n);
+    opcion.textContent = String(n);
+    select.append(opcion);
+  }
+  select.value = String(datos.omision);
+  $("nucleos-total").textContent = `de ${datos.nucleos}`;
+}
+
 window.__nesting = {
   api,
   apiJson,
@@ -1142,4 +1160,7 @@ window.__nesting = {
 
 refrescarMateriales().catch((error) =>
   mostrarError("No se pudo leer el catálogo de materiales", error.message)
+);
+cargarSistema().catch((error) =>
+  mostrarError("No se pudo saber cuántos núcleos tiene la máquina", error.message)
 );

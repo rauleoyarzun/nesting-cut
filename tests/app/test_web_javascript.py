@@ -30,7 +30,7 @@ def html():
 
 @pytest.mark.parametrize("ruta", [
     "/api/materiales", "/api/archivos", "/api/archivos/local",
-    "/api/analizar", "/api/trabajos",
+    "/api/analizar", "/api/trabajos", "/api/sistema",
 ])
 def test_usa_la_ruta_que_la_api_expone(js, ruta):
     assert ruta in js
@@ -738,7 +738,8 @@ def _declaraciones_globales(js: str) -> set[str]:
 
 CLAVES_CON_GLOBO = [
     "archivo", "material", "veta", "sep", "borde", "copias", "esfuerzo",
-    "angulos", "posiciones", "tol-cierre", "resolucion", "espejo", "recortes",
+    "nucleos", "angulos", "posiciones", "tol-cierre", "resolucion", "espejo",
+    "recortes",
 ]
 
 
@@ -2290,4 +2291,25 @@ def test_el_avance_de_la_cartera_dice_combinaciones_y_placa_minima(js):
     assert "a.placa_minima" in cuerpo
     assert cuerpo.index("a.compactando") < cuerpo.index("a.combinaciones"), (
         "compactando manda: es el tramo final, después de la cartera"
+    )
+
+
+def test_el_desplegable_de_nucleos_va_de_uno_al_tope_y_arranca_en_la_omision(js):
+    cuerpo = _cuerpo_de_funcion(js, "cargarSistema")
+    assert '"/api/sistema"' in cuerpo
+    assert "datos.tope" in cuerpo
+    assert "datos.omision" in cuerpo
+    assert "datos.nucleos" in cuerpo
+    assert re.search(r"for\s*\(\s*let\s+n\s*=\s*1\s*;\s*n\s*<=\s*datos\.tope", cuerpo), cuerpo
+
+
+def test_los_nucleos_viajan_con_los_parametros(js):
+    cuerpo = _cuerpo_de_funcion(js, "parametros")
+    assert re.search(r'nucleos:\s*Number\(\$\("nucleos"\)\.value\)\s*\|\|\s*null', cuerpo), cuerpo
+
+
+def test_la_pantalla_pide_el_sistema_al_arrancar(js):
+    limpio = _sin_comentarios(js)
+    assert re.search(r"^cargarSistema\(\)\.catch\(", limpio, re.M), (
+        "sin esto el desplegable queda vacío y Acomodar manda nucleos: null"
     )

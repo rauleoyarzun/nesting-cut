@@ -315,3 +315,39 @@ def test_el_mensaje_de_la_cli_para_la_veta_nombra_el_flag():
         validar(NestParams(material="fenolico18", angulos=(90.0,)), FENOLICO)
 
     assert mensaje_cli(capturado.value.rota).startswith("--angulos tiene que ser ")
+
+
+# --- núcleos ----------------------------------------------------------------
+
+from nesting.engine import workers
+from nesting.params import nucleos_efectivos
+
+
+def test_nucleos_arranca_en_el_valor_de_la_maquina():
+    assert NestParams(material="mdf18").nucleos is None
+
+
+@pytest.mark.parametrize("valor", [0, -2])
+def test_nucleos_tiene_que_ser_al_menos_uno(valor):
+    with pytest.raises(ParamsInvalidosError) as info:
+        validar(NestParams(material="mdf18", nucleos=valor))
+    assert info.value.rota.campo == "nucleos"
+    assert mensaje_cli(info.value.rota).startswith("--nucleos tiene que ser >= 1")
+
+
+def test_sin_nucleos_se_usa_el_valor_por_omision(monkeypatch):
+    monkeypatch.setattr(workers, "machine", lambda: workers.Machine(14, 14, 12))
+    assert nucleos_efectivos(NestParams(material="mdf18")) == (12, None)
+
+
+def test_por_encima_del_tope_se_recorta_con_un_aviso(monkeypatch):
+    monkeypatch.setattr(workers, "machine", lambda: workers.Machine(14, 10, 10))
+    valor, aviso = nucleos_efectivos(NestParams(material="mdf18", nucleos=16))
+    assert valor == 10
+    assert "16" in aviso and "10" in aviso
+
+
+def test_a_config_lleva_los_nucleos_al_motor(monkeypatch):
+    monkeypatch.setattr(workers, "machine", lambda: workers.Machine(14, 14, 12))
+    assert a_config(NestParams(material="mdf18", nucleos=3)).workers == 3
+    assert a_config(NestParams(material="mdf18")).workers == 12

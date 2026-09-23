@@ -8,10 +8,10 @@ dijo. Guardar donde el usuario quiere es un paso posterior y explícito.
 from dataclasses import dataclass
 from pathlib import Path
 
+from nesting.engine import cartera
 from nesting.engine.packer import (
     Avance,
     Cancelado,
-    initial_forecast,
     layout_cost,
     pack,
     probe_query_seconds,
@@ -26,7 +26,7 @@ from nesting.io.dxf_writer import write_dxf
 from nesting.io.preview import write_preview
 from nesting.io.rhino_reader import read_3dm
 from nesting.model.discard import Discard
-from nesting.params import NestParams, a_config, a_supply, validar
+from nesting.params import NestParams, a_config, a_supply, nucleos_efectivos, validar
 from nesting.pipeline import discard_plate_outline, prepare_parts
 from nesting_app import materials_store
 from nesting_app.archivos import Fuente
@@ -234,7 +234,9 @@ def estimar_segundos(piezas, supply, config) -> float | None:
     )
     if por_consulta is None:
         return None
-    return por_consulta * initial_forecast(piezas, supply, config) * FACTOR_LLENO
+    # En un núcleo: la prueba mide UNA consulta en UN núcleo, y las tandas
+    # corren repartidas en `config.workers` (spec de pares y cartera, 6).
+    return por_consulta * cartera.wall_forecast(piezas, supply, config) * FACTOR_LLENO
 
 
 def estimar(fuente: Fuente, params: NestParams) -> float | None:
@@ -360,6 +362,9 @@ def acomodar(
 
         piezas = replicate(piezas, params.copias)
         config = a_config(params)
+        _, aviso_nucleos = nucleos_efectivos(params)
+        if aviso_nucleos is not None:
+            avisos.append(aviso_nucleos)
         supply = a_supply(params, material)
         resultado = pack(
             piezas, supply, config, RasterOracleFactory(), progreso=progreso

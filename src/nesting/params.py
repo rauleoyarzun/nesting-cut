@@ -14,6 +14,7 @@ contarla.
 from dataclasses import dataclass, replace
 from typing import Literal
 
+from nesting.engine import workers
 from nesting.engine.oracle import NestConfig
 from nesting.model.material import VETA_LIBRE, VETA_RESPETAR, Material
 from nesting.model.sheet import Sheet, SheetSupply, allowed_angles
@@ -65,6 +66,11 @@ class NestParams:
     necesitarlo. Ver `tolerancia_de_veta`.
     """
 
+    nucleos: int | None = None
+    """Cuántos núcleos usa la cartera. `None` es el valor por omisión de la
+    máquina (`workers.machine().default`): todos menos dos, con el tope por
+    memoria. Más núcleos prueban más combinaciones en el mismo tiempo."""
+
 
 @dataclass(frozen=True)
 class ReglaRota:
@@ -90,6 +96,7 @@ FLAG_POR_CAMPO: dict[str, str] = {
     "tol_cierre": "--tol-cierre",
     "resolucion": "--resolucion",
     "angulos": "--angulos",
+    "nucleos": "--nucleos",
 }
 
 
@@ -121,6 +128,8 @@ def validar(p: NestParams, material: Material | None = None) -> None:
         raise ParamsInvalidosError(ReglaRota("tol_cierre", "> 0", p.tol_cierre))
     if p.resolucion <= 0:
         raise ParamsInvalidosError(ReglaRota("resolucion", "> 0", p.resolucion))
+    if p.nucleos is not None and p.nucleos < 1:
+        raise ParamsInvalidosError(ReglaRota("nucleos", ">= 1", p.nucleos))
     for indice, recorte in enumerate(p.recortes, start=1):
         if recorte.ancho <= 0:
             raise ParamsInvalidosError(
@@ -159,6 +168,25 @@ def mensaje_cli(rota: ReglaRota) -> str:
     return f"{nombre} tiene que ser {rota.regla}, se recibió {rota.valor}"
 
 
+def nucleos_efectivos(p: NestParams) -> tuple[int, str | None]:
+    """Los núcleos que de verdad se usan, y el aviso si hubo que recortar.
+
+    Un valor por encima del tope se acepta y se recorta al tope, con un
+    aviso: rechazarlo haría que el mismo pedido ande en una máquina y falle
+    en otra, y el usuario no eligió mal, eligió en otra computadora.
+    """
+    maquina = workers.machine()
+    if p.nucleos is None:
+        return maquina.default, None
+    if p.nucleos > maquina.cap:
+        return maquina.cap, (
+            f"se pidieron {p.nucleos} núcleos y esta máquina da para "
+            f"{maquina.cap} (por la cantidad de núcleos y la memoria): se "
+            f"usan {maquina.cap}."
+        )
+    return p.nucleos, None
+
+
 def a_config(p: NestParams) -> NestConfig:
     """Traduce al vocabulario del motor. No valida: eso es `validar`."""
     return NestConfig(
@@ -168,6 +196,7 @@ def a_config(p: NestParams) -> NestConfig:
         mirror=p.espejo,
         resolution=p.resolucion,
         effort=p.esfuerzo,
+        workers=nucleos_efectivos(p)[0],
     )
 
 
