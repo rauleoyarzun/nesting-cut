@@ -44,3 +44,19 @@ El `main()` de `run_bench.py` (el reporte por consola) sigue barriendo solo
 corrida. El `banqueta.3dm` da 0 piezas (es el modelo 3D del ensamblaje
 armado, no un layout de corte plano -- ver el Task 23 report), así que no
 sirve para calibrar ni para medir aprovechamiento.
+
+## Casos fijos
+
+Además del barrido de `*.dxf`, `run_bench.py` mide los trabajos de
+`CASOS_FIJOS`, cada uno con su placa y su configuración, y avisa si el
+resultado no es el esperado. Hoy es uno: `banqueta-alta.ai` (57 piezas,
+placa 1220 × 2440 libre, sep 8, borde 5, 8 posiciones, normal, 1 mm/px, con
+los núcleos que admita la máquina donde corre -- el resultado no depende de
+cuántos sean, sólo el tiempo, mientras no pasen de doce), que tiene que dar
+**1 placa**. Si el archivo no está en `bench/files/` (no se versiona), la
+fila dice que se saltea.
+
+La misma banqueta es una prueba lenta de la suite, que no corre con un
+`pytest` a secas:
+
+    .venv/bin/pytest -m lento

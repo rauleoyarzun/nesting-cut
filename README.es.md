@@ -152,7 +152,8 @@ mismos parámetros.
 | Separación | `--sep` | Milímetros mínimos entre dos piezas. |
 | Borde | `--borde` | Margen contra el borde de la placa. |
 | Copias | `--copias` | Cuántas veces repetir todo el contenido del archivo. |
-| Esfuerzo | `--esfuerzo` | `rapido` (1 pasada), `normal` (3) o `lento` (12). |
+| Esfuerzo | `--esfuerzo` | `rapido` (una pasada), `normal` (la pasada más una tanda de al menos 12 variantes -- tantas como núcleos si hay más de 12 -- probando las piezas repetidas grandes encastradas de a pares con distintos tipos de encastre, y si no hay, otros órdenes) o `lento` (tres tandas: más tipos de par y orientaciones perturbadas). |
+| Núcleos | `--nucleos` | Cuántos núcleos usa para probar en paralelo las variantes de cada tanda. Arranca en todos menos dos, con un tope por memoria (cada proceso usa unos 2300 MB). Cada tanda prueba como mínimo 12 variantes: con menos de 12 núcleos corren las mismas 12 en varias vueltas y sólo cambia el tiempo; con 12 o más puede probar variantes de más, y ahí sí el resultado puede cambiar. |
 | Posiciones | — | En cuántas posiciones puede girar cada pieza, repartidas en la vuelta entera: 4, 8 o 16. `Personalizado` revela el campo Ángulos para escribir la lista a mano. **Sólo en la interfaz.** Con la veta respetada queda fija en 0° y 180°. |
 | Ángulos | `--angulos` | Rotaciones candidatas, separadas por coma. En la pantalla vive detrás de `Posiciones → Personalizado`. |
 | Permitir espejadas | `--sin-espejo` | Si una pieza se puede dar vuelta como un guante. La pantalla lo trae activado; el flag lo apaga. |
@@ -162,8 +163,14 @@ mismos parámetros.
 | — | `--preview` | Ruta del PNG de previsualización. |
 | — | `--diagnostico` | Ruta del PNG que marca los descartes. Si es lo único que pedís, no acomoda nada y sale en un segundo. |
 
-**Más esfuerzo no siempre da un resultado mejor, pero nunca da uno peor**: se
-queda con la mejor de todas las pasadas.
+**Más esfuerzo no siempre da un resultado mejor, pero nunca da uno peor**:
+con la misma cantidad de núcleos, lo que prueba Normal es el principio de lo
+que prueba Lento, y se queda con la mejor de todas.
+
+Cuando el resultado usa tantas placas como el mínimo que permite el área de
+las piezas, lo dice: **No se puede con menos placas.** Si no lo dice, no
+quiere decir que se pueda: el área es una cota, no una promesa. Con recortes
+no se informa.
 
 ---
 

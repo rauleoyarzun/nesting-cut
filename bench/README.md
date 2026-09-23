@@ -46,3 +46,19 @@ only `bench/files/*.dxf`; `bench/calibrate.py` is the one that also adds `*.ai`
 to the run. The `banqueta.3dm` yields 0 parts (it is the 3D model of the
 assembled bench, not a flat cutting layout -- see the Task 23 report), so it is
 no good for calibrating or for measuring utilisation.
+
+## Fixed cases
+
+Besides sweeping `*.dxf`, `run_bench.py` measures the jobs in `CASOS_FIJOS`,
+each one with its own sheet and configuration, and flags a result that is not
+the expected one. Today there is one: `banqueta-alta.ai` (57 parts, free
+1220 × 2440 sheet, sep 8, border 5, 8 positions, normal, 1 mm/px, with as many
+cores as the machine it runs on allows -- the result does not depend on how
+many, only the time, as long as they stay under twelve), which has to give
+**1 sheet**. If the file is not in `bench/files/` (it is not versioned), the
+row says it is skipped.
+
+The same bench is a slow test of the suite, which a plain `pytest` does not
+run:
+
+    .venv/bin/pytest -m lento

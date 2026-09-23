@@ -154,7 +154,8 @@ parameters.
 | Separación | `--sep` | Minimum millimetres between two parts. |
 | Borde | `--borde` | Margin against the edge of the sheet. |
 | Copias | `--copias` | How many times to repeat the entire contents of the file. |
-| Esfuerzo | `--esfuerzo` | `rapido` (1 pass), `normal` (3) or `lento` (12). |
+| Esfuerzo | `--esfuerzo` | `rapido` (one pass), `normal` (that pass plus one batch of at least 12 variants -- as many as cores when there are more than 12 -- trying the large repeated parts nested in pairs with different kinds of interlock, and when there are none, other insertion orders) or `lento` (three batches: more pair types and perturbed orientations). |
+| Núcleos | `--nucleos` | How many cores to use to try the variants of each batch in parallel. Starts at all but two, capped by memory (each process uses about 2300 MB). Each batch tries at least 12 variants: with fewer than 12 cores the same 12 just run in more rounds and only the time changes; with 12 or more it can try extra variants, and then the result can change too. |
 | Posiciones | — | How many positions each part can rotate to, spread evenly across the full turn: 4, 8 or 16. `Personalizado` reveals the Ángulos field to type the list by hand. **Interface only.** With the grain respected it is locked at 0° and 180°. |
 | Ángulos | `--angulos` | Candidate rotations, comma separated. On screen it now lives behind `Posiciones → Personalizado`. |
 | Permitir espejadas | `--sin-espejo` | Whether a part may be flipped over like a glove. The screen has it on; the flag turns it off. |
@@ -165,7 +166,13 @@ parameters.
 | — | `--diagnostico` | Path for the PNG that marks the discards. If it is the only thing you ask for, it lays out nothing and finishes in a second. |
 
 **More effort does not always give a better result, but it never gives a worse
-one**: it keeps the best of all the passes.
+one**: with the same number of cores, what Normal tries is the beginning of
+what Lento tries, and it keeps the best of all of them.
+
+When the result uses as many sheets as the minimum the parts' area allows, it
+says so: **No se puede con menos placas** ("it cannot be done with fewer
+sheets"). If it does not say it, that does not mean it can: area is a bound,
+not a promise. It is not reported when offcuts are loaded.
 
 ---
 
