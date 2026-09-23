@@ -13,6 +13,7 @@ from nesting.engine.pares import (
     TIPOS_POR_CLASE,
     b_orientations,
     find_pair_types,
+    orientations_closed,
     pairable_classes,
     slide_window,
     union_with_bridge,
@@ -254,6 +255,46 @@ def test_con_la_veta_respetada_no_se_empareja_una_clase_con_miembros_girados():
                             Member(1, Transform(3.0, False, 0.0, 0.0))))
     assert pairable_classes([torcida], 1190.0 * 2430.0, grain_respected=True) == []
     assert pairable_classes([torcida], 1190.0 * 2430.0, grain_respected=False) == [torcida]
+
+
+
+# --- la clausura de las orientaciones ----------------------------------------
+
+def _giros(*angulos, espejo=False):
+    base = [(float(a), False) for a in angulos]
+    return base + [(float(a), True) for a in angulos] if espejo else base
+
+
+def test_dos_giros_de_90_no_son_un_conjunto_cerrado():
+    """0° y 90° sin espejo: un par hecho con B a 90° y colocado a 90° deja a
+    B en 180°, que el usuario no permitió."""
+    giros = _giros(0, 90)
+    assert not orientations_closed(giros, giros)
+
+
+def test_posiciones_parejas_son_cerradas_con_y_sin_espejo():
+    for giros in (_giros(0, 90, 180, 270), _giros(0, 90, 180, 270, espejo=True),
+                  _giros(*(45 * i for i in range(8)), espejo=True), _giros(0),
+                  _giros(0, 180), _giros(0, espejo=True)):
+        assert orientations_closed(giros, giros), giros
+
+
+def test_la_clausura_tolera_el_ruido_del_angulo():
+    """`componer` devuelve el ángulo módulo 360: 270 + 90 da 0, y 120 + 120 +
+    120 puede dar 359.99999999999994."""
+    giros = [(0.0, False), (120.0, False), (240.00000000000003, False)]
+    assert orientations_closed(giros, giros)
+
+
+def test_con_la_veta_la_placa_y_los_pasos_de_b_se_miran_por_separado():
+    """Con la veta respetada los pasos (B relativa a A, y `g`) son 0° y 180°.
+    Una placa de 0° y 180° los absorbe; un recorte cruzado que sólo permite
+    90° no: 90 + 180 = 270."""
+    pasos = _giros(0, 180, espejo=True)
+    assert orientations_closed(_giros(0, 180, espejo=True), pasos)
+    assert orientations_closed(_giros(90, 270), _giros(0, 180))
+    assert not orientations_closed(_giros(90), _giros(0, 180))
+    assert not orientations_closed(_giros(0), _giros(0, espejo=True))
 
 
 @pytest.mark.skipif(

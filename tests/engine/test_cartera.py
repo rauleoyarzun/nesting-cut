@@ -47,7 +47,10 @@ def siete():
 
 
 def config(**cambios):
-    base = dict(sep=8.0, margin=15.0, angles=(0.0, 90.0), mirror=False,
+    # Cuatro posiciones y no dos: con 0° y 90° solos no se empareja nada
+    # (no son cerrados bajo composición, ver `pares.orientations_closed`), y
+    # estos tests son sobre la cartera con pares.
+    base = dict(sep=8.0, margin=15.0, angles=(0.0, 90.0, 180.0, 270.0), mirror=False,
                 resolution=4.0, effort="normal", seed=0, workers=1)
     base.update(cambios)
     return NestConfig(**base)
@@ -177,6 +180,79 @@ def test_cada_variante_de_pares_usa_cada_pieza_real_una_sola_vez():
         miembros = [m for c in variante.composites for m, _ in c.members]
         sueltas = [p.id for p in variante.order if p.id < 7]
         assert sorted(miembros + sueltas) == list(range(7))
+
+
+
+# --- que los pares no inventen ángulos -----------------------------------------
+
+ELE_CHICA = ((0.0, 0.0), (400.0, 0.0), (400.0, 100.0), (100.0, 100.0),
+             (100.0, 400.0), (0.0, 400.0))
+PLACA_BAJA = SheetSupply(stock=Sheet(1000.0, 500.0, grain_tolerance=180.0), material_name="prueba")
+
+
+def seis_eles():
+    return [Part(i, ELE_CHICA, (), (i,)) for i in range(6)]
+
+
+def _angulos_de_la_tanda(piezas, plan, cfg):
+    """Los ángulos de las piezas reales en cada variante de pares de la tanda 1."""
+    from nesting.engine import pares
+
+    fuente = VariantSource(piezas, plan, cfg)
+    vistos = set()
+    for variante in fuente.batch(1, 12, fuente.base()):
+        salida = evaluate(variante, piezas, plan, cfg, RasterOracle, NUNCA)
+        if salida is None:
+            continue
+        reales = pares.disassemble(salida.packed, variante.composites, piezas)
+        vistos |= {round(p.transform.angle_deg % 360.0, 6) for p in reales.placements}
+    return vistos
+
+
+def test_con_giros_que_no_cierran_no_hay_pares_ni_angulos_inventados():
+    """Revisión final: seis L con 0° y 90°, sin espejo y veta libre. Un par
+    con B a 90° colocado a 90° dejaba a B a 180°, y `verify` no mira los
+    ángulos. {0, 90} no es cerrado bajo composición: no se empareja."""
+    cfg = config(sep=5.0, margin=5.0, angles=(0.0, 90.0), resolution=2.0)
+    fuente = VariantSource(seis_eles(), PLACA_BAJA, cfg)
+
+    assert fuente._pair_plan().classes == ()
+    assert {v.kind for v in fuente.batch(1, 12, fuente.base())} == {"orden"}
+    assert _angulos_de_la_tanda(seis_eles(), PLACA_BAJA, cfg) <= {0.0, 90.0}
+
+
+@pytest.mark.parametrize("cambios", [
+    dict(angles=(0.0, 90.0, 180.0, 270.0)),
+    dict(angles=(0.0, 90.0, 180.0, 270.0), mirror=True),
+    dict(angles=tuple(45.0 * i for i in range(8)), mirror=True),
+], ids=["4 posiciones", "4 con espejo", "8 con espejo"])
+def test_con_posiciones_parejas_se_sigue_emparejando(cambios):
+    cfg = config(sep=5.0, margin=5.0, resolution=2.0, **cambios)
+    fuente = VariantSource(seis_eles(), PLACA_BAJA, cfg)
+    assert fuente._pair_plan().classes, "las posiciones parejas son cerradas"
+    permitidos = {a % 360.0 for a in cfg.angles}
+    assert _angulos_de_la_tanda(seis_eles(), PLACA_BAJA, cfg) <= permitidos
+
+
+@pytest.mark.parametrize("espejo", [False, True], ids=["sin espejo", "con espejo"])
+def test_con_la_veta_respetada_se_sigue_emparejando(espejo):
+    plan = SheetSupply(stock=Sheet(1000.0, 500.0, grain_tolerance=3.0), material_name="prueba")
+    cfg = config(sep=5.0, margin=5.0, resolution=2.0, mirror=espejo,
+                 angles=(0.0, 90.0, 180.0, 270.0))
+    fuente = VariantSource(seis_eles(), plan, cfg)
+    assert fuente._pair_plan().classes
+    assert _angulos_de_la_tanda(seis_eles(), plan, cfg) <= {0.0, 180.0}
+
+
+def test_un_recorte_cruzado_que_no_cierra_apaga_los_pares():
+    """Veta respetada, ángulos 0, 90 y 180: la placa del Material permite 0 y
+    180, que cierran; un recorte de veta cruzada sólo permite 90, y un par
+    colocado ahí a 90° con B a 180° dejaría a B a 270°."""
+    recorte = Sheet(600.0, 1000.0, grain_tolerance=3.0, scrap=True, cross_grain=True)
+    plan = SheetSupply(stock=Sheet(1000.0, 500.0, grain_tolerance=3.0),
+                       scraps=(recorte,), material_name="prueba")
+    cfg = config(sep=5.0, margin=5.0, resolution=2.0, angles=(0.0, 90.0, 180.0))
+    assert VariantSource(seis_eles(), plan, cfg)._pair_plan().classes == ()
 
 
 # --- evaluar ----------------------------------------------------------------

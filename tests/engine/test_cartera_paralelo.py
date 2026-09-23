@@ -33,7 +33,9 @@ def siete():
 
 
 def config(**cambios):
-    base = dict(sep=8.0, margin=15.0, angles=(0.0, 90.0), mirror=False,
+    # Cuatro posiciones, como en `test_cartera.py`: con 0° y 90° solos no se
+    # empareja nada (`pares.orientations_closed`).
+    base = dict(sep=8.0, margin=15.0, angles=(0.0, 90.0, 180.0, 270.0), mirror=False,
                 resolution=4.0, effort="normal", seed=0, workers=4)
     base.update(cambios)
     return NestConfig(**base)

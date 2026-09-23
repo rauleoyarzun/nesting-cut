@@ -396,13 +396,21 @@ def _build_pair_plan(
         return _PairPlan((), ())
     choices = orientations(stock, config)
     grain = stock.grain_tolerance < 90.0
+    steps = pares.b_orientations(choices, grain)
+    # Un miembro termina en la orientación del par compuesta con la de B y
+    # con su `g` (spec 3.2). Si eso puede salir del conjunto que el usuario
+    # permitió en alguna placa -- 0° y 90° sin espejo dan 180° --, no se
+    # empareja nada: se busca sin pares, como con rápido.
+    if not all(pares.orientations_closed(orientations(sheet, config), steps)
+               for sheet in (stock, *supply.scraps)):
+        return _PairPlan((), ())
     classes = pares.pairable_classes(find_classes(parts, choices), usable_w * usable_h, grain)
     how_many = pares.TIPOS_POR_CLASE[config.effort]
     kept_classes: list[Clase] = []
     kept_types: list[tuple[pares.PairType, ...]] = []
     for clase in classes:
         types = pares.find_pair_types(
-            clase.representative, pares.b_orientations(choices, grain), choices,
+            clase.representative, steps, choices,
             config, (usable_w, usable_h), how_many, cache,
         )
         if types:

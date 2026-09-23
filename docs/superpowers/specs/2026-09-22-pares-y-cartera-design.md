@@ -136,6 +136,14 @@ offcuts: composing two angles on the grain axis stays on the axis.
 **Without mirror:** B cannot be mirrored, and the class cannot have used a
 mirror in `g`, by the rule in 2.
 
+**Only with closed orientations:** pairing happens only if each sheet's
+allowed orientations are closed under composition (composing one of the
+sheet's with B's or with `g` gives another allowed one), because a member ends
+at the composition of the three and `verify` does not check angles: with 0°
+and 90° and no mirror, a pair with B at 90° placed at 90° would leave B at
+180°. Evenly spaced positions (4 or 8) and the grain (0° and 180°, with or
+without mirror) are closed; otherwise the run searches without pairs.
+
 ### 3.3 The composite part
 
 A pair becomes an ordinary `Part`, so the oracle, the masks and the packer

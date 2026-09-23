@@ -140,6 +140,14 @@ veta sigue en el eje.
 **Sin espejo:** B no puede ser espejada, y la clase no puede haber usado
 espejo en `g`, por la regla de 2.
 
+**Sólo con orientaciones cerradas:** se empareja únicamente si las
+orientaciones permitidas de cada placa son cerradas bajo composición
+(componer una de la placa con la de B o con `g` da otra permitida), porque
+un miembro termina en la composición de las tres y `verify` no mira
+ángulos: con 0° y 90° sin espejo, un par con B a 90° colocado a 90° dejaría
+a B a 180°. Las posiciones parejas (4 u 8) y la veta (0° y 180°, con o sin
+espejo) son cerradas; si no, la corrida busca sin pares.
+
 ### 3.3 La pieza compuesta
 
 Un par se convierte en una `Part` común, para que el oráculo, las máscaras y

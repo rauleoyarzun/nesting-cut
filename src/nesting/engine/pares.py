@@ -207,6 +207,42 @@ def b_orientations(
     return [(a, m) for a, m in choices if a % 180.0 == 0.0]
 
 
+ANGLE_EPS = 1e-6
+"""Dos ángulos a menos de esto, módulo 360, son el mismo: `componer` suma y
+toma módulo, y 120 + 120 + 120 puede no dar 0 exacto."""
+
+
+def orientations_closed(
+    sheet_choices: Sequence[tuple[float, bool]],
+    steps: Sequence[tuple[float, bool]],
+) -> bool:
+    """Si componer cualquier orientación de la placa con cualquier paso deja en la placa.
+
+    Un miembro de un par termina en `T ∘ r ∘ g` (ver `make_composite` y
+    `disassemble`): `T` es la orientación con que se colocó el par, una de
+    `sheet_choices`; `r`, la de B relativa a A, y `g`, la que lleva la copia
+    a la representante, son pasos (`b_orientations`). Si `T ∘ paso` cae
+    siempre en `sheet_choices`, aplicarlo dos veces también, y cada miembro
+    termina en un ángulo que el usuario permitió. Si no, no: con 0° y 90°
+    sin espejo, un par con B a 90° colocado a 90° deja a B a 180°, y
+    `verify` no mira ángulos, así que nadie más lo atajaría.
+
+    La composición es la de `componer`: ángulo `a1 + (-a2 si m1 si no a2)`,
+    espejo `m1 xor m2`.
+    """
+    def same(a: float, b: float) -> bool:
+        d = (a - b) % 360.0
+        return min(d, 360.0 - d) < ANGLE_EPS
+
+    for a1, m1 in sheet_choices:
+        for a2, m2 in steps:
+            angle = a1 + (-a2 if m1 else a2)
+            mirror = m1 != m2
+            if not any(m == mirror and same(a, angle) for a, m in sheet_choices):
+                return False
+    return True
+
+
 def union_with_bridge(
     a: Polygon, b: Polygon
 ) -> tuple[tuple[Point, ...], tuple[tuple[Point, ...], ...]] | None:
