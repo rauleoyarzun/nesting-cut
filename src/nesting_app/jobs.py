@@ -68,6 +68,12 @@ class Resultado:
     omisión van después de los que no lo tienen -- y no porque importe
     menos que `placas`.
     """
+    es_minimo: bool = False
+    """El acomodo iguala la cota por área: con menos placas no entra.
+
+    Lo calcula el corredor con `cartera.cota_minima`, que no informa nada con
+    recortes. En falso no dice "se puede con menos": dice que no se sabe.
+    """
 
 
 ESPERA_MINIMA_S = 5.0

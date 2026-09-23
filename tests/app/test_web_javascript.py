@@ -2313,3 +2313,9 @@ def test_la_pantalla_pide_el_sistema_al_arrancar(js):
     assert re.search(r"^cargarSistema\(\)\.catch\(", limpio, re.M), (
         "sin esto el desplegable queda vacío y Acomodar manda nucleos: null"
     )
+
+
+def test_el_resultado_dice_cuando_no_se_puede_con_menos_placas(js):
+    cuerpo = _cuerpo_de_funcion(js, "terminar")
+    assert "r.es_minimo" in cuerpo
+    assert "No se puede con menos placas." in cuerpo

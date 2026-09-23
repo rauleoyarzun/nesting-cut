@@ -429,6 +429,7 @@ def acomodar(
         carpeta=carpeta,
         avisos=list(avisos),
         recortes_usados=sum(1 for hoja in resultado.sheets if hoja.scrap),
+        es_minimo=cartera.cota_minima(piezas, supply, config.margin) == resultado.sheets_used,
     )
 
 

@@ -606,3 +606,43 @@ def test_estimar_un_archivo_sin_unidades_da_none(tmp_path, deposito):
     fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)], unidades=0))
 
     assert corredor.estimar(fuente, params()) is None
+
+
+def test_si_iguala_la_cota_dice_que_no_se_puede_con_menos(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200), (300, 0, 150)]))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(fuente, params(resolucion=4.0), lambda a: True, salida)
+
+    assert resultado.placas == 1
+    assert resultado.es_minimo is True
+
+
+def test_si_no_la_iguala_no_dice_nada(tmp_path, deposito):
+    """Tres cuadrados de 1100 en una placa de 1830 x 2600: el área da para
+    una (3,63 m² contra 4,67 útiles) pero no entran dos lado a lado. Dos
+    placas, cota una: no se dice nada, porque no se sabe si 2 es el mínimo."""
+    fuente = deposito.registrar_local(
+        dxf_con(tmp_path, [(0, 0, 1100), (1200, 0, 1100), (2400, 0, 1100)])
+    )
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(fuente, params(resolucion=4.0), lambda a: True, salida)
+
+    assert resultado.placas == 2
+    assert resultado.es_minimo is False
+
+
+def test_con_recortes_nunca_se_dice(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    resultado = corredor.acomodar(
+        fuente, params(recortes=(Recorte(700.0, 700.0),), resolucion=4.0),
+        lambda a: True, salida,
+    )
+
+    assert resultado.es_minimo is False

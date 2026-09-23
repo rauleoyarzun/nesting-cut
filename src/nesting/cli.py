@@ -6,7 +6,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from nesting.engine.cartera import EFFORT_BATCHES
+from nesting.engine.cartera import EFFORT_BATCHES, cota_minima
 from nesting.engine.packer import (
     PackResult,
     PartTooLargeError,
@@ -317,13 +317,16 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"Previsualización en {args.preview}")
 
-    _print_summary(result, parts, material, len(parts), args.salida)
+    _print_summary(
+        result, parts, material, len(parts), args.salida,
+        es_minimo=cota_minima(parts, supply, config.margin) == result.sheets_used,
+    )
     return EXIT_OK
 
 
 def _print_summary(
     result: PackResult, parts: Sequence[Part], material: Material,
-    part_count: int, out_path: Path,
+    part_count: int, out_path: Path, es_minimo: bool,
 ) -> None:
     costo = layout_cost(result, parts)
     used_height = costo.alto_ultima
@@ -346,6 +349,8 @@ def _print_summary(
         f"{part_count} piezas - {result.sheets_used} placas - "
         f"{result.total_utilization * 100:.1f}% total - {result.seconds:.1f}s"
     )
+    if es_minimo:
+        print("No se puede con menos placas.")
     # Las dos cifras compiten: el criterio elige el layout que baja el
     # material de la última placa, y eso a veces acorta la tira libre a
     # cambio. Mostrar las dos es lo que deja decidir si conviene para este

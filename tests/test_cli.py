@@ -741,3 +741,19 @@ def test_freeze_support_es_lo_primero_que_hace_main(monkeypatch):
     with pytest.raises(SystemExit):
         nesting.cli.main(["--no-existe-esta-opcion"])
     assert llamadas == [1]
+
+
+def test_la_cli_dice_cuando_no_se_puede_con_menos_placas(tmp_path, capsys):
+    source = write_input(tmp_path, [(0, 0, 200), (300, 0, 150)])
+    run([source, "--material", "test", "--materiales", catalogue(tmp_path),
+         "--esfuerzo", "rapido", "-o", tmp_path / "out.dxf"])
+    assert "No se puede con menos placas." in capsys.readouterr().out
+
+
+def test_la_cli_no_lo_dice_si_no_iguala_la_cota(tmp_path, capsys):
+    """Tres cuadrados de 600 en una placa de 1000: uno por placa, tres
+    placas, y la cota por área es dos."""
+    source = write_input(tmp_path, [(0, 0, 600), (700, 0, 600), (1400, 0, 600)])
+    run([source, "--material", "test", "--materiales", catalogue(tmp_path),
+         "--esfuerzo", "rapido", "-o", tmp_path / "out.dxf"])
+    assert "No se puede con menos placas." not in capsys.readouterr().out

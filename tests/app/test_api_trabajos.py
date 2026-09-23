@@ -63,6 +63,7 @@ def test_el_ciclo_completo(cliente, tmp_path):
     assert 0 < cuerpo["resultado"]["total"] <= 1
     assert cuerpo["resultado"]["sobrante_mm"] > 0
     assert cuerpo["error"] is None
+    assert cuerpo["resultado"]["es_minimo"] is True
 
 
 def test_los_tres_archivos_se_pueden_bajar(cliente, tmp_path):
