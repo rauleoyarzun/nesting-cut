@@ -130,8 +130,8 @@ archivo no se leyó, o los parámetros no validan).
 
 La pantalla muestra "Tarda aprox. 10 min" al lado de Acomodar, con el mismo
 redondeo de 3.1, y la recalcula 400 ms después del último cambio en
-Posiciones, Ángulos, espejo, Esfuerzo, Resolución, Material, Veta, Copias o
-Recortes. Mientras calcula deja el valor anterior; si la ruta devuelve
+Posiciones, Ángulos, espejo, Esfuerzo, Resolución, Material, Veta, Copias,
+Núcleos, Separación, Borde o Recortes. Mientras calcula deja el valor anterior; si la ruta devuelve
 `null`, no muestra nada.
 
 ## 4. Pruebas

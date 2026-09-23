@@ -941,7 +941,10 @@ function textoDeTarda(minutos) {
 // opciones que pesan, 400 ms después del último cambio para no pedir uno
 // por cada tecla.
 const ESPERA_ESTIMACION_MS = 400;
-const CONTROLES_QUE_PESAN = ["posiciones", "angulos", "espejo", "esfuerzo", "resolucion", "material", "veta-respetar", "veta-libre", "copias"];
+const CONTROLES_QUE_PESAN = [
+  "posiciones", "angulos", "espejo", "esfuerzo", "resolucion", "material",
+  "veta-respetar", "veta-libre", "copias", "nucleos", "sep", "borde",
+];
 let temporizadorEstimacion = null;
 let numeroDeEstimacion = 0;
 

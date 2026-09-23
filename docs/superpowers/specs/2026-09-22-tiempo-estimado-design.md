@@ -127,7 +127,8 @@ read, or parameters do not validate).
 
 The screen shows "Tarda aprox. 10 min" next to Acomodar, with the same rounding
 as 3.1, and recomputes it 400 ms after the last change to Positions, Angles,
-mirror, Effort, Resolution, Material, Grain, Copies or Offcuts. While computing
+mirror, Effort, Resolution, Material, Grain, Copies, Cores, Separation, Border
+or Offcuts. While computing
 it keeps the previous value; if the route returns `null`, it shows nothing.
 
 ## 4. Tests

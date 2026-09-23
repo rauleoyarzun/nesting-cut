@@ -2172,9 +2172,12 @@ def test_la_subida_se_sostiene_cinco_segundos(js):
 CONTROLES_QUE_PESAN = [
     "posiciones", "angulos", "espejo", "esfuerzo", "resolucion",
     "material", "veta-respetar", "veta-libre", "copias",
+    "nucleos", "sep", "borde",
 ]
 """Spec, 3.2: Posiciones, Ángulos, espejo, Esfuerzo, Resolución, Material,
-Veta, Copias. Recortes no tiene un control: se engancha en `dibujarRecortes`."""
+Veta, Copias, Núcleos, Separación y Borde. Núcleos cambia cuántas vueltas
+dan las tandas; Separación y Borde, el área útil y las placas previstas.
+Recortes no tiene un control: se engancha en `dibujarRecortes`."""
 
 
 def test_el_tiempo_estimado_va_al_lado_de_acomodar(html):
