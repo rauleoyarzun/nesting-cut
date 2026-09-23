@@ -8,7 +8,15 @@ dijo. Guardar donde el usuario quiere es un paso posterior y explícito.
 from dataclasses import dataclass
 from pathlib import Path
 
-from nesting.engine.packer import Avance, Cancelado, layout_cost, pack, replicate
+from nesting.engine.packer import (
+    Avance,
+    Cancelado,
+    initial_forecast,
+    layout_cost,
+    pack,
+    probe_query_seconds,
+    replicate,
+)
 from nesting.engine.raster.masks import MaskCache
 from nesting.engine.raster.oracle import RasterOracle
 from nesting.geometry.verify import verify
@@ -19,15 +27,30 @@ from nesting.io.dxf_writer import write_dxf
 from nesting.io.preview import write_preview
 from nesting.io.rhino_reader import read_3dm
 from nesting.model.discard import Discard
-from nesting.params import NestParams, a_config, a_supply
+from nesting.params import NestParams, a_config, a_supply, validar
 from nesting.pipeline import discard_plate_outline, prepare_parts
 from nesting_app import materials_store
 from nesting_app.archivos import Fuente
-from nesting_app.jobs import Resultado
+from nesting_app.jobs import ERRORES_DEL_USUARIO, Resultado
 
 NOMBRE_DXF = "salida.dxf"
 NOMBRE_PREVIEW = "preview.png"
 NOMBRE_DIAGNOSTICO = "diagnostico.png"
+
+FACTOR_LLENO = 1.5
+"""Cuánto más cara es, en promedio, una consulta de la corrida que la de la prueba.
+
+La prueba de `estimar_segundos` pregunta sobre una placa VACÍA, y una placa
+vacía es el caso más barato: el árbitro exacto (`engine/exact.py`) verifica
+candidatos contra las piezas ya colocadas, y ahí no hay ninguna. A medida
+que la placa se llena, cada consulta verifica más candidatos contra más
+vecinos. Este factor lleva el costo de la prueba al costo medio de una
+consulta de la corrida.
+
+PROVISIONAL. 1.5 es un valor de arranque para poder escribir los tests. La
+calibración (`bench/calibrate.py --factor-lleno`) lo reemplaza por el
+medido, con las mediciones acá mismo.
+"""
 
 
 class UnidadesNoDeclaradasError(ValueError):
@@ -168,6 +191,51 @@ def analizar(fuente: Fuente, unidades: str | None, tol_cierre: float) -> Analisi
         descartes=[_a_dict(d) for d in descartes],
         unidades=drawing.source_units,
     )
+
+
+def estimar_segundos(piezas, supply, config) -> float | None:
+    """Cuántos segundos va a tardar `pack(piezas, supply, config, ...)`, antes de correrlo.
+
+        segundos = segundos_por_consulta_medido
+                   * consultas_previstas_al_arrancar
+                   * FACTOR_LLENO
+
+    La prueba usa una caché de máscaras nueva, así que incluye rasterizar;
+    ver `probe_query_seconds`.
+    """
+    por_consulta = probe_query_seconds(
+        piezas, supply, config, lambda: RasterOracle(cache=MaskCache())
+    )
+    if por_consulta is None:
+        return None
+    return por_consulta * initial_forecast(piezas, supply, config) * FACTOR_LLENO
+
+
+def estimar(fuente: Fuente, params: NestParams) -> float | None:
+    """La estimación previa de un acomodo, o `None` si no se puede estimar.
+
+    Recorre lo mismo que `acomodar` hasta tener las piezas -- leer, preparar,
+    descartar el contorno de la placa, replicar -- y no escribe nada.
+    Todo lo que `jobs.ERRORES_DEL_USUARIO` llama "tu archivo o tus
+    parámetros tienen un problema" da `None`: la pantalla no muestra nada, y
+    el error de verdad lo va a dar Acomodar, con su cartel. Un bug del
+    programa no está en esa tupla y sale como tal.
+    """
+    try:
+        material = materials_store.leer().get(params.material)
+        if material is None:
+            return None
+        validar(params, material)
+        drawing = _leer(fuente, params.unidades)
+        piezas, _, _ = prepare_parts(drawing, chain_tol=params.tol_cierre)
+        piezas, _ = discard_plate_outline(piezas, material.sheet_w, material.sheet_h)
+        return estimar_segundos(
+            replicate(piezas, params.copias),
+            a_supply(params, material),
+            a_config(params),
+        )
+    except ERRORES_DEL_USUARIO:
+        return None
 
 
 def acomodar(

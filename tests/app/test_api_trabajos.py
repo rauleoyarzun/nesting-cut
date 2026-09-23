@@ -338,3 +338,54 @@ def test_el_estado_del_trabajo_trae_las_consultas_y_el_restante(cliente, tmp_pat
     assert avance is not None
     assert avance["consultas_previstas"] >= avance["consultas_hechas"] > 0
     assert "restante_s" in cuerpo
+
+
+def test_estimar_devuelve_segundos_para_una_fuente_leida(cliente, tmp_path):
+    fuente_id = fuente_de(cliente, tmp_path)
+
+    respuesta = cliente.post("/api/estimar", json={
+        "fuente_id": fuente_id,
+        "params": {"material": "mdf18", "esfuerzo": "rapido", "resolucion": 4},
+    })
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["segundos"] > 0
+
+
+def test_estimar_sin_fuente_devuelve_null(cliente):
+    respuesta = cliente.post("/api/estimar", json={
+        "fuente_id": "no-existe", "params": {"material": "mdf18"},
+    })
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"segundos": None}
+
+
+def test_estimar_con_parametros_invalidos_devuelve_null(cliente, tmp_path):
+    fuente_id = fuente_de(cliente, tmp_path)
+
+    respuesta = cliente.post("/api/estimar", json={
+        "fuente_id": fuente_id, "params": {"material": "mdf18", "sep": -1},
+    })
+
+    assert respuesta.json() == {"segundos": None}
+
+
+def test_estimar_con_un_material_que_no_existe_devuelve_null(cliente, tmp_path):
+    fuente_id = fuente_de(cliente, tmp_path)
+
+    respuesta = cliente.post("/api/estimar", json={
+        "fuente_id": fuente_id, "params": {"material": "no-existe"},
+    })
+
+    assert respuesta.json() == {"segundos": None}
+
+
+def test_estimar_exige_el_token(cliente):
+    respuesta = cliente.post(
+        "/api/estimar",
+        json={"fuente_id": "x", "params": {"material": "mdf18"}},
+        headers={"X-Token": "otro"},
+    )
+
+    assert respuesta.status_code == 401

@@ -260,6 +260,40 @@ def orientations(sheet: Sheet, config: NestConfig) -> list[tuple[float, bool]]:
     return result
 
 
+def probe_query_seconds(
+    parts: Sequence[Part],
+    supply: SheetSupply,
+    config: NestConfig,
+    oracle_factory: Callable[[], Oracle],
+    clock: Callable[[], float] = time.perf_counter,
+) -> float | None:
+    """Cuánto tarda UNA consulta en esta máquina, con estas opciones.
+
+    Pregunta por la pieza más grande, en la primera orientación que la veta
+    de la placa del Material permite, sobre una placa vacía. Incluye
+    rasterizar la máscara si el oráculo lo hace: quien llama pasa una
+    fábrica con caché nueva para que así sea, porque la corrida real también
+    rasteriza cada orientación la primera vez. `reset` queda afuera del
+    tiempo: se paga una vez por placa, no por consulta.
+
+    Una sola consulta y no un promedio: tarda menos de un segundo, y el
+    número vale en cualquier máquina porque se mide en ella. Devuelve `None`
+    si no hay piezas o si la veta no deja ninguna orientación.
+    """
+    if not parts:
+        return None
+    choices = orientations(supply.stock, config)
+    if not choices:
+        return None
+    part = max(parts, key=lambda p: p.area)
+    oracle = oracle_factory()
+    oracle.reset(supply.stock.width, supply.stock.height, config)
+    angle, mirror = choices[0]
+    started = clock()
+    oracle.best_placement(part, angle, mirror)
+    return clock() - started
+
+
 def _pack_once(
     order: Sequence[Part],
     supply: SheetSupply,

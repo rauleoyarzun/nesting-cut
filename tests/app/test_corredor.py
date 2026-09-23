@@ -5,6 +5,11 @@ import time
 import ezdxf
 import pytest
 
+from nesting.engine.oracle import NestConfig
+from nesting.engine.packer import initial_forecast
+from nesting.model.material import Material
+from nesting.model.part import Part
+from nesting.model.sheet import SheetSupply
 from nesting.params import NestParams, Recorte
 from nesting_app import corredor, materials_store
 from nesting_app.archivos import Deposito
@@ -507,3 +512,68 @@ def test_el_material_desaparecido_llega_al_trabajo_como_error_del_usuario_no_bug
         assert "fantasma" in trabajo.error
     finally:
         registro.cerrar()
+
+
+MDF18 = Material("mdf18", 1830.0, 2600.0, grain_tolerance=180.0)
+PLAN_MDF18 = SheetSupply(stock=MDF18.stock_sheet(), material_name=MDF18.name)
+
+
+def pieza_cuadrada(part_id, lado=200.0):
+    return Part(
+        part_id, ((0.0, 0.0), (lado, 0.0), (lado, lado), (0.0, lado)), (), (part_id,)
+    )
+
+
+def test_la_estimacion_es_prueba_por_prevision_por_factor(monkeypatch):
+    """La fórmula de la spec, 3.2, con la prueba fijada para que el número
+    sea exacto."""
+    piezas = [pieza_cuadrada(i) for i in range(5)]
+    cfg = NestConfig(sep=5.0, margin=10.0, effort="rapido")
+    monkeypatch.setattr(corredor, "probe_query_seconds", lambda *a, **k: 0.01)
+
+    assert corredor.estimar_segundos(piezas, PLAN_MDF18, cfg) == pytest.approx(
+        0.01 * initial_forecast(piezas, PLAN_MDF18, cfg) * corredor.FACTOR_LLENO
+    )
+
+
+def test_la_estimacion_mide_de_verdad_si_no_se_la_fija():
+    piezas = [pieza_cuadrada(i) for i in range(3)]
+    cfg = NestConfig(sep=5.0, margin=10.0, effort="rapido", resolution=4.0)
+
+    assert corredor.estimar_segundos(piezas, PLAN_MDF18, cfg) > 0
+
+
+def test_sin_piezas_no_hay_estimacion():
+    assert corredor.estimar_segundos([], PLAN_MDF18, NestConfig()) is None
+
+
+def test_estimar_lee_la_fuente_y_devuelve_segundos(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200), (300, 0, 150)]))
+
+    segundos = corredor.estimar(fuente, params(resolucion=4.0))
+
+    assert isinstance(segundos, float) and segundos > 0
+
+
+def test_estimar_con_un_material_que_no_existe_da_none(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+
+    assert corredor.estimar(fuente, NestParams(material="no-existe")) is None
+
+
+def test_estimar_con_parametros_invalidos_da_none(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+
+    assert corredor.estimar(fuente, params(sep=-1.0)) is None
+
+
+def test_estimar_un_archivo_sin_piezas_da_none(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, []))
+
+    assert corredor.estimar(fuente, params()) is None
+
+
+def test_estimar_un_archivo_sin_unidades_da_none(tmp_path, deposito):
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)], unidades=0))
+
+    assert corredor.estimar(fuente, params()) is None

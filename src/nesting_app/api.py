@@ -334,6 +334,24 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
             )
         return FileResponse(archivo, media_type="image/png", filename=nombre)
 
+    # --- estimación ---------------------------------------------------------
+
+    @app.post("/api/estimar")
+    def estimar(pedido: PedidoTrabajo) -> dict:
+        """Cuánto va a tardar el acomodo, antes de arrancarlo.
+
+        Recibe exactamente lo mismo que `POST /api/trabajos`, así que todo
+        parámetro nuevo de la corrida -- la veta, los recortes -- entra en la
+        estimación sin tocar esta ruta. Una fuente que no existe es un
+        `null` y no un 404: la pantalla pide la estimación cada vez que
+        cambia una opción, y no tiene nada que mostrar en ese caso.
+        """
+        try:
+            fuente = deposito.obtener(pedido.fuente_id)
+        except FuenteDesconocidaError:
+            return {"segundos": None}
+        return {"segundos": corredor.estimar(fuente, pedido.params.a_params())}
+
     # --- trabajos -----------------------------------------------------------
 
     def _avance_a_dict(avance) -> dict | None:

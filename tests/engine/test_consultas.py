@@ -20,6 +20,7 @@ from nesting.engine.packer import (
     _recuperar_de_la_ultima_placa,
     initial_forecast,
     pack,
+    probe_query_seconds,
 )
 from nesting.engine.prevision import forecast_pack
 from nesting.engine.raster.masks import MaskCache
@@ -343,3 +344,42 @@ def test_despues_del_primer_intento_la_prevision_erra_menos_de_un_cuarto(nombre,
     assert error < 0.25, (
         f"{nombre}: previstas {tras_el_primero.consultas_previstas}, reales {reales}"
     )
+
+
+class Anotador(ShelfOracle):
+    """Un oráculo de estantes que anota qué le preguntaron."""
+
+    def __init__(self, anotadas):
+        super().__init__()
+        self._anotadas = anotadas
+
+    def best_placement(self, part, angle, mirror):
+        self._anotadas.append((part.id, angle, mirror))
+        return super().best_placement(part, angle, mirror)
+
+
+def test_la_prueba_mide_una_consulta_con_la_pieza_mas_grande():
+    chica, grande = cuadrado(0, 100.0), cuadrado(1, 300.0)
+    anotadas = []
+    tiempos = iter([10.0, 10.25])
+
+    segundos = probe_query_seconds(
+        [chica, grande], PLAN, config(), lambda: Anotador(anotadas),
+        clock=lambda: next(tiempos),
+    )
+
+    assert segundos == pytest.approx(0.25)
+    assert anotadas == [(1, 0.0, False)], "una sola consulta, la primera orientación"
+
+
+def test_sin_orientaciones_permitidas_no_hay_prueba():
+    con_veta = Material("veta", 1000.0, 1000.0, grain_tolerance=5.0)
+    plan = SheetSupply(stock=con_veta.stock_sheet(), material_name=con_veta.name)
+
+    assert probe_query_seconds(
+        [cuadrado(0)], plan, config(angles=(90.0,)), ShelfOracle
+    ) is None
+
+
+def test_sin_piezas_no_hay_prueba():
+    assert probe_query_seconds([], PLAN, config(), ShelfOracle) is None
