@@ -750,7 +750,10 @@ if __name__ == "__main__":
     rutas._base_de_datos = lambda: CARPETA / "datos"
     desktop.motor_de_ventana = lambda: None
     oracle.RasterOracleFactory = Dormilona
-    desktop._prueba_de_procesos = functools.partial(desktop._prueba_de_procesos, timeout=2.0)
+    # 8 s y no 2: con la máquina cargada (la suite entera en paralelo con
+    # otra cosa) el pool puede tardar más de 2 s en arrancar, y entonces
+    # ningún hijo llegaba a anotarse y `assert hijos` fallaba sin motivo.
+    desktop._prueba_de_procesos = functools.partial(desktop._prueba_de_procesos, timeout=8.0)
     raise SystemExit(desktop.main(["--autotest"]))
 '''
 
@@ -767,7 +770,7 @@ def test_un_autotest_con_el_pool_colgado_termina_y_no_deja_procesos(tmp_path):
     guion.write_text(_AUTOTEST_COLGADO)
     try:
         corrida = subprocess.run([sys.executable, str(guion), str(tmp_path)],
-                                 capture_output=True, text=True, timeout=15)
+                                 capture_output=True, text=True, timeout=30)
     except subprocess.TimeoutExpired:
         corrida = None
     hijos = [int(p.name.split("-")[1]) for p in tmp_path.glob("hijo-*")]
@@ -782,7 +785,7 @@ def test_un_autotest_con_el_pool_colgado_termina_y_no_deja_procesos(tmp_path):
     vivos = [pid for pid in hijos if vivo(pid)]
     for pid in vivos:
         os.kill(pid, 9)
-    assert corrida is not None, "el autotest no terminó en 15 s"
+    assert corrida is not None, "el autotest no terminó en 30 s"
     assert hijos, f"el pool no llegó a arrancar: {corrida.stderr}"
     assert corrida.returncode != 0
     assert "autotest FALLÓ" in corrida.stderr and "2 procesos" in corrida.stderr
