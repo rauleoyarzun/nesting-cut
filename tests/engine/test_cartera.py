@@ -1,6 +1,7 @@
 """La cartera: variantes en un orden fijo, la mejor gana, y rápido no cambia."""
 
 import math
+from pathlib import Path
 
 import pytest
 
@@ -357,3 +358,66 @@ def test_la_prevision_de_reloj_de_rapido_es_la_de_arranque():
 
     cfg = config(effort="rapido", workers=4)
     assert wall_forecast(siete(), PLAN, cfg) == initial_forecast(siete(), PLAN, cfg)
+
+
+# --- el orden de las combinaciones: primero las que entran como rectángulos ---
+
+def _tipo_falso(w, h):
+    from nesting.engine.pares import PairType
+    from nesting.model.entities import Transform
+
+    return PairType(relative=Transform.identity(), box_area=w * h, width=w, height=h,
+                    orientation=(0.0, False), offset_px=(0, 0),
+                    outer=((0.0, 0.0), (w, 0.0), (w, h), (0.0, h)), holes=())
+
+
+def test_la_combinacion_que_entra_como_rectangulos_sale_antes_que_la_mas_chica():
+    """Dos tipos: el de menor caja (1200 x 100) no entra en el área útil de
+    970 x 970 de ninguna forma; el otro (600 x 300) sí, y al lado le queda
+    lugar para el cuadrado suelto. Por área saldría primero el que no entra."""
+    from nesting.engine.cartera import _PairPlan
+    from nesting.engine.iguales import Clase, Member
+    from nesting.model.entities import Transform
+
+    piezas = [rect(0, 400.0, 300.0), rect(1, 400.0, 300.0), rect(5, 300.0, 300.0)]
+    fuente = VariantSource(piezas, PLAN, config())
+    clase = Clase(piezas[0], (Member(0, Transform.identity()), Member(1, Transform.identity())))
+    fuente._plan = _PairPlan((clase,), ((_tipo_falso(1200.0, 100.0), _tipo_falso(600.0, 300.0)),))
+
+    assert fuente.predicted_sheets(((0,),)) == 2
+    assert fuente.predicted_sheets(((1,),)) == 1
+    assert fuente._combinations(6, 2) == [((1,),), ((0,),)]
+
+
+BANQUETA = Path(__file__).resolve().parents[2] / "bench" / "files" / "banqueta-alta.ai"
+
+
+@pytest.mark.skipif(
+    not BANQUETA.exists(),
+    reason=f"falta {BANQUETA}: es un archivo de diseño del usuario y no se "
+           "versiona (ver .gitignore). Copiá 'BANQUETA ALTA NESTING.ai' ahí.",
+)
+def test_en_la_banqueta_la_tanda_empieza_por_una_combinacion_que_entra_en_una_placa():
+    """Ordenadas sólo por área, las doce primeras eran todas imposibles
+    (Tarea 9): tres pares de la caja mínima, de 1809 de largo, no entran
+    en 2430 de alto útil con nada más encima."""
+    from nesting.engine.pares import TIPOS_POR_CLASE
+    from nesting.io.ai_reader import read_ai
+    from nesting.pipeline import prepare_parts
+
+    piezas, _, _ = prepare_parts(read_ai(BANQUETA))
+    plan = SheetSupply(stock=Sheet(1220.0, 2440.0, grain_tolerance=180.0), material_name="libre")
+    cfg = NestConfig(sep=8.0, margin=5.0, angles=tuple(i * 45.0 for i in range(8)),
+                     mirror=True, resolution=1.0, effort="normal", seed=0, workers=4)
+    fuente = VariantSource(piezas, plan, cfg)
+    tipos = fuente._pair_plan().types[0]
+
+    def indice(w, h):
+        return next(i for i, t in enumerate(tipos)
+                    if sorted((t.width, t.height)) == pytest.approx(sorted((w, h)), abs=5.0))
+
+    diagonal, apilado = indice(1508.0, 560.0), indice(1056.0, 875.0)
+    combos = fuente._combinations(TIPOS_POR_CLASE["normal"], 12)
+
+    assert fuente.predicted_sheets(combos[0]) == 1
+    assert (tuple(sorted((diagonal, diagonal, apilado))),) in combos

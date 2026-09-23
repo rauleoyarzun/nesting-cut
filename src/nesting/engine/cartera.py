@@ -29,7 +29,7 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import dataclass, replace
 
-from nesting.engine import pares, prevision
+from nesting.engine import estantes, pares, prevision
 from nesting.engine.iguales import Clase, find_classes
 from nesting.engine.oracle import NestConfig, Oracle
 from nesting.engine.packer import (
@@ -188,6 +188,18 @@ Los tests lo bajan a 1 con el fixture `_tanda_minima_de_uno` de
 los que prueban el mínimo de verdad llevan `@pytest.mark.minimo_real`.
 """
 
+
+PREDICTION_POOL_FACTOR = 8
+PREDICTION_POOL_MIN = 400
+"""De cuántas combinaciones, las más baratas por área, se elige la tanda.
+
+`_combinations` saca `max(PREDICTION_POOL_FACTOR * pedidas, PREDICTION_POOL_MIN)`
+por costo, les calcula las placas previstas (`estantes.predicted_sheets`) y
+las reordena por `(placas previstas, costo, tupla)`. En la banqueta alta la
+primera combinación que entra en una placa estaba decimotercera por área:
+el colchón tiene que alcanzar para que las que entran aparezcan aunque
+haya muchas imposibles más baratas.
+"""
 
 def batch_size(workers: int) -> int:
     """Cuántas variantes tiene cada tanda: `N`, pero nunca menos de `MIN_BATCH`."""
@@ -350,6 +362,11 @@ def _box_area(part: Part) -> float:
     return (x1 - x0) * (y1 - y0)
 
 
+def _box_size(part: Part) -> tuple[float, float]:
+    x0, y0, x1, y1 = part.bbox
+    return (x1 - x0, y1 - y0)
+
+
 def _build_pair_plan(
     parts: Sequence[Part], supply: SheetSupply, config: NestConfig, cache: MaskCache
 ) -> _PairPlan:
@@ -390,6 +407,7 @@ class VariantSource:
         self._by_area = sorted(parts, key=lambda p: p.area, reverse=True)
         self._rng = random.Random(config.seed)
         self._plan: _PairPlan | None = None
+        self._shelf_setup: tuple[tuple[float, float], bool, tuple[tuple[float, float], ...]] | None = None
         self._used: set[tuple[tuple[int, ...], ...]] = set()
         self._next_index = 1
         self._next_id = max((p.id for p in parts), default=-1) + 1
@@ -431,22 +449,30 @@ class VariantSource:
         return self._plan
 
     def _combinations(self, type_limit: int, size: int) -> list[tuple[tuple[int, ...], ...]]:
+        """Las `size` combinaciones siguientes que no se usaron, primero las que entran.
+
+        Se toman las más baratas por área de cajas (`PREDICTION_POOL_FACTOR`),
+        y se ordenan de forma estable por `(placas previstas, costo, tupla)`
+        (spec 4.1, punto 2): de nada sirve probar la combinación de cajas más
+        chicas si ni como rectángulos entra en las placas que se buscan.
+        """
         plan = self._pair_plan()
         if not plan.classes:
             return []
         want = size + len(self._used)
+        pool = max(want * PREDICTION_POOL_FACTOR, PREDICTION_POOL_MIN)
         streams = [
             (clase, [t.box_area for t in types[:type_limit]])
             for clase, types in zip(plan.classes, plan.types)
         ]
         if len(streams) == 1:
             clase, areas = streams[0]
-            ranked = [
-                (combo,)
-                for _, combo in itertools.islice(
+            costed = [
+                (cost, (combo,))
+                for cost, combo in itertools.islice(
                     smallest_combinations(areas, len(clase.members),
                                           _box_area(clase.representative), False),
-                    want,
+                    pool,
                 )
             ]
         else:
@@ -454,20 +480,49 @@ class VariantSource:
                 list(itertools.islice(
                     smallest_combinations(areas, len(clase.members),
                                           _box_area(clase.representative), True),
-                    want + 1,
+                    pool + 1,
                 ))
                 for clase, areas in streams
             ]
-            product = sorted(
+            costed = sorted(
                 (cost_a + cost_b, (combo_a, combo_b))
                 for cost_a, combo_a in per_class[0]
                 for cost_b, combo_b in per_class[1]
                 if combo_a or combo_b
-            )
-            ranked = [combo for _, combo in product[:want]]
-        fresh = [combo for combo in ranked if combo not in self._used][:size]
+            )[:pool]
+        ranked = sorted(costed, key=lambda item: (self.predicted_sheets(item[1]), item[0], item[1]))
+        fresh = [combo for _, combo in ranked if combo not in self._used][:size]
         self._used.update(fresh)
         return fresh
+
+    def predicted_sheets(self, combo: tuple[tuple[int, ...], ...]) -> int:
+        """Las placas de un armado por estantes de las cajas grandes de `combo`.
+
+        Las cajas son la de cada par (`PairType.width` x `height`), la de
+        cada miembro suelto de cada clase emparejable (la caja de la
+        representante), y la de toda otra pieza con al menos
+        `pares.MIN_SHEET_SHARE` del área útil. Las piezas chicas no cuentan:
+        van en los huecos. Es para ordenar, no un acomodo (ver `estantes`).
+        """
+        plan = self._pair_plan()
+        if self._shelf_setup is None:
+            stock, config = self._supply.stock, self._config
+            usable = (stock.width - 2 * config.margin, stock.height - 2 * config.margin)
+            can_turn = any(abs(angle % 180.0 - 90.0) < 1e-9
+                           for angle, _ in orientations(stock, config))
+            paired = {m.part_id for clase in plan.classes for m in clase.members}
+            others = tuple(
+                _box_size(p) for p in self._parts
+                if p.id not in paired
+                and p.area >= pares.MIN_SHEET_SHARE * usable[0] * usable[1]
+            )
+            self._shelf_setup = (usable, can_turn, others)
+        usable, can_turn, others = self._shelf_setup
+        boxes = list(others)
+        for clase, types, choice in zip(plan.classes, plan.types, combo):
+            boxes.extend((types[t].width, types[t].height) for t in choice)
+            boxes.extend([_box_size(clase.representative)] * (len(clase.members) - 2 * len(choice)))
+        return estantes.predicted_sheets(boxes, usable, self._config.sep, can_turn)
 
     def _pair_variant(self, combo: tuple[tuple[int, ...], ...]) -> Variant:
         plan = self._pair_plan()
