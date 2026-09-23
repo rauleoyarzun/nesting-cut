@@ -107,7 +107,7 @@ def test_the_help_lists_every_flag(capsys):
     output = capsys.readouterr().out
     for flag in ("--material", "--copias", "--sep", "--borde", "--angulos",
                  "--esfuerzo", "--sin-espejo", "--resolucion", "--unidades",
-                 "--tol-cierre", "--preview"):
+                 "--tol-cierre", "--preview", "--veta"):
         assert flag in output
 
 

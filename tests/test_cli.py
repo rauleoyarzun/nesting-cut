@@ -626,3 +626,82 @@ def test_preview_alone_without_anything_else_is_also_refused(tmp_path, capsys):
                 "--preview", tmp_path / "p.png"])
 
     assert code == 1
+
+
+# --- la veta de la corrida -------------------------------------------------
+
+
+def catalogo_angosto(tmp_path, tolerancia):
+    """Una placa de 500 x 1500: una pieza de 1200 x 100 sólo entra parada."""
+    path = tmp_path / "angosto.yaml"
+    path.write_text(
+        f"angosto:\n  placa: [500, 1500]\n  tolerancia_veta: {tolerancia}\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def pieza_acostada(tmp_path):
+    doc = ezdxf.new("R2010", setup=True)
+    doc.units = 4
+    doc.modelspace().add_lwpolyline(
+        [(0, 0), (1200, 0), (1200, 100), (0, 100)], close=True
+    )
+    path = tmp_path / "acostada.dxf"
+    doc.saveas(path)
+    return path
+
+
+def test_con_la_veta_del_material_la_pieza_acostada_no_entra(tmp_path, capsys):
+    code = run([
+        pieza_acostada(tmp_path), "--material", "angosto",
+        "--materiales", catalogo_angosto(tmp_path, 5), "-o", tmp_path / "o.dxf",
+        "--esfuerzo", "rapido", "--resolucion", "2",
+    ])
+
+    assert code == 1
+    assert "no entra" in capsys.readouterr().err
+
+
+def test_veta_libre_deja_pararla(tmp_path):
+    code = run([
+        pieza_acostada(tmp_path), "--material", "angosto",
+        "--materiales", catalogo_angosto(tmp_path, 5), "-o", tmp_path / "o.dxf",
+        "--esfuerzo", "rapido", "--resolucion", "2", "--veta", "libre",
+    ])
+
+    assert code == 0
+
+
+def test_veta_respetar_la_bloquea_en_un_material_libre(tmp_path, capsys):
+    code = run([
+        pieza_acostada(tmp_path), "--material", "angosto",
+        "--materiales", catalogo_angosto(tmp_path, 180), "-o", tmp_path / "o.dxf",
+        "--esfuerzo", "rapido", "--resolucion", "2", "--veta", "respetar",
+    ])
+
+    assert code == 1
+    assert "no entra" in capsys.readouterr().err
+
+
+def test_un_angulo_que_la_veta_descarta_se_rechaza_nombrando_el_flag(tmp_path, capsys):
+    code = run([
+        pieza_acostada(tmp_path), "--material", "angosto",
+        "--materiales", catalogo_angosto(tmp_path, 5), "-o", tmp_path / "o.dxf",
+        "--angulos", "90",
+    ])
+
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "--angulos tiene que ser compatible con la veta" in err
+
+
+def test_una_veta_desconocida_es_error_de_uso(tmp_path):
+    with pytest.raises(SystemExit) as salida:
+        run([
+            pieza_acostada(tmp_path), "--material", "angosto",
+            "--materiales", catalogo_angosto(tmp_path, 5), "-o", tmp_path / "o.dxf",
+            "--veta", "cruzada",
+        ])
+
+    assert salida.value.code == 1

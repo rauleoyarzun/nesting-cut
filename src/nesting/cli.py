@@ -5,7 +5,6 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from nesting.engine.oracle import NestConfig
 from nesting.engine.packer import (
     EFFORT_RESTARTS,
     PackResult,
@@ -17,6 +16,8 @@ from nesting.engine.packer import (
 from nesting.params import (
     NestParams,
     ParamsInvalidosError,
+    a_config,
+    a_supply,
     mensaje_cli,
     validar,
 )
@@ -33,7 +34,6 @@ from nesting.io.rhino_reader import read_3dm
 from nesting.model.discard import Discard
 from nesting.model.material import DEFAULT_MATERIALS_PATH, Material, load_materials
 from nesting.model.part import Part
-from nesting.model.sheet import SheetSupply
 from nesting.pipeline import (
     DEFAULT_CHAIN_TOL,
     OpenContourError,
@@ -113,14 +113,29 @@ def main(argv: list[str] | None = None) -> int:
         )
         return EXIT_INPUT_ERROR
 
-    config = NestConfig(
+    # Los mismos parámetros que la primera validación, ahora con los ángulos
+    # ya parseados y la veta de la corrida: son los que de verdad se usan.
+    params = NestParams(
+        material=args.material,
         sep=args.sep,
-        margin=args.borde,
-        angles=angles,
-        mirror=not args.sin_espejo,
-        resolution=args.resolucion,
-        effort=args.esfuerzo,
+        borde=args.borde,
+        copias=args.copias,
+        angulos=angles,
+        espejo=not args.sin_espejo,
+        unidades=args.unidades,
+        tol_cierre=args.tol_cierre,
+        resolucion=args.resolucion,
+        esfuerzo=args.esfuerzo,
+        veta=args.veta,
     )
+    try:
+        # Segunda pasada, con el material: la única regla que falta es la de
+        # la veta, que sin catálogo no se puede mirar.
+        validar(params, material)
+    except ParamsInvalidosError as error:
+        print(f"error: {mensaje_cli(error.rota)}", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    config = a_config(params)
 
     try:
         suffix = args.entrada.suffix.lower()
@@ -217,7 +232,10 @@ def main(argv: list[str] | None = None) -> int:
         # there is no reason to re-rasterize the same orientation for every
         # sheet or every retry.
         cache = MaskCache()
-        supply = SheetSupply(stock=material.stock_sheet(), material_name=material.name)
+        # Por `a_supply` y no a mano: es el que sabe aplicar la veta de la
+        # corrida. Armarlo acá con `material.stock_sheet()` era la segunda
+        # copia de una regla que ahora tiene una sola.
+        supply = a_supply(params, material)
         result = pack(parts, supply, config, lambda: RasterOracle(cache=cache))
     except (PartTooLargeError, ValueError) as error:
         # `rasterize` (nesting.engine.raster.masks) raises `ValueError` for a
@@ -387,6 +405,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help="ángulos candidatos, separados por coma")
     parser.add_argument("--sin-espejo", action="store_true", dest="sin_espejo",
                         help="no permitir piezas espejadas")
+    parser.add_argument("--veta", choices=("respetar", "libre"), default=None,
+                        help="respetar la veta (sólo 0 y 180 grados) o no; "
+                             "por omisión, la que diga el material")
     parser.add_argument("--unidades", choices=sorted(UNIT_SCALES), default=None,
                         help="unidades del archivo de entrada, si no las declara")
     parser.add_argument("--tol-cierre", type=float, default=DEFAULT_CHAIN_TOL,
