@@ -5,6 +5,7 @@ avance, y deja los resultados en una carpeta en vez de donde el usuario
 dijo. Guardar donde el usuario quiere es un paso posterior y explícito.
 """
 
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -142,6 +143,19 @@ def _con_avisos(error: Exception, avisos: list[str]) -> Exception:
     """
     error.avisos = list(avisos)
     return error
+
+
+class ProcesoDelMotorCaidoError(OSError):
+    """Un proceso del pool de la cartera se murió a mitad del trabajo.
+
+    `concurrent.futures` lo avisa con `BrokenProcessPool` y un mensaje en
+    inglés que la interfaz mostraba como "se rompió el programa". Casi
+    siempre no es un bug sino el entorno: el sistema cerró el proceso porque
+    la computadora se quedó sin memoria (cada uno usa unos
+    `workers.MEMORY_PER_WORKER_BYTES`). Por eso hereda de `OSError`, que
+    `jobs.ERRORES_DEL_USUARIO` ya trata como "el entorno del usuario", y el
+    mensaje dice lo que se puede hacer: bajar Núcleos.
+    """
 
 
 class VerificacionFallidaError(ValueError):
@@ -396,9 +410,16 @@ def acomodar(
         if aviso_nucleos is not None:
             avisos.append(aviso_nucleos)
         supply = a_supply(params, material)
-        resultado = pack(
-            piezas, supply, config, RasterOracleFactory(), progreso=progreso
-        )
+        try:
+            resultado = pack(
+                piezas, supply, config, RasterOracleFactory(), progreso=progreso
+            )
+        except BrokenProcessPool as error:
+            raise ProcesoDelMotorCaidoError(
+                "uno de los procesos que prueban combinaciones se cerró de golpe, "
+                "casi siempre porque la computadora se quedó sin memoria. Probá "
+                "bajar Núcleos y volver a acomodar."
+            ) from error
 
         violaciones = verify(
             piezas, resultado.placements, resultado.sheets,

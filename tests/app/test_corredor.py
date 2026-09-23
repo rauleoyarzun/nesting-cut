@@ -527,6 +527,59 @@ def test_el_material_desaparecido_llega_al_trabajo_como_error_del_usuario_no_bug
         registro.cerrar()
 
 
+
+def _pool_roto(*args, **kwargs):
+    """Lo que levanta `pack` cuando el sistema mata un proceso del pool,
+    casi siempre por falta de memoria."""
+    from concurrent.futures.process import BrokenProcessPool
+
+    raise BrokenProcessPool(
+        "A process in the process pool was terminated abruptly while the "
+        "future was running or pending."
+    )
+
+
+def test_un_proceso_muerto_es_un_error_del_usuario_que_sugiere_bajar_nucleos(
+    tmp_path, deposito, monkeypatch
+):
+    """Antes llegaba crudo, en inglés, como "se rompió el programa". Casi
+    siempre es la memoria: con menos núcleos hay menos procesos."""
+    from nesting_app.jobs import ERRORES_DEL_USUARIO
+
+    monkeypatch.setattr(corredor, "pack", _pool_roto)
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+    salida = tmp_path / "t"
+    salida.mkdir()
+
+    with pytest.raises(ERRORES_DEL_USUARIO) as capturado:
+        corredor.acomodar(fuente, params(), lambda a: True, salida)
+
+    mensaje = str(capturado.value)
+    assert "Núcleos" in mensaje and "memoria" in mensaje
+    assert "terminated abruptly" not in mensaje
+
+
+def test_un_proceso_muerto_llega_al_trabajo_como_error_del_usuario_no_bug(
+    tmp_path, deposito, monkeypatch
+):
+    monkeypatch.setattr(corredor, "pack", _pool_roto)
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+    registro = Registro(tmp_path / "trabajos")
+    try:
+        trabajo = registro.crear(fuente, params(), corredor.acomodar)
+        fin = time.monotonic() + 10
+        while trabajo.estado not in (Estado.LISTO, Estado.ERROR, Estado.CANCELADO):
+            if time.monotonic() > fin:
+                raise AssertionError(f"el trabajo quedó en {trabajo.estado}")
+            time.sleep(0.01)
+
+        assert trabajo.estado == Estado.ERROR
+        assert trabajo.es_bug is False
+        assert "Núcleos" in trabajo.error
+    finally:
+        registro.cerrar()
+
+
 MDF18 = Material("mdf18", 1830.0, 2600.0, grain_tolerance=180.0)
 PLAN_MDF18 = SheetSupply(stock=MDF18.stock_sheet(), material_name=MDF18.name)
 

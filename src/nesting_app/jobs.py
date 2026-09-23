@@ -196,7 +196,9 @@ equivoca fácil para el lado peligroso: culpar al usuario de un bug nuestro.
   no entra en la placa, un nivel de esfuerzo que no existe, una curva que no
   apoya en el plano XY.
 - `OSError` es el entorno del usuario (no se pudo leer o escribir un
-  archivo), no un defecto del programa.
+  archivo), no un defecto del programa. Incluye
+  `corredor.ProcesoDelMotorCaidoError`: un proceso del pool que el sistema
+  cerró, casi siempre por falta de memoria.
 - `ValueError` a secas queda porque los lectores y el pipeline lo usan en
   varios puntos para "tu archivo tiene un problema" sin una subclase
   dedicada.
