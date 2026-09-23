@@ -11,14 +11,18 @@ significa nada. Una sola fuente de verdad para la regla, dos maneras de
 contarla.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import Literal
 
 from nesting.engine.oracle import NestConfig
-from nesting.model.material import Material
+from nesting.model.material import VETA_LIBRE, VETA_RESPETAR, Material
 from nesting.model.sheet import Sheet, SheetSupply
 from nesting.tolerances import DEFAULT_CHAIN_TOL
 
 DEFAULT_ANGLES: tuple[float, ...] = (0.0, 90.0, 180.0, 270.0)
+
+Veta = Literal["respetar", "libre"]
+"""Las dos palabras con que la interfaz y la CLI hablan de la veta."""
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,14 @@ class NestParams:
     resolucion: float = 1.0
     esfuerzo: str = "normal"
     recortes: tuple[Recorte, ...] = ()
+    veta: Veta | None = None
+    """La veta de ESTA corrida. `None` es "la que diga el material".
+
+    Es de la corrida y no del catálogo por lo mismo que los recortes: el
+    catálogo dice lo que el material suele necesitar, y un trabajo concreto
+    -- piezas que no se ven, un fenólico usado de base -- puede no
+    necesitarlo. Ver `tolerancia_de_veta`.
+    """
 
 
 @dataclass(frozen=True)
@@ -133,18 +145,35 @@ def a_config(p: NestParams) -> NestConfig:
     )
 
 
+def tolerancia_de_veta(p: NestParams, material: Material) -> float:
+    """Los grados de tolerancia que valen para esta corrida.
+
+    La única traducción de `NestParams.veta` a grados. `a_supply` y
+    `validar` pasan por acá, para que el plan de placas y la regla de los
+    ángulos no puedan leer la veta de dos maneras distintas.
+    """
+    if p.veta is None:
+        return material.grain_tolerance
+    return VETA_RESPETAR if p.veta == "respetar" else VETA_LIBRE
+
+
 def a_supply(p: NestParams, material: Material) -> SheetSupply:
     """Arma el plan de placas: los recortes primero, la del Material después.
 
     Se ordenan de mayor a menor sin importar en qué orden se cargaron. Meter
     el grande primero evita que una pieza mediana quede varada porque el
     motor gastó el único recorte que la aceptaba en algo chico.
+
+    La veta sale de `tolerancia_de_veta`, no de `material.grain_tolerance`:
+    si la corrida dijo "no importa", un recorte de fenólico tampoco la
+    respeta.
     """
+    tolerancia = tolerancia_de_veta(p, material)
     hojas = [
         Sheet(
             width=recorte.ancho,
             height=recorte.alto,
-            grain_tolerance=material.grain_tolerance,
+            grain_tolerance=tolerancia,
             cross_grain=recorte.veta_cruzada,
             scrap=True,
         )
@@ -153,7 +182,7 @@ def a_supply(p: NestParams, material: Material) -> SheetSupply:
     ]
     hojas.sort(key=lambda hoja: hoja.area, reverse=True)
     return SheetSupply(
-        stock=material.stock_sheet(),
+        stock=replace(material.stock_sheet(), grain_tolerance=tolerancia),
         scraps=tuple(hojas),
         material_name=material.name,
     )

@@ -210,3 +210,60 @@ def test_mensaje_cli_no_se_rompe_con_un_campo_que_no_tiene_flag():
     igual hasta acá."""
     rota = ReglaRota("recorte 1: ancho", "> 0", 0.0)
     assert "recorte 1: ancho" in mensaje_cli(rota)
+
+
+# --- la veta de la corrida -------------------------------------------------
+
+from nesting.model.material import VETA_LIBRE, VETA_RESPETAR
+from nesting.params import tolerancia_de_veta
+
+
+def test_sin_veta_manda_la_del_material():
+    assert tolerancia_de_veta(NestParams(material="mdf18"), MDF) == 180.0
+    assert tolerancia_de_veta(NestParams(material="fenolico18"), FENOLICO) == 5.0
+
+
+@pytest.mark.parametrize("material", [MDF, FENOLICO])
+def test_respetar_pisa_a_cualquier_material(material):
+    params = NestParams(material=material.name, veta="respetar")
+    assert tolerancia_de_veta(params, material) == VETA_RESPETAR
+
+
+@pytest.mark.parametrize("material", [MDF, FENOLICO])
+def test_libre_pisa_a_cualquier_material(material):
+    params = NestParams(material=material.name, veta="libre")
+    assert tolerancia_de_veta(params, material) == VETA_LIBRE
+
+
+def test_la_veta_de_la_corrida_llega_a_la_placa_del_material():
+    params = NestParams(material="fenolico18", veta="libre")
+    assert a_supply(params, FENOLICO).stock.grain_tolerance == VETA_LIBRE
+
+
+def test_la_veta_de_la_corrida_llega_a_los_recortes():
+    params = NestParams(
+        material="mdf18", veta="respetar", recortes=(Recorte(600.0, 800.0),)
+    )
+    plan = a_supply(params, MDF)
+
+    assert plan.scraps[0].grain_tolerance == VETA_RESPETAR
+    assert plan.stock.grain_tolerance == VETA_RESPETAR
+
+
+def test_sin_veta_el_plan_queda_igual_que_antes():
+    """El contrato de todo el plan: sin tocar la veta, nada cambia."""
+    params = NestParams(material="fenolico18", recortes=(Recorte(600.0, 800.0),))
+    plan = a_supply(params, FENOLICO)
+
+    assert plan.stock == FENOLICO.stock_sheet()
+    assert plan.scraps[0].grain_tolerance == FENOLICO.grain_tolerance
+
+
+def test_las_constantes_de_veta_viven_en_el_modelo():
+    """El motor no puede importar la interfaz, así que las constantes que
+    usa `tolerancia_de_veta` tienen que vivir de este lado. La interfaz las
+    reexporta para no romper a quien ya las usaba."""
+    from nesting_app import materials_store
+
+    assert materials_store.VETA_LIBRE is VETA_LIBRE
+    assert materials_store.VETA_RESPETAR is VETA_RESPETAR

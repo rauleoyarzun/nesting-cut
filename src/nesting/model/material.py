@@ -11,6 +11,26 @@ import yaml
 
 from nesting.model.sheet import Sheet
 
+VETA_LIBRE = 180.0
+"""La pieza gira libre. Típico del MDF.
+
+Por convención del catálogo, cualquier valor de 90 o más equivale a rotación
+libre; 180 es el que usa el catálogo que trae el programa.
+
+Vive acá y no en `nesting_app.materials_store`, donde nació, porque
+`nesting.params.tolerancia_de_veta` la necesita y el motor no puede importar
+la interfaz sin invertir la única dependencia que sostiene toda la
+arquitectura.
+"""
+
+VETA_RESPETAR = 5.0
+"""Sólo 0 y 180 grados: corte cruzado bloqueado. Multilaminado, fenólico.
+
+La pantalla repite este número como `TOLERANCIA_VETA` en `app.js`, para
+saber sin preguntarle al servidor qué ángulos choca la veta. Si cambia acá,
+cambia allá.
+"""
+
 
 def _default_materials_path() -> Path:
     """Dónde está el catálogo que viene con el programa.

@@ -10,18 +10,13 @@ from pathlib import Path
 
 import yaml
 
-from nesting.model.material import Material, load_materials
+from nesting.model.material import (  # noqa: F401 - reexportadas: api.py y los tests las leen de acá
+    VETA_LIBRE,
+    VETA_RESPETAR,
+    Material,
+    load_materials,
+)
 from nesting_app import rutas
-
-VETA_LIBRE = 180.0
-"""La pieza gira libre. Típico del MDF.
-
-Por convención del catálogo, cualquier valor de 90 o más equivale a rotación
-libre; 180 es el que usa el catálogo que trae el programa.
-"""
-
-VETA_RESPETAR = 5.0
-"""Sólo 0 y 180 grados: corte cruzado bloqueado. Multilaminado, fenólico."""
 
 
 class MaterialDuplicadoError(ValueError):
