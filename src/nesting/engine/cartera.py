@@ -738,6 +738,12 @@ def _init_worker(factory, cancel, best, reports) -> None:
     proceso, y la fábrica, pasada una sola vez, conserva su `MaskCache` entre
     todas las variantes que ese proceso evalúe.
     """
+    # Un proceso que puso algo en una `multiprocessing.Queue` espera, al
+    # salir, a que su hilo alimentador lo pase todo al pipe. Si el principal
+    # dejó de leer (cancelaron) y el pipe se llenó, esa espera no termina y
+    # `shutdown` se cuelga con el proceso vivo. Perder las últimas cuentas de
+    # consultas al cerrar no le hace nada a nadie.
+    reports.cancel_join_thread()
     _worker.update(factory=factory, cancel=cancel, best=best, reports=reports)
 
 
@@ -785,6 +791,12 @@ class _Evaluator:
         self._cancel = None
         self._best = None
         self._reports = None
+        # Acá y no al armar el pool: `run_portfolio` crea el evaluador antes
+        # de la base, así que una fábrica que no viaja se rechaza antes de
+        # gastar una pasada entera. Rápido no prueba variantes, nunca arma el
+        # pool, y no tiene por qué pedirle nada a su fábrica.
+        if self._processes > 1 and EFFORT_BATCHES.get(config.effort, 0) > 0:
+            self._check_factory_travels()
 
     def __enter__(self) -> "_Evaluator":
         return self
@@ -822,7 +834,7 @@ class _Evaluator:
                 mejor = min(mejor, outcome.cost.placas_nuevas)
         return outcomes
 
-    def _start_pool(self) -> None:
+    def _check_factory_travels(self) -> None:
         try:
             pickle.dumps(self._factory)
         except Exception as error:
@@ -833,6 +845,8 @@ class _Evaluator:
                 "nesting.engine.raster.oracle.RasterOracleFactory, una clase, o "
                 "NestConfig(workers=1)."
             ) from error
+
+    def _start_pool(self) -> None:
         self._cancel = self._context.Event()
         self._best = self._context.Value("q", 0)
         self._reports = self._context.Queue()
@@ -924,6 +938,9 @@ def run_portfolio(
             f"use uno de {', '.join(EFFORT_BATCHES)}"
         )
 
+    # Antes de la base: si la fábrica no puede viajar a los procesos, que se
+    # sepa ya y no después de una pasada entera (ver `_Evaluator`).
+    evaluator = _Evaluator(config, oracle_factory)
     started = time.perf_counter()
     lower = cota_minima(parts, supply, config.margin)
     source = VariantSource(parts, supply, config)
@@ -942,7 +959,7 @@ def run_portfolio(
     winner = base
     evaluated = [base]
 
-    with _Evaluator(config, oracle_factory) as evaluator:
+    with evaluator:
         for number in range(1, EFFORT_BATCHES[config.effort] + 1):
             if lower is not None and best.cost.placas_nuevas <= lower:
                 break

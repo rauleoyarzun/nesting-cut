@@ -55,8 +55,8 @@ def _new_raster_factory():
     `RasterOracleFactory` keeps this a plain `Callable[[], Oracle]` from
     `pack()`'s point of view, so `pack()` itself stays engine-agnostic, and
     unlike a closure it can be sent to the portfolio's worker processes.
-    Built fresh per file so the
-    cache doesn't grow across unrelated files for the rest of the bench run.
+    Built fresh per file so the cache doesn't grow across unrelated files
+    for the rest of the bench run.
     """
     return RasterOracleFactory()
 
