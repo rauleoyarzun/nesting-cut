@@ -30,12 +30,21 @@ Un milímetro cuadrado es nada para una fresa (una tira de 1 mm de ancho por
 trasladar, que da del orden de 1e-9 mm².
 """
 
-FINGERPRINT_DECIMALS = 2
-"""La huella redondea a 0,01 mm (y mm²).
+FINGERPRINT_AREA_MM2 = 1.0
+FINGERPRINT_PERIMETER_MM = 0.5
+FINGERPRINT_RELATIVE = 1e-4
+"""Cuánto pueden diferir dos huellas y seguir siendo candidatas a iguales.
 
-Es un filtro, no el juez: dos copias cuya área cayera justo a los dos lados
-de un redondeo quedarían en clases distintas, y el efecto sería sólo que no
-se emparejan -- nunca un acomodo equivocado. El juez es `congruence`.
+Área (neta y de cada agujero): hasta `max(FINGERPRINT_AREA_MM2,
+FINGERPRINT_RELATIVE * área)`. Perímetro: hasta `max(FINGERPRINT_PERIMETER_MM,
+FINGERPRINT_RELATIVE * perímetro)`.
+
+Antes la huella se redondeaba a 0,01 y se agrupaba por igualdad exacta, y
+eso dependía de qué lado de un redondeo caía cada copia. El aplanado de
+las curvas no da los mismos vértices en todas: los seis marcos de la
+banqueta alta miden 97147,44, ,43, ,33 y ,32 mm², y quedaban en clases de 2,
+1, 2 y 1. La huella es un filtro, no el juez: dejar pasar de más sólo cuesta
+una llamada a `congruence`, que sigue siendo quien decide.
 """
 
 
@@ -55,18 +64,39 @@ class Clase:
     members: tuple[Member, ...]
 
 
-def fingerprint(part: Part) -> tuple:
-    """Área neta, perímetro, cantidad de agujeros y el área de cada uno.
+def fingerprint(part: Part) -> tuple[float, float, int, tuple[float, ...]]:
+    """Área neta, perímetro, cantidad de agujeros y el área de cada uno, sin redondear.
 
-    Descarta casi todo sin geometría exacta: dos piezas con huellas distintas
-    no pueden ser congruentes, así que ni se comparan.
+    Descarta casi todo sin geometría exacta: dos piezas cuyas huellas no
+    se parecen (`same_fingerprint`) no pueden ser congruentes, así que ni se
+    comparan.
     """
     polygon = placed_polygon(part, Transform.identity())
     return (
-        round(polygon.area, FINGERPRINT_DECIMALS),
-        round(polygon.exterior.length, FINGERPRINT_DECIMALS),
+        polygon.area,
+        polygon.exterior.length,
         len(part.holes),
-        tuple(sorted(round(Polygon(h).area, FINGERPRINT_DECIMALS) for h in part.holes)),
+        tuple(sorted(Polygon(h).area for h in part.holes)),
+    )
+
+
+def _close(a: float, b: float, absolute: float) -> bool:
+    return abs(a - b) <= max(absolute, FINGERPRINT_RELATIVE * max(abs(a), abs(b)))
+
+
+def same_fingerprint(a: tuple, b: tuple) -> bool:
+    """Si dos huellas se parecen lo bastante como para comparar las piezas.
+
+    Misma cantidad de agujeros, y área, perímetro y cada agujero (de menor
+    a mayor) dentro de la tolerancia de `FINGERPRINT_RELATIVE`.
+    """
+    area_a, perimeter_a, holes_a, hole_areas_a = a
+    area_b, perimeter_b, holes_b, hole_areas_b = b
+    return (
+        holes_a == holes_b
+        and _close(area_a, area_b, FINGERPRINT_AREA_MM2)
+        and _close(perimeter_a, perimeter_b, FINGERPRINT_PERIMETER_MM)
+        and all(_close(x, y, FINGERPRINT_AREA_MM2) for x, y in zip(hole_areas_a, hole_areas_b))
     )
 
 
@@ -111,19 +141,22 @@ def find_classes(
     y el espejo. Por eso con la veta respetada una copia girada 90° queda en
     una clase propia, y sin espejo una espejada también.
     """
-    buckets: dict[tuple, list[tuple[Part, list[Member]]]] = {}
-    order: list[tuple[Part, list[Member]]] = []
+    # Cada clase con la huella de su representante, en el orden en que
+    # aparecieron. Una pieza se prueba contra las clases en ese orden y se
+    # queda en la primera que la acepta: el resultado depende sólo del orden
+    # de `parts`.
+    classes: list[tuple[Part, tuple, list[Member]]] = []
 
     for part in parts:
-        bucket = buckets.setdefault(fingerprint(part), [])
-        for representative, members in bucket:
+        huella = fingerprint(part)
+        for representative, representative_huella, members in classes:
+            if not same_fingerprint(huella, representative_huella):
+                continue
             g = congruence(part, representative, orientations)
             if g is not None:
                 members.append(Member(part.id, g))
                 break
         else:
-            entry = (part, [Member(part.id, Transform.identity())])
-            bucket.append(entry)
-            order.append(entry)
+            classes.append((part, huella, [Member(part.id, Transform.identity())]))
 
-    return [Clase(representative, tuple(members)) for representative, members in order]
+    return [Clase(representative, tuple(members)) for representative, _, members in classes]
