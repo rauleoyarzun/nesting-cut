@@ -1,5 +1,5 @@
 """Las pruebas que importan: seis marcos que sólo entran encastrados de a
-pares, y con dos tipos de par distintos."""
+pares, y la banqueta alta, que entra en una placa libre."""
 
 import itertools
 from pathlib import Path
@@ -18,10 +18,12 @@ from nesting.model.sheet import Sheet, SheetSupply
 
 # --- el caso sintético ------------------------------------------------------
 #
-# Medido al escribir el plan (ver la Tarea 9 del plan de pares y cartera):
-# sin pares, 2 placas; ninguna combinación de tres pares de UN solo tipo
-# entra en una; dos mezclas sí, y la de puesto 1 cae en la tanda de normal
-# con dos núcleos.
+# Sin pares, 2 placas; con pares, 1. Entre las combinaciones de TRES pares,
+# ninguna de un solo tipo entra en una placa y algunas mezclas sí (la
+# prueba lenta lo confirma). Eso no quiere decir que la ganadora sea una
+# mezcla: con la tanda mínima de verdad (12) gana también "dos pares de un
+# tipo y dos eles sueltas", que entra en una. Lo garantizado es que sin
+# pares no se puede y con pares sí.
 
 ELE = ((0.0, 0.0), (600.0, 0.0), (600.0, 110.0), (110.0, 110.0), (110.0, 300.0), (0.0, 300.0))
 PLACA = Sheet(1200.0, 690.0, grain_tolerance=180.0)
@@ -40,7 +42,7 @@ def config(**cambios):
     return NestConfig(**base)
 
 
-def test_seis_eles_entran_en_una_placa_solo_con_pares_de_dos_tipos():
+def test_seis_eles_entran_en_una_placa_solo_con_pares():
     piezas = seis()
 
     rapido = run_portfolio(piezas, PLAN, config(effort="rapido"), RasterOracleFactory())
@@ -51,17 +53,19 @@ def test_seis_eles_entran_en_una_placa_solo_con_pares_de_dos_tipos():
 
     assert resultado.sheets_used == 1
     assert normal.lower_bound == 1, "y entonces se puede decir que no se puede con menos"
-    tipos = {tipo for _, tipo in normal.winner.pair_types}
-    assert len(tipos) >= 2, f"ganó una combinación de un solo tipo: {normal.winner.pair_types}"
+    assert normal.winner.kind == "pares", normal.winner
     assert sorted(p.part_id for p in resultado.placements) == list(range(6))
     assert verify(piezas, resultado.placements, resultado.sheets, sep=8.0, margin=5.0) == []
 
 
 @pytest.mark.lento
 def test_el_caso_sintetico_necesita_mezclar_tipos():
-    """La confirmación de que el caso de arriba es la trampa que dice ser, y
-    no uno que un tipo solo ya resuelve: se prueban las 56 combinaciones de
-    tres pares, cada una con una pasada golosa. Tarda del orden de 15 s."""
+    """La confirmación de que el caso de arriba es una trampa para los pares
+    de un solo tipo, contada SÓLO sobre combinaciones de tres pares (las
+    seis eles emparejadas): se prueban las 56, cada una con una pasada
+    golosa, y ninguna de un solo tipo entra en una placa mientras alguna
+    mezcla sí. No dice nada de combinaciones con eles sueltas: dos pares de
+    un tipo y dos sueltas sí entran. Tarda del orden de 15 s."""
     cfg = config(effort="rapido")
     choices = orientations(PLACA, cfg)
     tipos = find_pair_types(seis()[0], b_orientations(choices, False), choices, cfg,
@@ -110,10 +114,12 @@ def piezas_de_la_banqueta():
 
 def config_banqueta():
     """8 posiciones, sep 8, borde 5, 1 mm/px, normal, con `workers = 4` a
-    propósito: la combinación que gana sale octava, y es `MIN_BATCH` el que
-    garantiza que una máquina de 4 núcleos también la pruebe. Las pruebas que
-    usan esto llevan `@pytest.mark.minimo_real`; sin la marca, el fixture de
-    `tests/conftest.py` bajaría la tanda a 4 y la banqueta daría 2 placas."""
+    propósito: con el orden por placas previstas la combinación que gana
+    sale entre las primeras (medido: la tercera, dos diagonales y dos
+    marcos sueltos), y es `MIN_BATCH` el que hace que la tanda y el
+    resultado sean los mismos en una máquina de 4 núcleos que en una de 12.
+    La prueba de la placa libre lleva `@pytest.mark.minimo_real` para correr
+    con esa tanda de verdad y no con la del fixture de `tests/conftest.py`."""
     return NestConfig(sep=8.0, margin=5.0, angles=tuple(i * 45.0 for i in range(8)),
                       mirror=True, resolution=1.0, effort="normal", seed=0, workers=4)
 

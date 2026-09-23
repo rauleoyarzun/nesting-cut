@@ -518,6 +518,28 @@ def apagar() -> None:
         _hilo = None
 
 
+class ProcesosColgados(RuntimeError):
+    """La corrida con procesos no terminó a tiempo: puede quedar trabajo en el pool."""
+
+
+def _terminar_hijos(espera: float = 5.0) -> None:
+    """Termina los procesos hijos que queden vivos, y los mata si no terminan.
+
+    Hace falta para poder salir: al terminar el intérprete,
+    `concurrent.futures` espera al hilo que administra el pool, y ése espera
+    a los procesos que tienen trabajo en curso. Un proceso colgado cuelga la
+    salida, y que el hilo que corría la cartera sea daemon no cambia nada.
+    """
+    hijos = multiprocessing.active_children()
+    for hijo in hijos:
+        hijo.terminate()
+    for hijo in hijos:
+        hijo.join(espera)
+        if hijo.is_alive():
+            hijo.kill()
+            hijo.join(espera)
+
+
 def _prueba_de_procesos(timeout: float = 120.0) -> None:
     """Una corrida de la cartera con dos procesos, con tiempo límite.
 
@@ -555,7 +577,8 @@ def _prueba_de_procesos(timeout: float = 120.0) -> None:
     hilo.start()
     hilo.join(timeout)
     if hilo.is_alive():
-        raise RuntimeError(
+        _terminar_hijos()
+        raise ProcesosColgados(
             f"la corrida con 2 procesos no terminó en {timeout:.0f} s: "
             "¿falta multiprocessing.freeze_support() al principio de main?"
         )
@@ -596,12 +619,24 @@ def _autotest() -> int:
         _prueba_de_procesos()
     except Exception as error:  # noqa: BLE001 - es el punto del autotest
         print(f"autotest FALLÓ: {error}", file=sys.stderr)
-        return 1
+        colgada = isinstance(error, ProcesosColgados)
+    else:
+        colgada = None
     finally:
         registro.cerrar()
         apagar()
-    print("autotest ok")
-    return 0
+    if colgada is None:
+        print("autotest ok")
+        return 0
+    if colgada:
+        # Los hijos ya se terminaron (`_terminar_hijos`), pero si algo del
+        # pool quedara esperando, la salida normal del intérprete se colgaría
+        # y con ella `construir.sh`, que no le pone tiempo límite. Salida
+        # dura, sólo en este camino: el error ya está impreso.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(1)
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:

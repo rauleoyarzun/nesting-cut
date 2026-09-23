@@ -233,3 +233,23 @@ def test_los_casos_fijos_se_buscan_en_la_carpeta_del_banco(tmp_path, monkeypatch
 
     assert run_bench.main([]) == 0
     assert "banqueta-alta.ai        (falta en bench/files: se saltea)" in capsys.readouterr().out
+
+
+def test_un_caso_fijo_ilegible_da_una_fila_de_error_y_no_tira_la_corrida(
+    tmp_path, monkeypatch, capsys
+):
+    """Igual que un `*.dxf` roto: una fila ERROR, cuenta en los fallidos, y
+    el banco sale con error sin haber explotado. Una carpeta con el nombre
+    del archivo es un `OSError` al leerlo, como un archivo sin permisos."""
+    import run_bench
+
+    write_sample(tmp_path / "muestra.dxf")
+    (tmp_path / "banqueta-alta.ai").mkdir()
+    monkeypatch.setattr(run_bench, "FILES_DIR", tmp_path)
+
+    exit_code = run_bench.main([])
+    salida = capsys.readouterr()
+
+    assert exit_code != 0
+    assert "banqueta-alta.ai" in salida.out and "ERROR" in salida.out
+    assert "1 de" in salida.err

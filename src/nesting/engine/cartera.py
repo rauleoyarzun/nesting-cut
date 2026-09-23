@@ -175,19 +175,20 @@ MIN_BATCH = 12
 """Cuántas variantes tiene, como mínimo, cada tanda, aunque haya menos núcleos.
 
 Decisión del usuario (2026-09-22): el resultado no puede depender de la
-máquina. Sobre la banqueta alta, la combinación que gana sale octava; con
-tandas de `N` variantes, una computadora de 4 núcleos no la encontraba ni en
-lento (tres tandas de 2 con dos núcleos libres son seis). Con este mínimo,
-toda máquina de hasta 12 núcleos prueba exactamente las mismas variantes y
-da el mismo resultado; una de 4 tarda unas tres veces más en normal, y el
-tiempo estimado lo avisa antes de arrancar. Con más de 12 núcleos la tanda
+máquina. Con tandas de `N` variantes, lo que se prueba dependía de cuántos
+núcleos había: cuando se decidió esto, la combinación que ganaba en la
+banqueta alta salía octava y una computadora de 4 núcleos no la encontraba
+ni en lento. Con el orden por placas previstas (`_combinations`) hoy sale
+tercera, pero la regla es la misma: con este mínimo, toda máquina de hasta
+12 núcleos prueba exactamente las mismas variantes y da el mismo resultado;
+una de 4 tarda unas tres veces más en normal, y el tiempo estimado lo avisa
+antes de arrancar. Con más de 12 núcleos la tanda
 crece a `N`: más núcleos exploran más, en el mismo tiempo.
 
 Los tests lo bajan a 1 con el fixture `_tanda_minima_de_uno` de
 `tests/conftest.py`, para que las cuentas chicas de siempre sigan valiendo;
 los que prueban el mínimo de verdad llevan `@pytest.mark.minimo_real`.
 """
-
 
 PREDICTION_POOL_FACTOR = 8
 PREDICTION_POOL_MIN = 400
@@ -196,10 +197,12 @@ PREDICTION_POOL_MIN = 400
 `_combinations` saca `max(PREDICTION_POOL_FACTOR * pedidas, PREDICTION_POOL_MIN)`
 por costo, les calcula las placas previstas (`estantes.predicted_sheets`) y
 las reordena por `(placas previstas, costo, tupla)`. En la banqueta alta la
-primera combinación que entra en una placa estaba decimotercera por área:
+primera combinación que entra en una placa quedaba fuera de las doce más
+baratas:
 el colchón tiene que alcanzar para que las que entran aparezcan aunque
 haya muchas imposibles más baratas.
 """
+
 
 def batch_size(workers: int) -> int:
     """Cuántas variantes tiene cada tanda: `N`, pero nunca menos de `MIN_BATCH`."""
@@ -407,7 +410,10 @@ class VariantSource:
         self._by_area = sorted(parts, key=lambda p: p.area, reverse=True)
         self._rng = random.Random(config.seed)
         self._plan: _PairPlan | None = None
-        self._shelf_setup: tuple[tuple[float, float], bool, tuple[tuple[float, float], ...]] | None = None
+        # (área útil, si se puede girar 90°, cajas de las piezas no emparejadas)
+        self._shelf_setup: (
+            tuple[tuple[float, float], bool, tuple[tuple[float, float], ...]] | None
+        ) = None
         self._used: set[tuple[tuple[int, ...], ...]] = set()
         self._next_index = 1
         self._next_id = max((p.id for p in parts), default=-1) + 1
@@ -490,7 +496,9 @@ class VariantSource:
                 for cost_b, combo_b in per_class[1]
                 if combo_a or combo_b
             )[:pool]
-        ranked = sorted(costed, key=lambda item: (self.predicted_sheets(item[1]), item[0], item[1]))
+        ranked = sorted(
+            costed, key=lambda item: (self.predicted_sheets(item[1]), item[0], item[1])
+        )
         fresh = [combo for _, combo in ranked if combo not in self._used][:size]
         self._used.update(fresh)
         return fresh
@@ -521,7 +529,8 @@ class VariantSource:
         boxes = list(others)
         for clase, types, choice in zip(plan.classes, plan.types, combo):
             boxes.extend((types[t].width, types[t].height) for t in choice)
-            boxes.extend([_box_size(clase.representative)] * (len(clase.members) - 2 * len(choice)))
+            loose = len(clase.members) - 2 * len(choice)
+            boxes.extend([_box_size(clase.representative)] * loose)
         return estantes.predicted_sheets(boxes, usable, self._config.sep, can_turn)
 
     def _pair_variant(self, combo: tuple[tuple[int, ...], ...]) -> Variant:

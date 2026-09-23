@@ -296,7 +296,14 @@ def main(argv: list[str] | None = None) -> int:
     for caso in CASOS_FIJOS:
         # `FILES_DIR` explícito: el valor por omisión de `run_fixed` quedó
         # fijado al definirla, y así un `FILES_DIR` cambiado también vale acá.
-        result = run_fixed(caso, FILES_DIR)
+        try:
+            result = run_fixed(caso, FILES_DIR)
+        except FILE_ERRORS as error:
+            # Como en el barrido de arriba: un archivo sucio es una fila, no
+            # el fin de la corrida.
+            failed += 1
+            print(f"{caso.archivo:<24}{'ERROR':<10}{type(error).__name__}: {error}")
+            continue
         if result is None:
             print(f"{caso.archivo:<24}(falta en bench/files: se saltea)")
             continue
@@ -311,7 +318,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if failed:
         print(
-            f"\n{failed} de {len(files)} archivo(s) no se pudieron medir "
+            f"\n{failed} de {len(files) + len(CASOS_FIJOS)} archivo(s) no se pudieron medir "
             f"(ver las filas ERROR arriba).",
             file=sys.stderr,
         )

@@ -85,20 +85,21 @@ candidatos superen `2 * sep` y `find_pair_types` no encuentre ningún tipo.
 
 La corrección desliza B, en línea recta hacia A, hasta dejarlo a
 `sep + SLIDE_MARGIN_MM` -- sólo si el candidato está dentro de
-`slide_window`, lo que el raster pudo haber dejado de más. La prueba de que esto no lo acerca de más: si
-`gap = a.distance(b)` es la distancia real (el mínimo sobre TODOS los pares
-de puntos de A y B) y se mueve B rígidamente una distancia δ a lo largo de
-la recta que une los dos puntos más cercanos, la desigualdad triangular dice
-que CUALQUIER par de puntos, tras el movimiento, queda a una distancia de al
-menos `distancia_original - δ`; y como toda distancia original ya era
-`>= gap`, la nueva distancia mínima (que es lo que mide `a.distance(b)`
-después) queda `>= gap - δ`. Eligiendo `δ = gap - (sep + SLIDE_MARGIN_MM)`
--- sólo cuando da positivo, o sea cuando `gap` ya se pasó del margen -- esa
-cota es exactamente `sep + SLIDE_MARGIN_MM`, así que el par nunca puede
-quedar más cerca que `sep`. El margen de 0.01 mm es para no caer justo en el
-borde `gap == sep` por ruido de coma flotante, igual que hace `GAP_EPS` del
-lado de abajo; el chequeo exacto (`sep - GAP_EPS <= gap < 2 * sep`) sigue
-siendo el árbitro después de deslizar.
+`slide_window`, lo que el raster pudo haber dejado de más. La prueba de que
+esto no lo acerca de más: si `gap = a.distance(b)` es la distancia real (el
+mínimo sobre TODOS los pares de puntos de A y B) y se mueve B rígidamente
+una distancia δ a lo largo de la recta que une los dos puntos más cercanos,
+la desigualdad triangular dice que CUALQUIER par de puntos, tras el
+movimiento, queda a una distancia de al menos `distancia_original - δ`; y
+como toda distancia original ya era `>= gap`, la nueva distancia mínima (que
+es lo que mide `a.distance(b)` después) queda `>= gap - δ`. Eligiendo
+`δ = gap - (sep + SLIDE_MARGIN_MM)` -- sólo cuando da positivo, o sea cuando
+`gap` ya se pasó del margen -- esa cota es exactamente
+`sep + SLIDE_MARGIN_MM`, así que el par nunca puede quedar más cerca que
+`sep`. El margen de 0.01 mm es para no caer justo en el borde `gap == sep`
+por ruido de coma flotante, igual que hace `GAP_EPS` del lado de abajo; el
+chequeo exacto (`sep - GAP_EPS <= gap < 2 * sep`) sigue siendo el árbitro
+después de deslizar.
 """
 
 

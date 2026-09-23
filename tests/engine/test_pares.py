@@ -92,7 +92,6 @@ def test_encuentra_tipos_con_separaciones_chicas_frente_a_la_resolucion():
                 assert sep <= gap < sep + 0.5, (sep, res, gap)
 
 
-
 def _hueco_antes_de_acercar(tipo, part, config, cache):
     """El hueco exacto entre A y B donde el raster dejó a B, antes de acercarlo."""
     angle, mirror = tipo.orientation
@@ -120,7 +119,8 @@ def test_solo_se_acerca_lo_que_el_raster_pudo_haber_dejado_de_mas():
             for tipo in find_pair_types(ele(), b_orientations(choices, False), choices,
                                         config, (1190.0, 680.0), 6, cache):
                 hueco = _hueco_antes_de_acercar(tipo, ele(), config, cache)
-                assert hueco < sep + slide_window(sep, res), (sep, res, hueco, tipo.width, tipo.height)
+                assert hueco < sep + slide_window(sep, res), (
+                    sep, res, hueco, tipo.width, tipo.height)
 
 
 def test_la_caja_con_que_se_ordena_es_la_del_par_de_verdad():

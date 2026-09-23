@@ -715,3 +715,75 @@ def test_la_corrida_con_dos_procesos_no_deja_procesos_vivos():
 
     desktop._prueba_de_procesos()
     assert multiprocessing.active_children() == []
+
+
+_AUTOTEST_COLGADO = r'''
+"""Un --autotest cuyo pool se cuelga: los procesos del pool duermen para siempre."""
+import functools
+import multiprocessing
+import os
+import sys
+import time
+from pathlib import Path
+
+CARPETA = Path(sys.argv[1])
+
+
+class Dormilona:
+    """En el principal, la fábrica de siempre; en un proceso del pool, se
+    anota y duerme para siempre, como un proceso que nunca termina."""
+
+    def __call__(self):
+        from nesting.engine.raster.oracle import RasterOracle
+
+        if multiprocessing.parent_process() is not None:
+            (CARPETA / f"hijo-{os.getpid()}").write_text("")
+            while True:
+                time.sleep(3600)
+        return RasterOracle()
+
+
+if __name__ == "__main__":
+    from nesting.engine.raster import oracle
+    from nesting_app import desktop, rutas
+
+    rutas._base_de_datos = lambda: CARPETA / "datos"
+    desktop.motor_de_ventana = lambda: None
+    oracle.RasterOracleFactory = Dormilona
+    desktop._prueba_de_procesos = functools.partial(desktop._prueba_de_procesos, timeout=2.0)
+    raise SystemExit(desktop.main(["--autotest"]))
+'''
+
+
+def test_un_autotest_con_el_pool_colgado_termina_y_no_deja_procesos(tmp_path):
+    """Con el pool colgado, el autotest tiene que salir con error, y salir de
+    verdad: `construir.sh` lo corre sin tiempo límite, y al terminar el
+    intérprete `concurrent.futures` espera a los procesos que tienen trabajo
+    en curso. Un hilo daemon no alcanza."""
+    import os
+    import subprocess
+
+    guion = tmp_path / "colgado.py"
+    guion.write_text(_AUTOTEST_COLGADO)
+    try:
+        corrida = subprocess.run([sys.executable, str(guion), str(tmp_path)],
+                                 capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        corrida = None
+    hijos = [int(p.name.split("-")[1]) for p in tmp_path.glob("hijo-*")]
+
+    def vivo(pid):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    vivos = [pid for pid in hijos if vivo(pid)]
+    for pid in vivos:
+        os.kill(pid, 9)
+    assert corrida is not None, "el autotest no terminó en 15 s"
+    assert hijos, f"el pool no llegó a arrancar: {corrida.stderr}"
+    assert corrida.returncode != 0
+    assert "autotest FALLÓ" in corrida.stderr and "2 procesos" in corrida.stderr
+    assert vivos == [], "quedaron procesos del pool vivos"
