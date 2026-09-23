@@ -269,3 +269,50 @@ def test_el_json_del_trabajo_trae_el_reparto_de_placas():
         carpeta=Path("/tmp"), recortes_usados=2,
     )
     assert resultado.recortes_usados == 2
+
+
+def test_la_veta_llega_al_params():
+    from nesting_app.api import ParamsEntrada
+
+    assert ParamsEntrada(material="mdf18", veta="respetar").a_params().veta == "respetar"
+
+
+def test_sin_veta_el_params_la_deja_en_manos_del_material():
+    from nesting_app.api import ParamsEntrada
+
+    assert ParamsEntrada(material="mdf18").a_params().veta is None
+
+
+def test_una_veta_desconocida_se_rechaza(cliente, tmp_path):
+    fuente_id = fuente_de(cliente, tmp_path)
+
+    respuesta = cliente.post("/api/trabajos", json={
+        "fuente_id": fuente_id, "params": {"material": "mdf18", "veta": "cruzada"},
+    })
+
+    assert respuesta.status_code == 422
+
+
+def test_angulos_que_la_veta_deja_vacios_se_rechazan_en_su_campo(cliente, tmp_path):
+    """La pantalla ya lo bloquea con el cartel; esto es la red de abajo, para
+    un pedido armado a mano o una pantalla vieja."""
+    fuente_id = fuente_de(cliente, tmp_path)
+
+    respuesta = cliente.post("/api/trabajos", json={
+        "fuente_id": fuente_id,
+        "params": {"material": "fenolico18", "angulos": [90.0]},
+    })
+
+    assert respuesta.status_code == 422
+    assert respuesta.json()["detail"]["campo"] == "angulos"
+
+
+def test_con_la_veta_libre_el_mismo_pedido_arranca(cliente, tmp_path):
+    fuente_id = fuente_de(cliente, tmp_path)
+
+    respuesta = cliente.post("/api/trabajos", json={
+        "fuente_id": fuente_id,
+        "params": {"material": "fenolico18", "angulos": [90.0], "veta": "libre"},
+    })
+
+    assert respuesta.status_code == 200

@@ -110,6 +110,7 @@ class ParamsEntrada(BaseModel):
     resolucion: float = 1.0
     esfuerzo: str = "normal"
     recortes: list[RecorteEntrada] = Field(default_factory=list)
+    veta: Literal["respetar", "libre"] | None = None
 
     def a_params(self) -> NestParams:
         return NestParams(
@@ -124,6 +125,7 @@ class ParamsEntrada(BaseModel):
             resolucion=self.resolucion,
             esfuerzo=self.esfuerzo,
             recortes=tuple(r.a_recorte() for r in self.recortes),
+            veta=self.veta,
         )
 
 
@@ -355,7 +357,17 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
 
         params = pedido.params.a_params()
         try:
-            validar(params)
+            materiales = materials_store.leer()
+        except ValueError as error:
+            raise HTTPException(status_code=500, detail=str(error)) from error
+        material = materiales.get(params.material)
+
+        try:
+            # Con el material, si existe: es lo que deja mirar la regla de la
+            # veta. Si no existe, se valida lo demás igual y el 404 sale
+            # abajo, como antes -- un pedido con dos errores sigue
+            # señalando primero el mismo.
+            validar(params, material)
         except ParamsInvalidosError as error:
             # El campo va aparte del mensaje para que la interfaz pueda poner
             # el texto justo debajo del control que lo tiene mal.
@@ -368,11 +380,7 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
                 },
             ) from error
 
-        try:
-            materiales = materials_store.leer()
-        except ValueError as error:
-            raise HTTPException(status_code=500, detail=str(error)) from error
-        if params.material not in materiales:
+        if material is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"no existe ningún material llamado {params.material!r}",
