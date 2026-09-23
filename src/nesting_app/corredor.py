@@ -37,7 +37,7 @@ NOMBRE_DXF = "salida.dxf"
 NOMBRE_PREVIEW = "preview.png"
 NOMBRE_DIAGNOSTICO = "diagnostico.png"
 
-FACTOR_LLENO = 1.5
+FACTOR_LLENO = 1.42
 """Cuánto más cara es, en promedio, una consulta de la corrida que la de la prueba.
 
 La prueba de `estimar_segundos` pregunta sobre una placa VACÍA, y una placa
@@ -47,9 +47,36 @@ que la placa se llena, cada consulta verifica más candidatos contra más
 vecinos. Este factor lleva el costo de la prueba al costo medio de una
 consulta de la corrida.
 
-PROVISIONAL. 1.5 es un valor de arranque para poder escribir los tests. La
-calibración (`bench/calibrate.py --factor-lleno`) lo reemplaza por el
-medido, con las mediciones acá mismo.
+MEDIDO EL 2026-09-23 con `bench/calibrate.py --factor-lleno` sobre
+`bench/files/*` (multilam18, sep 8, borde 5, 1 mm/px, esfuerzo normal), en
+la máquina del taller:
+
+    FACTOR_LLENO  (multilam18, veta 5 grados, 4 posiciones con espejo, sep 8, borde 5, 1 mm/px, esfuerzo normal, --copias 1)
+    archivo                      piezas orient. previstas  reales s/c prueba  s/c real  factor  s reales
+    ----------------------------------------------------------------------------------------------------
+    muestra.dxf                      12       4       192     192     0.0232    0.0537    2.32      10.3
+    banqueta final raulo.ai          40       4      1040     640     0.0564    0.0788    1.40      50.5
+    banqueta-alta.ai                 57       4      1496     928     0.1073    0.1285    1.20     119.2
+
+    -> mediana del factor: 1.40
+
+    FACTOR_LLENO  (multilam18, veta 180 grados, 8 posiciones con espejo, sep 8, borde 5, 1 mm/px, esfuerzo normal, --copias 1)
+    archivo                      piezas orient. previstas  reales s/c prueba  s/c real  factor  s reales
+    ----------------------------------------------------------------------------------------------------
+    muestra.dxf                      12      16       768     768     0.0248    0.0571    2.31      43.8
+    banqueta final raulo.ai          40      16      4160    2560     0.0566    0.0816    1.44     208.8
+    banqueta-alta.ai                 57      16      5984    4688     0.1094    0.1351    1.23     633.4
+
+    -> mediana del factor: 1.44
+
+Se usa la mediana de los factores de las dos tablas juntas, y no el
+promedio, para que un archivo raro no mueva la estimación de todos. El
+factor corrige sólo el costo por consulta: el error de la previsión de
+consultas de arranque (columnas "previstas" contra "reales") es aparte, y
+la previsión se corrige sola apenas termina el primer intento.
+
+Para volver a medir: correr los dos comandos de arriba (ver
+`bench/calibrate.py --help`) y reemplazar las dos tablas y el valor.
 """
 
 

@@ -8,6 +8,8 @@ from calibrate import (  # noqa: E402
     EFFORT_LEVELS,
     RESOLUTION_CANDIDATES,
     _mejor,
+    _parts_of,
+    measure_fill_factor,
     sweep_effort,
     sweep_resolution,
     sweep_weights,
@@ -15,7 +17,12 @@ from calibrate import (  # noqa: E402
 from make_sample import write_sample  # noqa: E402
 
 from nesting.engine.oracle import NestConfig, Weights  # noqa: E402
+from nesting.engine.packer import pack  # noqa: E402
+from nesting.engine.raster.masks import MaskCache  # noqa: E402
+from nesting.engine.raster.oracle import RasterOracle  # noqa: E402
 from nesting.model.material import Material  # noqa: E402
+from nesting.model.sheet import SheetSupply  # noqa: E402
+from nesting_app import corredor  # noqa: E402
 
 MATERIAL = Material("mdf18", 1830.0, 2600.0, grain_tolerance=180.0)
 
@@ -149,3 +156,34 @@ def test_los_valores_recalibrados_no_vuelven_en_silencio_a_los_viejos():
     """
     assert Weights().contact == 4.0
     assert NestConfig().resolution == 2.0
+
+
+def test_la_medicion_del_factor_lleno_da_una_fila_por_archivo(tmp_path):
+    config = NestConfig(sep=6.0, margin=10.0, effort="rapido", resolution=4.0)
+
+    rows = measure_fill_factor(sample(tmp_path), MATERIAL, config)
+
+    assert len(rows) == 1
+    nombre, piezas, orientaciones, previstas, reales, prueba, real, factor, segundos = rows[0]
+    assert nombre == "muestra.dxf"
+    assert piezas == 12
+    assert orientaciones == 8
+    assert previstas > 0 and reales > 0
+    assert prueba > 0 and real > 0 and segundos > 0
+    assert factor == real / prueba
+
+
+def test_la_estimacion_previa_cae_dentro_de_por_dos_del_tiempo_real(tmp_path):
+    """Spec, 4: la estimación previa cae dentro de x2 del tiempo real sobre
+    un archivo chico. La muestra sintética: 12 piezas, una placa."""
+    parts = _parts_of(sample(tmp_path)[0])
+    supply = SheetSupply(stock=MATERIAL.stock_sheet(), material_name=MATERIAL.name)
+    config = NestConfig(sep=6.0, margin=10.0, effort="rapido", resolution=2.0)
+
+    estimado = corredor.estimar_segundos(parts, supply, config)
+    cache = MaskCache()
+    real = pack(parts, supply, config, lambda: RasterOracle(cache=cache)).seconds
+
+    assert estimado / 2 <= real <= estimado * 2, (
+        f"estimado {estimado:.2f} s, real {real:.2f} s"
+    )

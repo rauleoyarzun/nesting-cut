@@ -22,17 +22,27 @@ primera placa identico y el doble de material en la ultima.
 """
 
 import argparse
+import statistics
 import sys
 from dataclasses import replace
 from pathlib import Path
 
 from nesting.engine.oracle import NestConfig, Weights
+from nesting.engine.packer import (
+    initial_forecast,
+    orientations,
+    pack,
+    probe_query_seconds,
+    replicate,
+)
+from nesting.engine.raster.masks import MaskCache
 from nesting.engine.raster.oracle import RasterOracle
 from nesting.engine.shelf_oracle import ShelfOracle
-from nesting.model.material import DEFAULT_MATERIALS_PATH, Material, load_materials
+from nesting.model.material import DEFAULT_MATERIALS_PATH, VETA_LIBRE, VETA_RESPETAR, Material, load_materials
+from nesting.model.sheet import SheetSupply
 
 sys.path.insert(0, str(Path(__file__).parent))
-from run_bench import FILES_DIR, run_one  # noqa: E402
+from run_bench import FILE_ERRORS, FILES_DIR, run_one  # noqa: E402
 
 CONTACT_CANDIDATES = (0.0, 0.5, 1.0, 2.0, 4.0)
 RESOLUTION_CANDIDATES = (0.5, 1.0, 2.0, 3.0)
@@ -165,6 +175,101 @@ def compare_engines(
     return rows
 
 
+def _parts_of(path: Path, copies: int = 1) -> list:
+    """Las piezas de un archivo del banco, replicadas `copies` veces."""
+    from nesting.io.ai_reader import read_ai
+    from nesting.io.dxf_reader import read_dxf
+    from nesting.pipeline import prepare_parts
+
+    drawing = read_ai(path) if path.suffix.lower() == ".ai" else read_dxf(path)
+    parts, _, _ = prepare_parts(drawing)
+    return replicate(parts, copies)
+
+
+FILA_FACTOR = (
+    "archivo, piezas, orientaciones, consultas previstas al arrancar, "
+    "consultas reales, s/consulta de la prueba, s/consulta real, factor, s reales"
+)
+"""Forma de las filas de `measure_fill_factor`, en orden.
+
+El factor es `s/consulta real / s/consulta de la prueba`: lo que
+`nesting_app.corredor.FACTOR_LLENO` corrige. La previsión de arranque va al
+lado para ver cuánto del error de la estimación previa es de la previsión
+de consultas y cuánto del costo por consulta; el factor corrige sólo lo
+segundo.
+"""
+
+
+def measure_fill_factor(
+    files: list[Path], material: Material, config: NestConfig, copies: int = 1
+) -> list[tuple]:
+    """Una fila con la forma de `FILA_FACTOR` por cada archivo que se pudo medir."""
+    rows = []
+    for path in files:
+        parts = _parts_of(path, copies)
+        supply = SheetSupply(stock=material.stock_sheet(), material_name=material.name)
+        probe = probe_query_seconds(
+            parts, supply, config, lambda: RasterOracle(cache=MaskCache())
+        )
+        if probe is None:
+            print(f"aviso: {path.name} no deja ninguna orientación con esta veta; se salta")
+            continue
+        forecast = initial_forecast(parts, supply, config)
+        avances = []
+        cache = MaskCache()
+        try:
+            result = pack(
+                parts, supply, config, lambda: RasterOracle(cache=cache),
+                progreso=lambda a: avances.append(a) or True,
+            )
+        except FILE_ERRORS as error:
+            print(f"aviso: {path.name} no se pudo acomodar ({type(error).__name__}: {error}); se salta")
+            continue
+        real = avances[-1].consultas_hechas
+        per_query = result.seconds / real
+        rows.append((
+            path.name, len(parts), len(orientations(supply.stock, config)),
+            forecast, real, probe, per_query, per_query / probe, result.seconds,
+        ))
+    return rows
+
+
+def _main_factor_lleno(args, material: Material, files: list[Path]) -> int:
+    """El modo `--factor-lleno`: sólo mide, imprime la tabla y la mediana."""
+    if args.veta is not None:
+        material = replace(
+            material,
+            grain_tolerance=VETA_LIBRE if args.veta == "libre" else VETA_RESPETAR,
+        )
+    angles = tuple(i * 360.0 / args.posiciones for i in range(args.posiciones))
+    config = NestConfig(
+        sep=args.sep, margin=args.borde, angles=angles, mirror=True,
+        resolution=args.resolucion, effort=args.esfuerzo,
+    )
+    print(
+        f"FACTOR_LLENO  ({material.name}, veta {material.grain_tolerance:g} grados, "
+        f"{args.posiciones} posiciones con espejo, sep {args.sep:g}, borde {args.borde:g}, "
+        f"{args.resolucion:g} mm/px, esfuerzo {args.esfuerzo}, --copias {args.copias})"
+    )
+    print(
+        f"{'archivo':<28}{'piezas':>7}{'orient.':>8}{'previstas':>10}{'reales':>8}"
+        f"{'s/c prueba':>11}{'s/c real':>10}{'factor':>8}{'s reales':>10}"
+    )
+    print("-" * 100)
+    rows = measure_fill_factor(files, material, config, copies=args.copias)
+    for r in rows:
+        print(
+            f"{r[0]:<28}{r[1]:>7}{r[2]:>8}{r[3]:>10}{r[4]:>8}"
+            f"{r[5]:>11.4f}{r[6]:>10.4f}{r[7]:>8.2f}{r[8]:>10.1f}"
+        )
+    if not rows:
+        print("no se pudo medir ningún archivo", file=sys.stderr)
+        return 1
+    print(f"\n-> mediana del factor: {statistics.median(r[7] for r in rows):.2f}")
+    print("Anotarla en src/nesting_app/corredor.py::FACTOR_LLENO con esta tabla al lado.")
+    return 0
+
+
 def _mejor(rows: list[tuple]) -> object:
     """El mejor eje de un barrido, con el MISMO criterio que usa el motor.
 
@@ -218,6 +323,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calibra pesos, resolucion y niveles de esfuerzo.")
     parser.add_argument("--material", default="mdf18")
     parser.add_argument("--copias", type=int, default=1)
+    parser.add_argument(
+        "--factor-lleno", action="store_true",
+        help="mide sólo FACTOR_LLENO (src/nesting_app/corredor.py); las opciones "
+             "de abajo valen sólo en este modo",
+    )
+    parser.add_argument("--sep", type=float, default=6.0)
+    parser.add_argument("--borde", type=float, default=10.0)
+    parser.add_argument("--resolucion", type=float, default=1.0)
+    parser.add_argument("--esfuerzo", choices=EFFORT_LEVELS, default="normal")
+    parser.add_argument("--posiciones", type=int, default=4)
+    parser.add_argument("--veta", choices=("respetar", "libre"), default=None)
     args = parser.parse_args(argv)
 
     material = load_materials(DEFAULT_MATERIALS_PATH)[args.material]
@@ -225,6 +341,9 @@ def main(argv: list[str] | None = None) -> int:
     if not files:
         print(f"no hay archivos utilizables en {FILES_DIR}", file=sys.stderr)
         return 1
+
+    if args.factor_lleno:
+        return _main_factor_lleno(args, material, files)
 
     print(f"Calibrando sobre {len(files)} archivo(s) (--copias {args.copias}): "
           f"{', '.join(f.name for f in files)}\n")
