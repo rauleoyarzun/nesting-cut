@@ -20,12 +20,14 @@ from scipy.signal import fftconvolve
 from shapely.geometry import LineString, Polygon
 from shapely.ops import nearest_points, unary_union
 
-from nesting.engine.iguales import Clase, congruence
+from nesting.engine.iguales import Clase, Member, congruence
 from nesting.engine.oracle import NestConfig, transformed_bbox
+from nesting.engine.packer import PackResult
 from nesting.engine.raster.masks import MaskCache
+from nesting.geometry.transform import componer
 from nesting.geometry.verify import placed_polygon
 from nesting.model.entities import Point, Transform
-from nesting.model.part import Part
+from nesting.model.part import Part, Placement
 
 TIPOS_POR_CLASE: dict[str, int] = {"rapido": 0, "normal": 6, "lento": 10}
 """Cuántos tipos de par se guardan por clase, según el esfuerzo."""
@@ -343,3 +345,74 @@ def find_pair_types(
             break
 
     return aceptados
+
+
+@dataclass(frozen=True)
+class Composite:
+    """Un par ya armado con dos piezas reales, listo para acomodarse."""
+
+    part: Part
+    """La forma del par (`PairType.shape`), con un id que no usa ninguna pieza real."""
+
+    members: tuple[tuple[int, Transform], ...]
+    """`(part_id, t)` por miembro: `t` lleva la pieza real a su lugar adentro
+    del par, en las coordenadas de la compuesta."""
+
+
+def make_composite(part_id: int, pair_type: PairType, first: Member, second: Member) -> Composite:
+    """El par `pair_type` hecho con las piezas reales `first` (como A) y `second` (como B).
+
+    El par se construyó con la representante: A en la identidad y B en
+    `relative`. Una pieza real llega a la representante con su `g`, así que
+    A termina en `g_A` y B en `relative ∘ g_B`.
+    """
+    return Composite(
+        part=pair_type.shape(part_id),
+        members=(
+            (first.part_id, first.to_representative),
+            (second.part_id, componer(pair_type.relative, second.to_representative)),
+        ),
+    )
+
+
+def disassemble(
+    result: PackResult,
+    composites: Sequence[Composite],
+    parts: Sequence[Part],
+) -> PackResult:
+    """Cambia cada compuesta colocada por sus dos miembros, con `T ∘ t`.
+
+    Corre ANTES de verificar y antes de escribir nada: una compuesta nunca
+    llega a `verify`, al DXF ni a la previsualización. `parts` son las
+    piezas reales; el aprovechamiento se recalcula con ellas, porque el
+    área de la compuesta incluye el puente, que no es material de nadie.
+    """
+    by_composite = {c.part.id: c for c in composites}
+    if not by_composite:
+        return result
+
+    placements: list[Placement] = []
+    for placement in result.placements:
+        composite = by_composite.get(placement.part_id)
+        if composite is None:
+            placements.append(placement)
+            continue
+        for member_id, inner in composite.members:
+            placements.append(
+                Placement(member_id, placement.sheet, componer(placement.transform, inner))
+            )
+
+    # La misma cuenta que `_pack_once`: áreas por placa y UNA división al
+    # final, para que el total coincida con el de una corrida sin pares.
+    by_id = {p.id: p for p in parts}
+    areas = [0.0] * len(result.sheets)
+    for placement in placements:
+        areas[placement.sheet] += by_id[placement.part_id].area
+    area_total = sum(sheet.area for sheet in result.sheets)
+    return PackResult(
+        placements=placements,
+        sheets=list(result.sheets),
+        utilization=[area / sheet.area for area, sheet in zip(areas, result.sheets)],
+        total_utilization=sum(areas) / area_total if area_total else 0.0,
+        seconds=result.seconds,
+    )
