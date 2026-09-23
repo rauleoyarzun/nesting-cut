@@ -327,14 +327,32 @@ $("btn-confirmar-recorte").onclick = () => {
 // tiene que seguir valiendo lo que el usuario dijo del pedazo.
 let vetaPorMaterial = {};
 
+function vetaDeLaCorrida() {
+  return $("veta-respetar").checked ? "respetar" : "libre";
+}
+
+// Mira el control y no el material: con "no importa" elegido a mano sobre
+// un fenólico, la casilla tampoco cambiaría nada.
 function ajustarVetaCruzada() {
-  const libre = vetaPorMaterial[$("material").value] === "libre";
+  const libre = vetaDeLaCorrida() === "libre";
   $("r-cruzada").disabled = libre;
   if (libre) $("r-cruzada").checked = false;
   $("etiqueta-cruzada").classList.toggle("deshabilitada", libre);
 }
 
-$("material").addEventListener("change", ajustarVetaCruzada);
+// Deja el control en `veta` y todo lo que depende de él al día. No
+// pregunta nada: quien tiene que preguntar antes es `pedirVeta`.
+function ponerVeta(veta) {
+  $(veta === "respetar" ? "veta-respetar" : "veta-libre").checked = true;
+  ajustarVetaCruzada();
+}
+
+$("material").addEventListener("change", () =>
+  ponerVeta(vetaPorMaterial[$("material").value])
+);
+["veta-respetar", "veta-libre"].forEach((id) =>
+  $(id).addEventListener("change", () => ponerVeta(vetaDeLaCorrida()))
+);
 
 // --- analizar ---------------------------------------------------------------
 
@@ -634,6 +652,7 @@ function parametros() {
     resolucion: Number($("resolucion").value),
     esfuerzo: $("esfuerzo").value,
     recortes: estado.recortes,
+    veta: vetaDeLaCorrida(),
   };
 }
 
@@ -909,7 +928,10 @@ async function refrescarMateriales() {
   vetaPorMaterial = Object.fromEntries(
     datos.materiales.map((m) => [m.nombre, m.veta])
   );
-  ajustarVetaCruzada();
+  // Sin preguntar: refrescar pasa al arrancar y después de editar el
+  // catálogo, y en los dos casos el control tiene que decir lo que dice el
+  // material. El cartel es para cuando el usuario cambia algo a mano.
+  ponerVeta(vetaPorMaterial[select.value] ?? "libre");
   return datos.materiales;
 }
 

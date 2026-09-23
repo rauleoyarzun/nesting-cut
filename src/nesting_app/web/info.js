@@ -21,6 +21,7 @@
 const TEXTOS = {
   "archivo": "El dibujo con los contornos de las piezas. Acepta .dxf, .ai (los de texto plano) y .3dm de Rhino; .cdr no, hay que exportarlo antes.",
   "material": "La placa de la que vas a cortar: de acá salen el ancho, el alto y si hay que respetar la veta. Si te falta una medida, \"Agregar o editar\" abre el catálogo.",
+  "veta": "Si hay que respetar la dirección de la veta de la placa. Arranca con lo que dice el material y se puede cambiar para esta corrida sin tocar el catálogo. Respetarla deja girar las piezas sólo a 0° y 180°.",
   "sep": "Los milímetros mínimos que quedan entre una pieza y la de al lado. Poné al menos el diámetro de la fresa, o el corte de una se come el borde de la otra.",
   "borde": "El margen que se deja libre contra el filo de la placa. Sirve para las grampas y para que una placa astillada no arruine una pieza.",
   "copias": "Cuántas veces se repite el contenido entero del archivo. Si el archivo trae 12 piezas y ponés 3, acomoda 36.",

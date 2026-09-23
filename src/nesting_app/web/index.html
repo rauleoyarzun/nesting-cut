@@ -49,6 +49,24 @@
       </div>
     </div>
 
+    <!-- Debajo de Material y no con las opciones de giro: el material trae
+         su veta y acá se la confirma o se la cambia para esta corrida, sin
+         tocar el catálogo. Cambiar de material la vuelve a la suya. -->
+    <div class="campo" role="radiogroup" aria-labelledby="etiqueta-veta">
+      <div class="titulo-campo">
+        <span id="etiqueta-veta" class="etiqueta">Veta</span>
+        <button type="button" class="boton-info" data-info="veta" aria-label="Qué es Veta" aria-expanded="false"><svg viewBox="0 0 16 16" class="icono" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 7.5v3.5"></path><path d="M8 5v.01"></path></svg></button>
+      </div>
+      <label class="opcion">
+        <input type="radio" name="veta-corrida" id="veta-respetar" value="respetar">
+        <span><strong>Respetar</strong><small>Sólo 0° y 180°.</small></span>
+      </label>
+      <label class="opcion">
+        <input type="radio" name="veta-corrida" id="veta-libre" value="libre" checked>
+        <span><strong>No importa</strong><small>La pieza gira libre.</small></span>
+      </label>
+    </div>
+
     <div class="campo">
       <!-- Pegado a Material y no al final del panel: un recorte cambia sobre
            qué se corta, igual que el material. No es un ajuste fino. -->

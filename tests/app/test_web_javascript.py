@@ -734,7 +734,7 @@ def _declaraciones_globales(js: str) -> set[str]:
 # --- los globos de ayuda ---------------------------------------------------
 
 CLAVES_CON_GLOBO = [
-    "archivo", "material", "sep", "borde", "copias", "esfuerzo",
+    "archivo", "material", "veta", "sep", "borde", "copias", "esfuerzo",
     "angulos", "posiciones", "tol-cierre", "resolucion", "espejo", "recortes",
 ]
 
@@ -1853,3 +1853,56 @@ def test_el_plural_de_placas_con_recortes_no_queda_fijo(js):
         'la rama con recortes sigue con "placas" pegado al literal, sin '
         "pluralizar cuando r.placas es 1"
     )
+
+
+# --- la veta de la corrida -------------------------------------------------
+
+
+def test_el_control_de_veta_existe_con_sus_dos_opciones(html):
+    assert 'id="veta-respetar"' in html
+    assert 'id="veta-libre"' in html
+    assert html.count('name="veta-corrida"') == 2
+
+
+def test_el_control_de_veta_va_pegado_al_material(html):
+    """Elegir material y decidir la veta son la misma decisión: el material
+    trae su veta, y acá se la confirma o se la cambia."""
+    material = html.index('id="material"')
+    veta = html.index('id="veta-respetar"')
+    recortes = html.index('id="btn-agregar-recorte"')
+    assert material < veta < recortes
+
+
+def test_la_veta_viaja_con_los_parametros(js):
+    assert "veta: vetaDeLaCorrida()" in _cuerpo_de_funcion(js, "parametros")
+
+
+def test_la_veta_de_la_corrida_se_lee_del_control(js):
+    assert '$("veta-respetar").checked' in _cuerpo_de_funcion(js, "vetaDeLaCorrida")
+
+
+def test_la_veta_cruzada_mira_el_control_y_no_el_material(js):
+    """Con "no importa" elegido a mano sobre un fenólico, la casilla tampoco
+    cambiaría nada: tiene que apagarse igual que en un MDF."""
+    cuerpo = _cuerpo_de_funcion(js, "ajustarVetaCruzada")
+
+    assert "vetaDeLaCorrida()" in cuerpo
+    assert "vetaPorMaterial" not in cuerpo
+
+
+def test_poner_la_veta_marca_el_radio_y_ajusta_la_cruzada(js):
+    cuerpo = _cuerpo_de_funcion(js, "ponerVeta")
+
+    assert '"veta-respetar"' in cuerpo and '"veta-libre"' in cuerpo
+    assert ".checked = true" in cuerpo
+    assert "ajustarVetaCruzada()" in cuerpo
+
+
+def test_refrescar_el_catalogo_pone_la_veta_del_material(js):
+    """Refrescar pasa al arrancar y después de editar el catálogo: en los
+    dos casos el control tiene que decir lo que dice el material, sin
+    preguntar nada."""
+    cuerpo = _cuerpo_de_funcion(js, "refrescarMateriales")
+
+    assert "ponerVeta(" in cuerpo
+    assert "pedirVeta(" not in cuerpo
