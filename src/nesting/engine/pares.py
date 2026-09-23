@@ -13,6 +13,8 @@ Spec: docs/superpowers/specs/2026-09-22-pares-y-cartera-design.es.md, sección 3
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import math
+
 import numpy as np
 from scipy.signal import fftconvolve
 from shapely.geometry import LineString, Polygon
@@ -40,15 +42,17 @@ MAX_PAIRED_CLASSES = 2
 NEIGHBOUR_MM = 200.0
 """Dos candidatos de la misma orientación a menos de esto son el mismo encastre.
 
-LA SPEC DICE 60, Y 60 NO ALCANZA. Sin supresión, los doscientos mejores
-candidatos son todos el mismo encastre corrido un píxel (lo mostró el
-experimento de la spec). Con 60 mm, sobre el marco de la banqueta, los seis
-tipos de `normal` salen todos de UNA familia que se desliza de a 60 mm:
-1812x450, 1511x560, 1571x545, 1634x529, 1697x513, 1816x510; el apilado
-(1055x879) recién aparece séptimo, así que `normal` nunca podía probar la
-combinación que gana. Medido al escribir el plan (`rango2.py`): con 100 y
-150 mm el apilado entra en los seis; con 200 mm la familia colapsa a sus
-dos extremos (1812x450 y 1511x560) y la lista no cambia hasta 300 mm.
+LA PRIMERA VERSIÓN DE LA SPEC DECÍA 60, Y SE MIDIÓ QUE NO ALCANZABA. Sin
+supresión, los doscientos mejores candidatos son todos el mismo encastre
+corrido un píxel (lo mostró el experimento de la spec). Con 60 mm, sobre el
+marco de la banqueta, los seis tipos de `normal` salían todos de UNA familia
+que se desliza de a 60 mm: 1812x450, 1511x560, 1571x545, 1634x529, 1697x513,
+1816x510; el apilado (1055x879) recién aparecía séptimo, así que `normal`
+nunca podía probar la combinación que gana. Medido al escribir el plan
+(`rango2.py`): con 100 y 150 mm el apilado entra en los seis; con 200 mm la
+familia colapsa a sus dos extremos (1812x450 y 1511x560) y la lista no
+cambia hasta 300 mm. La spec quedó actualizada a 200, que es lo que este
+valor usa hoy.
 """
 
 CANDIDATES_PER_ORIENTATION = 15
@@ -66,6 +70,33 @@ se vuelven a separar al erosionar.
 GAP_EPS = 1e-6
 """La misma holgura numérica que usa `verify`, para que un par a exactamente
 `sep` no se descarte por ruido."""
+
+SLIDE_MARGIN_MM = 0.01
+"""Cuánto de más, sobre `sep`, se deja al deslizar B hacia A.
+
+Los candidatos salen de la grilla rasterizada, y ahí el hueco real entre A y
+B puede quedar hasta ~3 * resolución por encima de `sep` (la holgura
+conservadora de las máscaras). Con una separación chica frente a la
+resolución -- `sep` de 2 o 3 mm a 1 mm/px, o de 6 mm a 2 mm/px, medido sobre
+la L de este módulo -- ese exceso solo alcanza para que TODOS los
+candidatos superen `2 * sep` y `find_pair_types` no encuentre ningún tipo.
+
+La corrección desliza B, en línea recta hacia A, hasta dejarlo a
+`sep + SLIDE_MARGIN_MM`. La prueba de que esto no lo acerca de más: si
+`gap = a.distance(b)` es la distancia real (el mínimo sobre TODOS los pares
+de puntos de A y B) y se mueve B rígidamente una distancia δ a lo largo de
+la recta que une los dos puntos más cercanos, la desigualdad triangular dice
+que CUALQUIER par de puntos, tras el movimiento, queda a una distancia de al
+menos `distancia_original - δ`; y como toda distancia original ya era
+`>= gap`, la nueva distancia mínima (que es lo que mide `a.distance(b)`
+después) queda `>= gap - δ`. Eligiendo `δ = gap - (sep + SLIDE_MARGIN_MM)`
+-- sólo cuando da positivo, o sea cuando `gap` ya se pasó del margen -- esa
+cota es exactamente `sep + SLIDE_MARGIN_MM`, así que el par nunca puede
+quedar más cerca que `sep`. El margen de 0.01 mm es para no caer justo en el
+borde `gap == sep` por ruido de coma flotante, igual que hace `GAP_EPS` del
+lado de abajo; el chequeo exacto (`sep - GAP_EPS <= gap < 2 * sep`) sigue
+siendo el árbitro después de deslizar.
+"""
 
 
 @dataclass(frozen=True)
@@ -251,14 +282,11 @@ def find_pair_types(
     a_polygon = placed_polygon(representative, Transform.identity())
     aceptados: list[PairType] = []
     for box_area, angle, mirror, u, v in candidatos:
-        if any(
-            t.orientation == (angle, mirror)
-            and abs(t.offset_px[0] - u) < vecino_px
-            and abs(t.offset_px[1] - v) < vecino_px
-            for t in aceptados
-        ):
-            continue
-
+        # Sin segunda supresión acá: los candidatos de una misma orientación
+        # ya salieron mutuamente separados por `vecino_px` en el paso de
+        # arriba (la lista `tomados`), y `aceptados` es un subconjunto de
+        # `candidatos`, así que dos aceptados de la misma orientación nunca
+        # pueden estar más cerca que eso.
         b_masks = cache.get(representative, angle, mirror, res, sep)
         # El píxel [0, 0] de B cae en el de A corrido (u, v) píxeles.
         relative = Transform(
@@ -268,6 +296,23 @@ def find_pair_types(
         )
         b_polygon = placed_polygon(representative, relative)
         gap = a_polygon.distance(b_polygon)
+        if gap > sep + SLIDE_MARGIN_MM:
+            # El candidato viene del raster: puede quedar unos píxeles más
+            # lejos de lo que pide `sep`. Se acerca B en línea recta hasta
+            # el margen (ver la prueba en `SLIDE_MARGIN_MM`) y se vuelve a
+            # medir; el chequeo de abajo sigue siendo el árbitro.
+            qa, qb = nearest_points(a_polygon, b_polygon)
+            vx, vy = qa.x - qb.x, qa.y - qb.y
+            norm = math.hypot(vx, vy)
+            if norm > 0.0:
+                delta = gap - (sep + SLIDE_MARGIN_MM)
+                relative = Transform(
+                    relative.angle_deg, relative.mirror,
+                    relative.dx + delta * vx / norm,
+                    relative.dy + delta * vy / norm,
+                )
+                b_polygon = placed_polygon(representative, relative)
+                gap = a_polygon.distance(b_polygon)
         if not (sep - GAP_EPS <= gap < 2 * sep):
             continue
 

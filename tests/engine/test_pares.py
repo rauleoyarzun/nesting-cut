@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from nesting.engine.iguales import Clase, Member, congruence
 from nesting.engine.oracle import NestConfig
@@ -64,6 +64,33 @@ def test_todo_candidato_queda_a_una_separacion_y_menos_de_dos():
         assert SEP - 1e-6 <= a.distance(b) < 2 * SEP, tipo
 
 
+def test_sin_separacion_no_hay_tipos():
+    """Sin separación no hay hueco de 'menos de dos separaciones' donde
+    esconder el puente, y el puente le robaría lugar a otra pieza."""
+    sin_sep = NestConfig(sep=0.0, margin=5.0, angles=(0.0, 90.0, 180.0, 270.0),
+                         mirror=True, resolution=2.0)
+    assert tipos(config=sin_sep) == []
+
+
+def test_encuentra_tipos_con_separaciones_chicas_frente_a_la_resolucion():
+    """Los candidatos salen del raster, así que el hueco real puede quedar
+    unos píxeles por encima de `sep`; sin deslizar B hacia A eso alcanzaba
+    para que NINGÚN candidato pasara `gap < 2 * sep` con sep chico frente a
+    la resolución (medido: 0 tipos en sep=2,3 a 1 mm/px y sep=6 a 2 mm/px)."""
+    a = placed_polygon(ele(), Transform.identity())
+    for sep in (2.0, 3.0, 4.0, 5.0, 8.0, 10.0):
+        for res in (1.0, 2.0):
+            config = NestConfig(sep=sep, margin=5.0,
+                                angles=(0.0, 90.0, 180.0, 270.0),
+                                mirror=True, resolution=res)
+            encontrados = tipos(config=config)
+            assert encontrados, (sep, res)
+            for tipo in encontrados:
+                b = placed_polygon(ele(), tipo.relative)
+                gap = a.distance(b)
+                assert sep <= gap < sep + 0.5, (sep, res, gap)
+
+
 def test_los_tipos_salen_de_menor_a_mayor_caja():
     encontrados = tipos()
     cajas = [t.box_area for t in encontrados]
@@ -91,6 +118,12 @@ def test_con_la_veta_respetada_ningun_b_queda_a_90():
     encontrados = tipos(sheet=CON_VETA)
     assert encontrados
     assert all(t.relative.angle_deg % 180.0 == 0.0 for t in encontrados)
+
+
+def test_b_orientations_filtra_a_0_y_180_con_la_veta_respetada():
+    choices = [(0.0, False), (90.0, False), (180.0, False), (270.0, True)]
+    assert b_orientations(choices, grain_respected=True) == [(0.0, False), (180.0, False)]
+    assert b_orientations(choices, grain_respected=False) == choices
 
 
 def test_sin_espejo_ningun_b_queda_espejado():
@@ -130,6 +163,18 @@ def test_el_puente_une_dos_poligonos_que_no_se_tocan():
     outer, holes = unida
     assert Polygon(outer, holes).area > a.area + b.area
     assert holes == ()
+
+
+def test_el_puente_no_alcanza_a_conectar_todo_devuelve_none():
+    """El puente sólo conecta los dos puntos más cercanos: si `a` tiene un
+    segundo pedazo lejos, ese pedazo queda sin conectar y la unión ya no es
+    un solo polígono."""
+    a = MultiPolygon([
+        Polygon([(0, 0), (10, 0), (10, 10), (0, 10)]),
+        Polygon([(0, 50), (10, 50), (10, 60), (0, 60)]),
+    ])
+    b = Polygon([(20, 0), (30, 0), (30, 10), (20, 10)])
+    assert union_with_bridge(a, b) is None
 
 
 def test_solo_se_emparejan_las_clases_repetidas_y_grandes_hasta_dos():
