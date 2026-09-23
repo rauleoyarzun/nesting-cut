@@ -14,6 +14,7 @@ from nesting.engine.pares import (
     b_orientations,
     find_pair_types,
     pairable_classes,
+    slide_window,
     union_with_bridge,
 )
 from nesting.engine.raster.masks import MaskCache
@@ -89,6 +90,51 @@ def test_encuentra_tipos_con_separaciones_chicas_frente_a_la_resolucion():
                 b = placed_polygon(ele(), tipo.relative)
                 gap = a.distance(b)
                 assert sep <= gap < sep + 0.5, (sep, res, gap)
+
+
+
+def _hueco_antes_de_acercar(tipo, part, config, cache):
+    """El hueco exacto entre A y B donde el raster dejó a B, antes de acercarlo."""
+    angle, mirror = tipo.orientation
+    a_masks = cache.get(part, 0.0, False, config.resolution, config.sep)
+    b_masks = cache.get(part, angle, mirror, config.resolution, config.sep)
+    u, v = tipo.offset_px
+    donde = Transform(angle, mirror,
+                      a_masks.origin[0] + u * config.resolution - b_masks.origin[0],
+                      a_masks.origin[1] + v * config.resolution - b_masks.origin[1])
+    a = placed_polygon(part, Transform.identity())
+    return a.distance(placed_polygon(part, donde))
+
+
+def test_solo_se_acerca_lo_que_el_raster_pudo_haber_dejado_de_mas():
+    """Un candidato a 80 mm de A (medido en la L, sep 8 a 2 mm/px, placa
+    1200 x 690) no es un encastre que el raster dejó flojo: acercarlo 66 mm
+    armaba otro par, de 924 x 372, que se quedaba con la caja en píxeles del
+    candidato (282.112 mm² contra 343.728 reales) y desordenaba la lista."""
+    for sep in (2.0, 3.0, 4.0, 5.0, 8.0, 10.0):
+        for res in (1.0, 2.0):
+            config = NestConfig(sep=sep, margin=5.0, angles=(0.0, 90.0, 180.0, 270.0),
+                                mirror=True, resolution=res)
+            choices = orientations(LIBRE, config)
+            cache = MaskCache()
+            for tipo in find_pair_types(ele(), b_orientations(choices, False), choices,
+                                        config, (1190.0, 680.0), 6, cache):
+                hueco = _hueco_antes_de_acercar(tipo, ele(), config, cache)
+                assert hueco < sep + slide_window(sep, res), (sep, res, hueco, tipo.width, tipo.height)
+
+
+def test_la_caja_con_que_se_ordena_es_la_del_par_de_verdad():
+    """`box_area` sale de los píxeles del candidato; después de acercar B,
+    la caja exacta sólo puede diferir en lo que se movió B y en la
+    inflación de las máscaras, no en un par distinto."""
+    choices = orientations(LIBRE, CONFIG)
+    encontrados = find_pair_types(ele(), b_orientations(choices, False), choices, CONFIG,
+                                  (1190.0, 680.0), 6, MaskCache())
+    assert encontrados
+    for tipo in encontrados:
+        tolerancia = 2 * (tipo.width + tipo.height) * slide_window(SEP, CONFIG.resolution)
+        assert abs(tipo.width * tipo.height - tipo.box_area) <= tolerancia, (
+            tipo.width, tipo.height, tipo.box_area)
 
 
 def test_los_tipos_salen_de_menor_a_mayor_caja():

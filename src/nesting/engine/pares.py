@@ -23,7 +23,7 @@ from shapely.ops import nearest_points, unary_union
 from nesting.engine.iguales import Clase, Member, congruence
 from nesting.engine.oracle import NestConfig, transformed_bbox
 from nesting.engine.packer import PackResult
-from nesting.engine.raster.masks import MaskCache
+from nesting.engine.raster.masks import INFLACION_MAX_PX, MaskCache
 from nesting.geometry.transform import componer
 from nesting.geometry.verify import placed_polygon
 from nesting.model.entities import Point, Transform
@@ -84,7 +84,8 @@ la L de este módulo -- ese exceso solo alcanza para que TODOS los
 candidatos superen `2 * sep` y `find_pair_types` no encuentre ningún tipo.
 
 La corrección desliza B, en línea recta hacia A, hasta dejarlo a
-`sep + SLIDE_MARGIN_MM`. La prueba de que esto no lo acerca de más: si
+`sep + SLIDE_MARGIN_MM` -- sólo si el candidato está dentro de
+`slide_window`, lo que el raster pudo haber dejado de más. La prueba de que esto no lo acerca de más: si
 `gap = a.distance(b)` es la distancia real (el mínimo sobre TODOS los pares
 de puntos de A y B) y se mueve B rígidamente una distancia δ a lo largo de
 la recta que une los dos puntos más cercanos, la desigualdad triangular dice
@@ -99,6 +100,32 @@ borde `gap == sep` por ruido de coma flotante, igual que hace `GAP_EPS` del
 lado de abajo; el chequeo exacto (`sep - GAP_EPS <= gap < 2 * sep`) sigue
 siendo el árbitro después de deslizar.
 """
+
+
+SLIDE_WINDOW_PX = 2 * INFLACION_MAX_PX + 2
+"""Cuántos píxeles de más, sobre `sep`, puede dejar el raster entre A y B.
+
+La holgura de las máscaras es `ceil(sep / resolución)` píxeles: hasta uno
+de más por el redondeo. `occupied` se infla hasta `INFLACION_MAX_PX` por
+lado, y son dos piezas: `2 * INFLACION_MAX_PX`. Y el desplazamiento de B
+es entero, en píxeles: uno más. Con `INFLACION_MAX_PX = 2`, seis.
+"""
+
+
+def slide_window(sep: float, resolution: float) -> float:
+    """Hasta dónde, sobre `sep`, un candidato es un encastre que el raster dejó flojo.
+
+    Sólo esos se acercan (`SLIDE_MARGIN_MM`). Un candidato más lejos no es un
+    encastre flojo sino otra cosa: acercarlo en línea recta arma un par
+    distinto del que midió el raster, con una caja que no es la de
+    `box_area`, y la lista deja de estar ordenada. Se descarta, como antes
+    de que existiera el acercamiento.
+
+    Nunca menos que `sep`: todo lo que ya estaba por debajo de `2 * sep`
+    sigue entrando, así que la ventana no pierde ningún tipo de los que
+    había antes del acercamiento.
+    """
+    return max(sep, SLIDE_WINDOW_PX * resolution)
 
 
 @dataclass(frozen=True)
@@ -298,6 +325,10 @@ def find_pair_types(
         )
         b_polygon = placed_polygon(representative, relative)
         gap = a_polygon.distance(b_polygon)
+        if gap >= sep + slide_window(sep, res):
+            # Demasiado lejos para ser un encastre que el raster dejó flojo
+            # (ver `slide_window`): acercarlo armaría otro par.
+            continue
         if gap > sep + SLIDE_MARGIN_MM:
             # El candidato viene del raster: puede quedar unos píxeles más
             # lejos de lo que pide `sep`. Se acerca B en línea recta hasta
