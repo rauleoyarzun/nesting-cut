@@ -156,8 +156,8 @@ def test_cancelar_durante_la_recuperacion_levanta():
 
     Dejamos pasar el primer aviso de `compactando` -- el que anuncia que
     se entró al tramo final -- y cortamos en el segundo, que sólo puede
-    venir de dentro de la recuperación (`_compact_last_sheet` corre
-    después y todavía no se instrumenta)."""
+    venir de dentro de la recuperación (`_compact_last_sheet` también
+    avisa, pero corre después)."""
     piezas = [cuadrado(i, lado=400.0) for i in range(12)]
     vistos = []
 

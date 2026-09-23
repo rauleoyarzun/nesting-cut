@@ -64,6 +64,11 @@ class Avance:
     completas y CADA UNA REINICIA el conteo de ubicadas. Una barra armada
     sólo con `ubicadas / totales` retrocedería al empezar el intento
     siguiente, y una barra que retrocede es peor que no tener barra.
+
+    Las consultas son la otra mitad, y la que sirve para estimar el tiempo:
+    contar piezas engaña, porque una pieza que no entra gasta sus consultas
+    igual y las fases finales no ubican piezas nuevas. Ver
+    `nesting/engine/prevision.py`.
     """
 
     intento: int
@@ -72,6 +77,17 @@ class Avance:
     totales: int
     placa: int
     compactando: bool = False
+    consultas_hechas: int = 0
+    """Llamadas a `Oracle.best_placement` desde que empezó `pack`, sumando
+    todos los intentos y todas las fases. No se reinicia nunca."""
+
+    consultas_previstas: int = 0
+    """La mejor previsión del total en este momento. Nunca es menor que
+    `consultas_hechas`, y en el último aviso de `pack` es igual.
+
+    Tiene valor por omisión, igual que `consultas_hechas`, para que quien
+    arma un `Avance` a mano con los cinco campos de siempre -- los corredores
+    de mentira de `tests/app` -- no tenga que cambiar nada."""
 
 
 class Cancelado(Exception):
@@ -81,6 +97,117 @@ class Cancelado(Exception):
     incompleto se puede escribir a un DXF sin que nada avise, y ese DXF va a
     una fresadora.
     """
+
+
+class _QueryCounter:
+    """Cuántas consultas se les hicieron a los oráculos de UN `pack`.
+
+    Un objeto y no un entero porque lo comparten todos los oráculos que la
+    corrida crea -- uno por placa, por intento y por fase -- y cada uno
+    tiene que sumar al mismo número.
+    """
+
+    def __init__(self) -> None:
+        self.count = 0
+
+
+class _CountingOracle:
+    """Un oráculo que cuenta sus `best_placement` y en todo lo demás es el de adentro.
+
+    Se envuelve la FÁBRICA en `pack` en vez de instrumentar cada fase: la
+    recuperación y la compactación piden sus oráculos a la misma fábrica
+    envuelta, así que ninguna consulta puede quedar fuera de la cuenta por
+    olvidarse de pasar un contador.
+    """
+
+    def __init__(self, inner: Oracle, counter: _QueryCounter) -> None:
+        self._inner = inner
+        self._counter = counter
+
+    def reset(self, sheet_w: float, sheet_h: float, config: NestConfig) -> None:
+        self._inner.reset(sheet_w, sheet_h, config)
+
+    def best_placement(
+        self, part: Part, angle: float, mirror: bool
+    ) -> tuple[float, float, float] | None:
+        self._counter.count += 1
+        return self._inner.best_placement(part, angle, mirror)
+
+    def place(self, part: Part, angle: float, mirror: bool, x: float, y: float) -> None:
+        self._inner.place(part, angle, mirror, x, y)
+
+
+def _counting(
+    oracle_factory: Callable[[], Oracle], counter: _QueryCounter
+) -> Callable[[], Oracle]:
+    return lambda: _CountingOracle(oracle_factory(), counter)
+
+
+class _Informe:
+    """Arma cada `Avance` de un `pack` y corta si quien mira pide cancelar.
+
+    Vive aparte porque `pack` avisa desde cuatro lugares -- la pasada
+    golosa, la entrada al tramo final, la recuperación y la compactación --
+    y los cuatro tienen que poner las mismas consultas y cortar igual.
+    """
+
+    def __init__(
+        self,
+        progreso: Callable[[Avance], bool] | None,
+        intentos: int,
+        totales: int,
+        consultas: _QueryCounter,
+    ) -> None:
+        self._progreso = progreso
+        self._intentos = intentos
+        self._totales = totales
+        self._consultas = consultas
+        self.previstas = 0
+
+    def emitir(
+        self, intento: int, ubicadas: int, placa: int, compactando: bool = False
+    ) -> None:
+        if self._progreso is None:
+            return
+        hechas = self._consultas.count
+        avance = Avance(
+            intento,
+            self._intentos,
+            ubicadas,
+            self._totales,
+            placa,
+            compactando,
+            consultas_hechas=hechas,
+            consultas_previstas=max(self.previstas, hechas),
+        )
+        if not self._progreso(avance):
+            raise Cancelado("el trabajo se canceló")
+
+    def aviso_de(self, intento: int) -> Callable[[int, int], None] | None:
+        """El `aviso` de la pasada golosa número `intento`."""
+        if self._progreso is None:
+            return None
+
+        def avisar(ubicadas: int, placa: int) -> None:
+            self.emitir(intento, ubicadas, placa)
+
+        return avisar
+
+    def aviso_final(self) -> Callable[[int, int], None] | None:
+        """El `aviso` de la recuperación y la compactación: "compactando".
+
+        Las dos reportan con el mismo rótulo a propósito (ver el comentario
+        en `pack`): para quien mira la barra las dos son reempaque de placas
+        ya armadas. Lo que las distingue ahora son las consultas, no el
+        texto.
+        """
+        if self._progreso is None:
+            return None
+
+        def avisar(ubicadas: int, placa: int) -> None:
+            self.emitir(self._intentos, self._totales, 0, compactando=True)
+
+        return avisar
 
 
 def replicate(parts: Sequence[Part], copies: int) -> list[Part]:
@@ -125,9 +252,11 @@ def _pack_once(
     """One greedy pass, placing `order` in exactly the order given.
 
     `aviso` recibe (piezas ubicadas hasta ahora en esta pasada, placa en
-    curso empezando en 1) despues de cada pieza ubicada. Puede levantar para
-    abandonar: esta funcion no atrapa nada, asi que la excepcion sale limpia
-    sin dejar estado a medias en el oraculo.
+    curso empezando en 1) despues de cada pieza INTENTADA, haya entrado o
+    no: una pieza que no entra gasta sus consultas igual, y sin aviso ni el
+    contador de consultas ni el pedido de cancelar la verian. Puede levantar
+    para abandonar: esta funcion no atrapa nada, asi que la excepcion sale
+    limpia sin dejar estado a medias en el oraculo.
     """
     started = time.perf_counter()
     result = PackResult()
@@ -166,14 +295,14 @@ def _pack_once(
             spot = _best_over_orientations(oracle, part, choices)
             if spot is None:
                 still_pending.append(part)
-                continue
-            angle, mirror, x, y = spot
-            oracle.place(part, angle, mirror, x, y)
-            en_esta_placa.append(
-                Placement(part.id, indice, Transform(angle, mirror, x, y))
-            )
-            placed_area += part.area
-            placed_count += 1
+            else:
+                angle, mirror, x, y = spot
+                oracle.place(part, angle, mirror, x, y)
+                en_esta_placa.append(
+                    Placement(part.id, indice, Transform(angle, mirror, x, y))
+                )
+                placed_area += part.area
+                placed_count += 1
             if aviso is not None:
                 aviso(total_ubicadas + placed_count, indice + 1)
 
@@ -443,13 +572,15 @@ def pack(
     """Place every part, trying several insertion orders and keeping the best.
 
     `progreso`, si se pasa, se llama con un `Avance` despues de cada pieza
-    ubicada durante la pasada golosa, una vez con `compactando=True` al
-    entrar en la compactacion final, y ADEMAS muchas veces durante toda la
-    recuperacion cancelable que corre antes de esa compactacion -- un aviso
-    por cada pieza que `_recuperar_de_la_ultima_placa` intenta reubicar, no
-    una sola llamada (ver su docstring). Devolver `False` en cualquiera de
-    esas llamadas pide abandonar, y `pack` levanta `Cancelado`. No pasarlo
-    deja el comportamiento exactamente como estaba: es lo que hace la CLI.
+    que la pasada golosa intenta ubicar (entre o no), una vez con
+    `compactando=True` al entrar al tramo final, otra vez por cada pieza que
+    intentan la recuperacion (`_recuperar_de_la_ultima_placa`) y la
+    compactacion (`_compact_last_sheet`), y una ultima vez al terminar. Cada
+    `Avance` lleva las consultas hechas hasta ese momento, contadas sobre
+    TODOS los oraculos que la corrida pidio a `oracle_factory`. Devolver
+    `False` en cualquiera de esas llamadas pide abandonar, y `pack` levanta
+    `Cancelado`. No pasarlo deja el layout exactamente como estaba: es lo
+    que hace la CLI.
     """
     if config.effort not in EFFORT_RESTARTS:
         raise UnknownEffortError(
@@ -467,18 +598,12 @@ def pack(
     intentos = EFFORT_RESTARTS[config.effort]
     totales = len(parts)
 
-    def avisos_de(intento: int) -> Callable[[int, int], None] | None:
-        if progreso is None:
-            return None
-
-        def avisar(ubicadas: int, placa: int) -> None:
-            if not progreso(Avance(intento, intentos, ubicadas, totales, placa)):
-                raise Cancelado("el trabajo se canceló")
-
-        return avisar
+    consultas = _QueryCounter()
+    contado = _counting(oracle_factory, consultas)
+    informe = _Informe(progreso, intentos, totales, consultas)
 
     best_order = list(by_area)
-    best = _pack_once(best_order, supply, config, oracle_factory, avisos_de(1))
+    best = _pack_once(best_order, supply, config, contado, informe.aviso_de(1))
     best_cost = layout_cost(best, parts)
 
     # Garantia: "lento" nunca puede ser peor que "normal", igual que "normal"
@@ -519,16 +644,13 @@ def pack(
             perturb_base = by_area
         candidate_order = _perturb(perturb_base, rng)
         candidate = _pack_once(
-            candidate_order, supply, config, oracle_factory, avisos_de(i + 2)
+            candidate_order, supply, config, contado, informe.aviso_de(i + 2)
         )
         candidate_cost = layout_cost(candidate, parts)
         if candidate_cost < best_cost:
             best, best_cost, best_order = candidate, candidate_cost, candidate_order
 
-    if progreso is not None and not progreso(
-        Avance(intentos, intentos, totales, totales, 0, compactando=True)
-    ):
-        raise Cancelado("el trabajo se canceló")
+    informe.emitir(intentos, totales, 0, compactando=True)
 
     # Antes de compactar, y después del aviso de arriba a propósito: la
     # recuperación es la parte más lenta de este tramo final (un
@@ -537,22 +659,20 @@ def pack(
     # pasada golosa.
     #
     # La recuperación reporta como "compactando" y no con una fase propia
-    # a propósito: `Avance` no tiene un campo para distinguirla (agregar
-    # uno es una decisión de UI aparte, no algo que este aviso deba forzar)
-    # y, para quien mira la barra, "compactando" ya es verdad -- es
-    # reempaque de placas ya armadas, no la pasada golosa inicial. Lo único
-    # que le faltaba a esa fase era poder cancelarse; el rótulo no cambia.
-    def aviso_recuperacion(ubicadas: int, placa: int) -> None:
-        if not progreso(Avance(intentos, intentos, totales, totales, 0, compactando=True)):
-            raise Cancelado("el trabajo se canceló")
-
+    # a propósito: para quien mira la barra, "compactando" ya es verdad --
+    # es reempaque de placas ya armadas, no la pasada golosa inicial. Lo que
+    # distingue una fase de otra ahora son las consultas del `Avance`, que
+    # el estimador de tiempo usa sin saber qué fase es.
     best = _recuperar_de_la_ultima_placa(
-        best, parts, config, oracle_factory, supply.material_name,
-        aviso_recuperacion if progreso is not None else None,
+        best, parts, config, contado, supply.material_name, informe.aviso_final(),
     )
     best = _compact_last_sheet(
-        best, parts, config, oracle_factory, supply.material_name
+        best, parts, config, contado, supply.material_name, informe.aviso_final(),
     )
+    # El último aviso: todo lo consultado ya está contado, así que quien
+    # estime el tiempo ve cero restante en vez de quedarse con el último
+    # aviso de la compactación.
+    informe.emitir(intentos, totales, 0, compactando=True)
     best.seconds = time.perf_counter() - started
     return best
 
@@ -768,12 +888,18 @@ def _compact_last_sheet(
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
     material_name: str,
+    aviso: Callable[[int, int], None] | None = None,
 ) -> PackResult:
     """Re-pack the last sheet on its own, pulled harder towards the corner.
 
     `material_name` es obligatorio y sólo nombra el material en un eventual
     `PartTooLargeError`; ver el docstring de
     `_recuperar_de_la_ultima_placa`, que lo recibe igual y por lo mismo.
+
+    `aviso` se reenvía tal cual al `_pack_once` interno. Antes esta pasada
+    corría sorda: ni el contador de consultas se movía ni cancelar la
+    alcanzaba. `Cancelado` NO es `PartTooLargeError`, así que el `except`
+    de abajo no lo atrapa y sale limpio.
     """
     if result.sheets_used < 1:
         return result
@@ -803,6 +929,7 @@ def _compact_last_sheet(
             SheetSupply(stock=hoja, material_name=material_name),
             boosted,
             oracle_factory,
+            aviso,
         )
     except PartTooLargeError:
         # Defensa en profundidad: NO hay un caso reproducido que llegue acá.
