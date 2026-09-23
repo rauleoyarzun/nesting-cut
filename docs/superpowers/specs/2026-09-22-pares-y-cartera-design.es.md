@@ -183,8 +183,22 @@ inserción y, opcionalmente, una perturbación de orientaciones. Se generan
 2. **Combinaciones de pares**: para cada clase emparejable con `n` miembros,
    se prueba cada cantidad de pares `p` de `⌊n/2⌋` a 1, y cada multiconjunto
    de `p` tipos. Los miembros que sobran van sueltos. Con dos clases se
-   combinan entre sí. El orden es por área total de cajas, de menor a mayor,
-   y los empates por índice de tipo.
+   combinan entre sí. **El orden es primero por placas previstas** y después
+   por área total de cajas, de menor a mayor, con los empates por índice de
+   tipo. Las **placas previstas** salen de acomodar sólo las cajas grandes
+   -- la de cada par, la de cada miembro suelto de las clases emparejadas y
+   la de toda otra pieza que ocupe al menos el 2% del área útil -- como
+   rectángulos, por estantes (primero la más alta, girada 90° si la veta lo
+   deja y hace falta para entrar o baja su alto), con la separación entre
+   cajas, en el área útil de la placa del Material.
+
+   Por qué (medido el 2026-09-23, Tarea 9): ordenadas sólo por área, las
+   doce primeras combinaciones de la banqueta eran todas de las que no
+   pueden entrar -- tres pares "de caja mínima" de 1809×451 no caben nunca
+   en 1210 de ancho -- y la que sí entra (dos en diagonal y uno apilado:
+   1508 + 8 + 875 = 2391 ≤ 2430) quedaba afuera. El armado de rectángulos
+   predijo bien todos los casos medidos: entra en 1 placa exactamente cuando
+   las cajas entran como rectángulos.
 3. **Perturbaciones de orden**: las de hoy (`_perturb` sobre `by_area`).
 4. **Perturbaciones de orientación** (lento): para las piezas del decil
    superior de área, elegir al azar, con la semilla, entre las tres

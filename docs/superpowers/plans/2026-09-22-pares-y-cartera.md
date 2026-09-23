@@ -4795,6 +4795,67 @@ git commit -m "Pruebas de aceptación de los pares, la banqueta en el banco y el
 
 ---
 
+### Task 9b: Las combinaciones se ordenan por placas previstas
+
+Agregada el 2026-09-23 por decisión del usuario, después de que la Tarea 9
+midiera que, con las clases bien armadas (los seis marcos en una sola clase),
+la banqueta daba 2 placas en normal: ordenadas sólo por área de cajas, las
+doce primeras combinaciones eran todas imposibles y la que entra quedaba
+afuera. Spec 4.1, punto 2, reescrito.
+
+**Files:**
+- Create: `src/nesting/engine/estantes.py` (armado de rectángulos por estantes, puro, sin dependencias del motor)
+- Modify: `src/nesting/engine/cartera.py` (`_combinations` ordena por `(placas previstas, costo, tupla)`)
+- Test: `tests/engine/test_estantes.py` (nuevo), `tests/engine/test_cartera.py`
+
+**Interfaces:**
+- Consumes: `PairType.width`/`height` (caja del par en la orientación de la representante), `Clase.members`, `Clase.representative`, `orientations(stock, config)`, `NestConfig.sep`/`margin`.
+- Produces: `estantes.predicted_sheets(boxes: Sequence[tuple[float, float]], usable: tuple[float, float], sep: float, can_turn: bool) -> int`; en `cartera`, el orden nuevo de `_combinations` para una y dos clases.
+
+Reglas del armado (`predicted_sheets`), que son las del spec:
+- Cada caja se orienta así: si `can_turn` es falso, tal cual; si es verdadero, entre (w, h) y (h, w) se toma la que entra en el ancho útil y, si entran las dos, la de menor alto.
+- Una caja que no entra en el área útil en ninguna orientación cuenta como una placa propia (no levanta).
+- Primero la más alta (empates por ancho descendente, después por el orden de entrada). Estantes llenados en orden: cada caja va al primer estante de la placa en curso donde entra a lo ancho (con `sep` entre cajas y el estante tan alto como su primera caja); si no entra en ninguno, abre un estante nuevo encima (con `sep` entre estantes); si el estante nuevo no entra en el alto útil, abre una placa nueva.
+- `can_turn` es verdadero cuando `orientations(stock, config)` incluye algún ángulo a 90° o 270°.
+
+Qué cajas entran en la predicción de una combinación: la de cada par (`PairType.width × height`), la de cada miembro suelto de cada clase emparejable (caja de la representante), y la de toda otra pieza cuya área neta sea al menos el 2% del área útil (la misma cota que `pares.pairable_classes`).
+
+Orden en `_combinations`: se sacan de `smallest_combinations` las primeras `max(want × 8, 400)` combinaciones por costo (con dos clases, del producto), se calcula `predicted_sheets` de cada una, y se ordenan de forma estable por `(placas previstas, costo, tupla)`. La tanda 1 de normal y lento sigue siendo idéntica (mismo límite de tipos, misma cuenta), así que normal sigue siendo prefijo de lento.
+
+- [ ] **Step 1: Tests de `predicted_sheets`, que fallan**
+
+`tests/engine/test_estantes.py` con, como mínimo, estos casos sobre el área útil de la banqueta `(1210.0, 2430.0)` y `sep = 8.0`, con `can_turn=True` (las cajas son las medidas en la Tarea 9: mínima 1809×451, diagonal 1508×560, apilado 1056×875, marco suelto 1055×450):
+- diagonal ×2 + apilado → 1
+- diagonal ×2 + marco ×2 → 1
+- mínima + diagonal + apilado → 2
+- mínima ×3 → 2; diagonal ×3 → 2; apilado ×3 → 2
+- con `can_turn=False`, diagonal ×2 + apilado → 2 (1508 no entra en 1210 sin girar)
+- una caja más grande que la placa en las dos orientaciones cuenta una placa y no levanta
+- lista vacía → 0
+
+- [ ] **Step 2: Correrlos y verlos fallar** (`ModuleNotFoundError`).
+
+- [ ] **Step 3: Implementar `estantes.py`** con las reglas de arriba, y docstrings que expliquen que es una predicción para ordenar, no un acomodo.
+
+- [ ] **Step 4: Correrlos y verlos pasar.**
+
+- [ ] **Step 5: Test de orden en `tests/engine/test_cartera.py`, que falla**: sobre la banqueta (se saltea si falta `bench/files/banqueta-alta.ai`), con la config de la Tarea 9 (placa libre 1220×2440, sep 8, borde 5, 8 posiciones, espejo, 1 mm/px, normal), la primera combinación de la tanda 1 tiene placas previstas 1, y la combinación "diagonal ×2 + apilado" (buscar los índices de tipo por su caja, ±5 mm) está entre las primeras 12. Y un test sintético sin archivos: dos tipos donde el de menor área no entra como rectángulo y el otro sí; la combinación que entra sale primero.
+
+- [ ] **Step 6: Implementar el orden nuevo en `_combinations`** (una clase y dos clases), y verlo pasar.
+
+- [ ] **Step 7: Correr las aceptaciones**: el test rápido de las seis eles (si deja de encontrar la mezcla, no aflojarlo: medir y avisar) y, con `-m lento` (en segundo plano, mirando la salida en primer plano de a menos de 10 minutos), las dos de la banqueta: libre → 1 placa, con veta → 2 placas.
+
+- [ ] **Step 8: Suite por omisión entera en primer plano** (partida si pasa de 10 minutos). Sin procesos `spawn_main` al final.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/nesting/engine/estantes.py src/nesting/engine/cartera.py tests/engine/test_estantes.py tests/engine/test_cartera.py
+git commit -m "Cartera: primero las combinaciones que entran como rectángulos"
+```
+
+---
+
 ### Task 10: Documentación
 
 Las tablas de opciones de los dos README dicen hoy que `normal` son 3 pasadas

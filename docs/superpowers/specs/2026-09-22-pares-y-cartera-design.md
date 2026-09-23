@@ -177,8 +177,21 @@ order** that depends only on the parts, the config and the seed:
 1. **Base**: today's pass, no pairs, by area.
 2. **Pair combinations**: for each pairable class with `n` members, each
    pair count `p` from `⌊n/2⌋` down to 1 is tried, with each multiset of `p`
-   types. Leftover members go loose. With two classes they are combined. The
-   order is by total box area, ascending, ties by type index.
+   types. Leftover members go loose. With two classes they are combined.
+   **The order is first by predicted sheets**, then by total box area,
+   ascending, ties by type index. **Predicted sheets** come from laying out
+   only the large boxes -- each pair's, each loose member's of the pairable
+   classes, and any other part covering at least 2% of the usable area -- as
+   rectangles, in shelves (tallest first, turned 90° when the grain allows it
+   and it is needed to fit or lowers its height), with the separation between
+   boxes, in the usable area of the Material sheet.
+
+   Why (measured 2026-09-23, Task 9): ordered by area alone, the bench job's
+   first twelve combinations were all ones that cannot fit -- three
+   "minimum-box" pairs of 1809×451 never fit in 1210 of width -- and the one
+   that does (two diagonal and one stacked: 1508 + 8 + 875 = 2391 ≤ 2430)
+   was left out. The rectangle layout predicted every measured case: it fits
+   in 1 sheet exactly when the boxes fit as rectangles.
 3. **Order perturbations**: today's (`_perturb` over `by_area`).
 4. **Orientation perturbations** (lento): for the parts in the top area
    decile, pick at random, with the seed, among the three best-scoring
