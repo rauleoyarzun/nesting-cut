@@ -288,6 +288,29 @@ def test_la_recuperacion_preve_antes_de_cada_intento():
     assert previstos[0] == (4, 1)
 
 
+
+def test_la_cartera_le_pasa_prever_a_la_recuperacion(monkeypatch):
+    """El `prever` de la recuperación estuvo muerto en producción: nadie lo
+    pasaba. Ahora el tramo final de la cartera lo usa para rehacer su
+    previsión antes de cada intento: (2 + 1) + 1 consultas de la
+    recuperación, y la compactación de una pieza sola no consulta."""
+    from nesting.engine import cartera
+
+    rehechas = []
+    original = cartera._Progress.replan_final
+
+    def espia(self, restantes):
+        rehechas.append(restantes)
+        original(self, restantes)
+
+    monkeypatch.setattr(cartera._Progress, "replan_final", espia)
+    avances = correr(TRES, ESTANTES, ShelfOracle, plan=PLAN_TRES)
+
+    assert rehechas and rehechas[0] == 4
+    entrada = next(a for a in avances if a.compactando)
+    assert entrada.consultas_previstas == entrada.consultas_hechas + 4
+
+
 def _rectangulos_al_azar():
     rng = random.Random(1)
     return [
