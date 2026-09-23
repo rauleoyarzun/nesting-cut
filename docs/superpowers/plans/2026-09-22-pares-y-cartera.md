@@ -4829,7 +4829,7 @@ Orden en `_combinations`: se sacan de `smallest_combinations` las primeras `max(
 - diagonal ×2 + marco ×2 → 1
 - mínima + diagonal + apilado → 2
 - mínima ×3 → 2; diagonal ×3 → 2; apilado ×3 → 2
-- con `can_turn=False`, diagonal ×2 + apilado → 2 (1508 no entra en 1210 sin girar)
+- con `can_turn=False`, diagonal ×2 + apilado → 3 (cada diagonal de 1508 no entra en 1210 sin girar y cuenta una placa propia; el apilado va en una tercera). La primera versión de esta tarea decía 2, lo que contradecía sus propias reglas; la implementación siguió las reglas.
 - una caja más grande que la placa en las dos orientaciones cuenta una placa y no levanta
 - lista vacía → 0
 
