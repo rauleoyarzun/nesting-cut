@@ -52,7 +52,10 @@ nesting_app = ["web/*", "web/.*", "web/**/*", "web/**/.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Las pruebas de minutos no corren en cada `pytest`: se piden con
+# `.venv/bin/pytest -m lento`. Un `-m` en la línea de comandos pisa éste.
+addopts = "-q -m 'not lento'"
 markers = [
+    "lento: pruebas de minutos (la banqueta alta, la confirmación del caso sintético); correr con `.venv/bin/pytest -m lento`",
     "minimo_real: usa `cartera.MIN_BATCH` de verdad en vez del 1 de los tests",
 ]

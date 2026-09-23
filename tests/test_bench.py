@@ -179,3 +179,57 @@ def test_run_one_reports_the_seconds_from_pack_result(tmp_path, monkeypatch):
 
     result = run_bench.run_one(path, MATERIAL, CONFIG, ShelfOracle, "shelf")
     assert result.seconds == recognizable_seconds
+
+
+def test_un_caso_fijo_sin_su_archivo_se_saltea(tmp_path):
+    import run_bench
+
+    assert run_bench.run_fixed(run_bench.CASOS_FIJOS[0], files_dir=tmp_path) is None
+
+
+def test_la_banqueta_alta_es_un_caso_fijo_del_banco():
+    import run_bench
+
+    caso = next(c for c in run_bench.CASOS_FIJOS if c.archivo == "banqueta-alta.ai")
+    assert caso.esperado == 1
+    assert (caso.placa.width, caso.placa.height, caso.placa.grain_tolerance) == (1220.0, 2440.0, 180.0)
+    assert caso.config.resolution == 1.0
+    assert caso.config.effort == "normal"
+
+
+def test_un_caso_fijo_corre_con_los_nucleos_de_la_maquina(tmp_path, monkeypatch):
+    """No con un N fijo: doce procesos de 2,3 GB no entran en cualquier
+    máquina, y con `MIN_BATCH` las variantes son las mismas con cualquier N
+    de hasta doce."""
+    import run_bench
+
+    from nesting.engine import workers
+
+    monkeypatch.setattr(workers, "machine", lambda: workers.Machine(cpus=8, cap=3, default=3))
+    vistos = []
+    monkeypatch.setattr(run_bench, "run_one",
+                        lambda path, material, config, *rest: vistos.append(config.workers))
+    (tmp_path / "banqueta-alta.ai").write_bytes(b"")
+
+    run_bench.run_fixed(run_bench.CASOS_FIJOS[0], files_dir=tmp_path)
+
+    assert vistos == [3]
+
+
+def test_los_casos_fijos_se_buscan_en_la_carpeta_del_banco(tmp_path, monkeypatch, capsys):
+    """Con `FILES_DIR` cambiado, un caso fijo que no está ahí se saltea: no
+    se va a buscar a `bench/files`, donde la banqueta tardaría minutos."""
+    import run_bench
+
+    write_sample(tmp_path / "muestra.dxf")
+    monkeypatch.setattr(run_bench, "FILES_DIR", tmp_path)
+    medir = run_bench.run_one
+
+    def solo_de_la_carpeta(path, *rest, **nombrados):
+        assert path.parent == tmp_path, f"midió {path}, fuera de la carpeta del banco"
+        return medir(path, *rest, **nombrados)
+
+    monkeypatch.setattr(run_bench, "run_one", solo_de_la_carpeta)
+
+    assert run_bench.main([]) == 0
+    assert "banqueta-alta.ai        (falta en bench/files: se saltea)" in capsys.readouterr().out

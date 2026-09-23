@@ -518,6 +518,56 @@ def apagar() -> None:
         _hilo = None
 
 
+def _prueba_de_procesos(timeout: float = 120.0) -> None:
+    """Una corrida de la cartera con dos procesos, con tiempo límite.
+
+    Un `spawn` sin `multiprocessing.freeze_support()` anda perfecto desde el
+    repo y se cuelga en el ejecutable congelado: cada proceso del pool
+    vuelve a arrancar el programa entero en vez de ser un proceso del pool.
+    Ningún test normal lo ve. Esto sí, en la máquina que arma el paquete.
+
+    Tres cuadrados de 600 en una placa de 1000: uno por placa, tres placas,
+    y la cota por área es dos, así que la cartera no se conforma con la base
+    y manda una tanda de variantes al pool.
+    """
+    from nesting.engine.cartera import run_portfolio
+    from nesting.engine.oracle import NestConfig
+    from nesting.engine.raster.oracle import RasterOracleFactory
+    from nesting.model.part import Part
+    from nesting.model.sheet import Sheet, SheetSupply
+
+    piezas = [
+        Part(i, ((0.0, 0.0), (600.0, 0.0), (600.0, 600.0), (0.0, 600.0)), (), (i,))
+        for i in range(3)
+    ]
+    config = NestConfig(sep=5.0, margin=10.0, angles=(0.0, 90.0), mirror=False,
+                        resolution=5.0, effort="normal", workers=2)
+    plan = SheetSupply(stock=Sheet(1000.0, 1000.0, grain_tolerance=180.0))
+    salida: list = []
+
+    def correr() -> None:
+        try:
+            salida.append(run_portfolio(piezas, plan, config, RasterOracleFactory()))
+        except BaseException as error:  # noqa: BLE001 - se relanza abajo
+            salida.append(error)
+
+    hilo = threading.Thread(target=correr, daemon=True)
+    hilo.start()
+    hilo.join(timeout)
+    if hilo.is_alive():
+        raise RuntimeError(
+            f"la corrida con 2 procesos no terminó en {timeout:.0f} s: "
+            "¿falta multiprocessing.freeze_support() al principio de main?"
+        )
+    if isinstance(salida[0], BaseException):
+        raise salida[0]
+    if salida[0].result.sheets_used != 3:
+        raise RuntimeError(
+            f"la corrida con 2 procesos dio {salida[0].result.sheets_used} placas "
+            "y tenían que ser 3"
+        )
+
+
 def _autotest() -> int:
     """Arranca todo y pide una ruta. Sale 0 si el paquete está bien armado.
 
@@ -540,6 +590,10 @@ def _autotest() -> int:
             if respuesta.status != 200:
                 raise RuntimeError(f"la API respondió {respuesta.status}")
         urllib.request.urlopen(url, timeout=10).read()
+        # Al final y no al principio: es lo más lento del autotest (arranca
+        # dos procesos), y si el paquete está roto por otra cosa conviene
+        # enterarse antes.
+        _prueba_de_procesos()
     except Exception as error:  # noqa: BLE001 - es el punto del autotest
         print(f"autotest FALLÓ: {error}", file=sys.stderr)
         return 1

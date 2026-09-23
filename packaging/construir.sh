@@ -28,6 +28,8 @@ rm -rf build dist
 echo "== construyendo =="
 .venv/bin/pyinstaller --noconfirm --distpath dist --workpath build packaging/nesting.spec
 
+# El autotest incluye una corrida de la cartera con 2 procesos: un spawn sin
+# freeze_support anda en el repo y se cuelga en el ejecutable.
 echo "== verificando el paquete =="
 ./dist/Nesting/Nesting --autotest
 

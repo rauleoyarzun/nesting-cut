@@ -692,3 +692,26 @@ def test_freeze_support_es_lo_primero_que_hace_main(monkeypatch):
     with pytest.raises(SystemExit):
         desktop.main(["--no-existe-esta-opcion"])
     assert llamadas == [1]
+
+
+def test_el_autotest_falla_si_la_corrida_con_dos_procesos_falla(tmp_path, monkeypatch, capsys):
+    """Es lo que tiene que frenar a un ejecutable al que le falta
+    `freeze_support`: en el repo el `spawn` anda igual, en el paquete se
+    cuelga."""
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+    monkeypatch.setattr(desktop, "motor_de_ventana", lambda: None)
+
+    def colgada(timeout=120.0):
+        raise RuntimeError("la corrida con 2 procesos no terminó")
+
+    monkeypatch.setattr(desktop, "_prueba_de_procesos", colgada)
+
+    assert desktop.main(["--autotest"]) == 1
+    assert "2 procesos" in capsys.readouterr().err
+
+
+def test_la_corrida_con_dos_procesos_no_deja_procesos_vivos():
+    import multiprocessing
+
+    desktop._prueba_de_procesos()
+    assert multiprocessing.active_children() == []

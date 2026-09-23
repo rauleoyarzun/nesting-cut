@@ -7,9 +7,10 @@ an improvement.
 
 import argparse
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+from nesting.engine import workers
 from nesting.engine.oracle import NestConfig
 from nesting.engine.packer import PartTooLargeError, layout_cost, pack, replicate
 from nesting.engine.raster.oracle import RasterOracleFactory
@@ -20,7 +21,7 @@ from nesting.io.ai_reader import read_ai
 from nesting.io.dxf_reader import UNIT_SCALES, UnknownUnitsError, read_dxf
 from nesting.io.rhino_reader import read_3dm
 from nesting.model.material import DEFAULT_MATERIALS_PATH, Material, load_materials
-from nesting.model.sheet import SheetSupply
+from nesting.model.sheet import Sheet, SheetSupply
 from nesting.pipeline import OpenContourError, prepare_parts
 
 FILES_DIR = Path(__file__).parent / "files"
@@ -180,6 +181,54 @@ def run_one(
     )
 
 
+@dataclass(frozen=True)
+class CasoFijo:
+    """Un archivo real con su propia placa y su propia configuración.
+
+    El barrido de `*.dxf` usa una sola configuración para todo; estos casos
+    son trabajos concretos con un resultado conocido, que se miden tal cual.
+    """
+
+    archivo: str
+    placa: Sheet
+    config: NestConfig
+    """`workers` no cuenta: `run_fixed` lo pisa con la omisión de la máquina."""
+
+    esperado: int
+    """Las placas del resultado verificado a mano."""
+
+
+CASOS_FIJOS = (
+    # Diego lo acomodó a mano en 1 placa; el motor sin pares daba 2. Ver la
+    # spec de pares y cartera, 1. Corre con los núcleos que la máquina
+    # admite (`run_fixed`): doce procesos de ~2,3 GB no entran en cualquier
+    # máquina, y como `cartera.MIN_BATCH` es 12, las variantes de cada tanda
+    # son las mismas con cualquier N de hasta doce -- el resultado no
+    # depende de N, sólo el tiempo.
+    CasoFijo(
+        archivo="banqueta-alta.ai",
+        placa=Sheet(1220.0, 2440.0, grain_tolerance=180.0),
+        config=NestConfig(sep=8.0, margin=5.0, angles=tuple(i * 45.0 for i in range(8)),
+                          mirror=True, resolution=1.0, effort="normal"),
+        esperado=1,
+    ),
+)
+
+
+def run_fixed(caso: CasoFijo, files_dir: Path = FILES_DIR) -> BenchResult | None:
+    """Mide un caso fijo, o `None` si su archivo no está en `files_dir`.
+
+    Los archivos de diseño no se versionan: que falte uno no es un error.
+    """
+    path = files_dir / caso.archivo
+    if not path.exists():
+        return None
+    material = Material(caso.archivo, caso.placa.width, caso.placa.height,
+                        caso.placa.grain_tolerance)
+    config = replace(caso.config, workers=workers.machine().default)
+    return run_one(path, material, config, RasterOracleFactory(), "cartera")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Banco de pruebas del motor de nesting.")
     parser.add_argument("--material", default="mdf18")
@@ -243,6 +292,22 @@ def main(argv: list[str] | None = None) -> int:
                 f"{result.first_sheet_utilization * 100:>10.1f}%"
                 f"{result.seconds:>8.1f}{delta}{flag}"
             )
+
+    for caso in CASOS_FIJOS:
+        # `FILES_DIR` explícito: el valor por omisión de `run_fixed` quedó
+        # fijado al definirla, y así un `FILES_DIR` cambiado también vale acá.
+        result = run_fixed(caso, FILES_DIR)
+        if result is None:
+            print(f"{caso.archivo:<24}(falta en bench/files: se saltea)")
+            continue
+        flag = "  VIOLACIONES!" if result.violations else ""
+        esperado = "" if result.sheets == caso.esperado else f"  (esperado {caso.esperado})"
+        print(
+            f"{result.name:<24}{result.engine:<10}{result.parts:>7}{result.sheets:>8}"
+            f"{result.total_utilization * 100:>8.1f}%"
+            f"{result.first_sheet_utilization * 100:>10.1f}%"
+            f"{result.seconds:>8.1f}{esperado}{flag}"
+        )
 
     if failed:
         print(
