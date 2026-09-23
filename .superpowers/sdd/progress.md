@@ -1405,3 +1405,71 @@ de 60 piezas pasa de ~82s a ~380s, o sea cruza el objetivo de 5 minutos que el p
 documenta. Fue un pedido explícito y el spec decidió a conciencia no volver a medir.
 
 ## Estado: rama completa y verificada. Pendiente: decisión de merge del usuario.
+
+---
+
+# Rama veta-tiempo-pares (2026-09-22)
+
+Tres planes, en orden: `docs/superpowers/plans/2026-09-22-veta-por-corrida.md` (P1, 7 tareas),
+`2026-09-22-tiempo-estimado.md` (P2, 8 tareas), `2026-09-22-pares-y-cartera.md` (P3, 11 tareas).
+Rama creada desde main en bfb6145.
+
+P1 Task 1: complete (commits bfb6145..6be30f4, review clean)
+P1 Task 2: complete (commits 6be30f4..7558b08, review clean)
+  Minor para la revisión final: params.py validar arma la placa a mano en vez de replace(material.stock_sheet(), ...) como a_supply.
+P1 Task 3: complete (commits 7558b08..16395d0, review clean)
+P1 Task 4: complete (commits 16395d0..a343099, review clean)
+P1 Task 5: complete (commits a343099..892ea01, review clean). La clave veta de info.js y CLAVES_CON_GLOBO se adelantaron de la Tarea 7. Chequeo en ventana pendiente del controlador.
+P1 Task 6: complete (commits 892ea01..a208d6f, review clean). El revisor verificó en vivo los 5 escenarios del paso 6 (y con eso el paso 6 de la Tarea 5).
+  Minor: la condición value !== "personalizado" para campo-angulos está en soltarPosiciones y en el onchange de posiciones.
+P1 Task 7: complete (commits a208d6f..3dadf99, review clean). PLAN 1 COMPLETO.
+Verificación final P1: --veta libre sobre multilam, banqueta rápido -> 30 piezas paradas (el dibujo tiene 6), 2 placas, exit 0.
+P2 Task 1: complete (commits 3dadf99..03379e4, review clean).
+  Minor: prevision.TYPICAL_UTILIZATION nombra packer._Informe; P3 Task 5 borra _Informe -> actualizar ese docstring ahí.
+P2 Task 2: complete (commits 03379e4..df23f13, review clean).
+  Minor: tests/engine/test_consultas.py helper rectangulo sin uso (plan-mandated; ver si lo usa la Tarea 3).
+P2 Task 3: complete (commits df23f13..82155b7, review clean).
+  Minor: la contabilidad de previsión corre también sin progreso (costo chico, siempre activo).
+P2 Task 4: complete (commits 82155b7..a492e55, review clean)
+P2 Task 5: complete (commits a492e55..4885d8a, review clean tras 1 arreglo: un catálogo roto ya no se disfraza de estimación vacía en /api/estimar; se apartó del código del plan para cumplir la regla que el mismo plan escribe).
+P2 Task 6: complete (commits 4885d8a..005d380, review clean). FACTOR_LLENO = 1.42 medido.
+  Minor: bench/calibrate.py _parts_of -> list en vez de list[Part].
+P2 Task 7: complete (commits 005d380..1d1daa9, review clean).
+  Minor: el literal 'Calculando el tiempo…' en dos lugares de app.js.
+P2 Task 8: complete (commits 1d1daa9..7d402d2, review clean). Chequeo en vivo del revisor: los 4 puntos pasan. Banqueta, 8 posiciones libre, normal: previa 'Tarda aprox. 6 min', en vivo a los 10 s 'Faltan aprox. 10 min' (la corrida real medida antes: 651 s).
+PLAN 2 COMPLETO.
+P3 Task 1: complete (commits 7d402d2..f0735f9, review clean)
+P3 Task 2: complete (commits f0735f9..c7dd89e, review clean)
+P3 Task 3: complete (commits c7dd89e..9b48b0c, review clean tras 1 arreglo aprobado por el usuario: la copia B se acerca hasta sep+0.01 antes del chequeo exacto; con eso hay pares con cualquier sep/resolución y cada par gana ~3 mm).
+  Minors para la revisión final: PairType.orientation/offset_px sin lector y docstrings viejos; el test None de union_with_bridge pasa un MultiPolygon; las medidas de la banqueta en el spec §7 y en test_pares (1511x560, 1055x879) son de antes del acercamiento (ahora 1508x560, 1056x875; queda ~1.5 mm de holgura en ±5).
+P3 Task 4: complete (commits 9b48b0c..a9a6192, review clean)
+P3 Task 5: complete (commits a9a6192..4fa7074, review clean). pack() delega en cartera.py; EFFORT_RESTARTS -> EFFORT_BATCHES; MIN_BATCH=12 con fixture en tests/conftest.py.
+  Minors para la revisión final:
+  (a) cartera._Progress: la previsión no se corrige durante las tandas (variantes cortadas, variantes de pares más baratas, corte por cota): con MIN_BATCH real el restante puede salir ~2.7x alto hasta final(). IMPORTA para el tiempo estimado.
+  (b) test_consultas.py:348 el fallback "or a.compactando" también aplica a estantes/banqueta; parametrizar.
+  (c) tests/conftest.py docstring dice que no carga el motor, pero es autouse e importa cartera siempre.
+  (d) cartera.py historia pegada: "ver el superconjunto de reintentos más abajo" ya no existe.
+  (e) cartera.py 829 líneas; _Progress y los envoltorios son candidatos a separarse.
+  (f) faltan tests: pares que no entran en placa vacía (rama PartTooLargeError), corte con recortes, producto de dos clases.
+  Nota: hasta la Tarea 6/7 normal corre 13 pasadas en serie (4x más lento).
+P3 Task 6: complete (commits 4fa7074..093ff08, review clean tras arreglos: cancel_join_thread contra el cuelgue al cerrar, test de determinismo con cortes reales, chequeo de serialización al crear el evaluador salvo en rápido).
+P3 Task 7: complete (commits 093ff08..53d4907, review clean tras 1 arreglo de tests). Chequeo en vivo: "Núcleos [5] de 14", opciones 1..5, globo, nucleos viaja.
+  DATO PARA EL USUARIO: MEMORY_PER_WORKER_BYTES medido = 2300 MB (el plan suponía 400), sobre muestra.dxf x6; en su Mac (14 núcleos, 24 GB) el tope y la omisión quedan en 5. Normal = base + 12 variantes en 3 vueltas de 5.
+  Minors: nucleos_efectivos se calcula dos veces (cli/corredor); wall_forecast recalcula estimate_sheets.
+P3 Task 8: complete (commits 53d4907..7bfa910, review clean)
+P3 Task 9 + 9b + 2 arreglos: complete (commits 7bfa910..f0b01d8, review clean tras 1 ronda). Banqueta libre 8 posiciones normal workers=4: 1 placa en 770 s, ganadora variante 3 (2 diagonal + 2 sueltos). Con veta: 2 placas en 97 s.
+  - 7a37ece: el acercamiento sólo dentro de la holgura del raster (max(sep, 6·res)).
+  - d45815f: huella con tolerancia; los 6 marcos son una sola clase.
+  - 343bdff (Tarea 9b, decisión del usuario): combinaciones ordenadas por placas previstas (estantes.py) y después por área.
+  - f0b01d8: el autotest no cuelga construir.sh (terminate + os._exit); los tests de aceptación dicen sólo lo garantizado.
+  Minors para la revisión final: test_desktop ventana de 2 s puede fallar bajo carga (subir a ~8 s); renombrar test_el_caso_sintetico_necesita_mezclar_tipos; comentario sobre el warning de semáforos tras os._exit; dos cortes de línea raros en cartera.py 185/201; read_ai con basura devuelve dibujo vacío (fuera de alcance).
+P3 Task 10: complete (commits f0b01d8..118c63f, review clean).
+  Minor para la final: el globo de Núcleos en info.js dice 'tantas como núcleos' (vale sólo arriba de 12); el badge de tests del README dice 1028.
+P3 Task 11 (fase 2): complete (commits 118c63f..18d0eeb, review clean tras 3 rondas). Idea B (orientaciones en 4 hilos, sólo en el proceso principal; workers de la cartera a 1 hilo): rápido -67.3% (226.6 -> 74.0 s), layouts idénticos. Idea A (FFT de la placa reusada) descartada: -4.1% y cambia un layout. MaskCache con cerrojo. Estimación previa con dos costos; la sonda ya no cronometra el rasterizado; FACTOR_LLENO = 3.455 (ratios x2 del test: 1.05/1.02/1.00).
+  Minors para la final: costo de tandas con workers>1 sin calibrar; el rasterizado quedó fuera de la estimación.
+PLAN 3 COMPLETO. Falta: revisión final de la rama entera.
+Revisión final de la rama (opus): "With fixes" -> 9 arreglos (18d0eeb..b4355a6) + spec (9245021) -> re-revisión: "Ready to merge: Yes".
+  Arreglos: pares sólo si las orientaciones permitidas son cerradas bajo composición (0/90 personalizado ya no empareja; 4/8/16/24 y veta sí); Núcleos/sep/borde recalculan el "Tarda aprox."; la previsión se corrige al terminar cada variante; textos de Núcleos/Esfuerzo según MIN_BATCH; test_desktop 8 s/30 s; test de dos clases; BrokenProcessPool -> mensaje de memoria; estimación previa banqueta 839-924 s vs 770 s real; pasada de docstrings/README/spec.
+  Suite lenta final: 3 passed en 646 s (banqueta libre 1 placa, con veta 2, sintético ok).
+  Pendientes menores (seguimiento, no bloquean): BrokenProcessPool en la CLI; avisar que una lista de ángulos no cerrada corre sin pares; caché de máscaras de compuestas por id; _build_pair_plan sin chequeo de cancelación.
+## Estado: rama completa y verificada. Pendiente: decisión de merge del usuario.
