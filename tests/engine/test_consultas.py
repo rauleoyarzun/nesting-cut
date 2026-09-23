@@ -400,6 +400,33 @@ def test_la_prueba_en_hilos_pregunta_por_todas_las_orientaciones_y_divide():
     assert sorted(anotadas) == sorted((1, a, m) for a, m in todas)
 
 
+class ConWarm(Anotador):
+    """Anota también cuándo se preparan las máscaras."""
+
+    def warm(self, part, choices):
+        self._anotadas.append(("warm", part.id, len(choices)))
+
+
+@pytest.mark.parametrize("threaded", [False, True], ids=["un_hilo", "en_hilos"])
+def test_la_prueba_prepara_las_mascaras_antes_de_largar_el_reloj(threaded):
+    """La prueba mide consultas, no rasterizado: `warm` va antes del reloj,
+    con las mismas orientaciones que después se consultan."""
+    grande = cuadrado(1, 300.0)
+    eventos = []
+    tiempos = iter([10.0, 10.8])
+
+    def reloj():
+        eventos.append("reloj")
+        return next(tiempos)
+
+    probe_query_seconds([grande], PLAN, config(), lambda: ConWarm(eventos),
+                        clock=reloj, threaded=threaded)
+
+    cuantas = len(orientations(PLAN.stock, config())) if threaded else 1
+    assert eventos[0] == ("warm", 1, cuantas)
+    assert eventos.index("reloj") == 1, "nada entre el warm y el arranque del reloj"
+
+
 def test_sin_orientaciones_permitidas_no_hay_prueba():
     con_veta = Material("veta", 1000.0, 1000.0, grain_tolerance=5.0)
     plan = SheetSupply(stock=con_veta.stock_sheet(), material_name=con_veta.name)

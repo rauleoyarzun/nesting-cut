@@ -165,11 +165,15 @@ def probe_query_seconds(
     """Cuánto tarda UNA consulta en esta máquina, con estas opciones.
 
     Pregunta por la pieza más grande, en la primera orientación que la veta
-    de la placa del Material permite, sobre una placa vacía. Incluye
-    rasterizar la máscara si el oráculo lo hace: quien llama pasa una
-    fábrica con caché nueva para que así sea, porque la corrida real también
-    rasteriza cada orientación la primera vez. `reset` queda afuera del
-    tiempo: se paga una vez por placa, no por consulta.
+    de la placa del Material permite, sobre una placa vacía. Mide CONSULTAS,
+    no rasterizado: antes de largar el reloj se le pide al oráculo que
+    prepare las máscaras de las orientaciones que se van a consultar
+    (`warm`, si lo tiene). En la corrida cada máscara se rasteriza una vez y
+    se reusa en cientos de consultas, así que su costo por consulta es casi
+    nada; en la prueba, en cambio, pesaba lo mismo que la consulta, y
+    `FACTOR_LLENO` tenía que absorberlo -- distinto en cada archivo, según
+    cuánto cuesta rasterizar su pieza más grande. `reset` también queda
+    afuera: se paga una vez por placa, no por consulta.
 
     Sin `threaded`, una sola consulta y no un promedio: tarda menos de un
     segundo, y el número vale en cualquier máquina porque se mide en ella.
@@ -179,9 +183,9 @@ def probe_query_seconds(
     Con `threaded=True` mide lo que cuesta una consulta en el proceso
     principal, donde corren en hilos (`QUERY_THREADS`): pregunta por TODAS
     las orientaciones de la pieza con `_query_orientations`, como hace la
-    corrida -- con sus rasterizados, desde el hilo que llama --, y divide el
-    tiempo por cuántas son. Tarda más que una sola consulta, del orden de
-    las orientaciones divididas por los hilos.
+    corrida, y divide el tiempo por cuántas son. Tarda más que una sola
+    consulta, del orden de las orientaciones divididas por los hilos, más
+    rasterizarlas todas antes (fuera del tiempo medido).
     """
     if not parts:
         return None
@@ -191,11 +195,15 @@ def probe_query_seconds(
     part = max(parts, key=lambda p: p.area)
     oracle = oracle_factory()
     oracle.reset(supply.stock.width, supply.stock.height, config)
+    consultadas = choices if threaded else choices[:1]
+    warm = getattr(oracle, "warm", None)
+    if warm is not None:
+        warm(part, consultadas)
     if threaded:
         started = clock()
-        _query_orientations(oracle, part, choices)
-        return (clock() - started) / len(choices)
-    angle, mirror = choices[0]
+        _query_orientations(oracle, part, consultadas)
+        return (clock() - started) / len(consultadas)
+    angle, mirror = consultadas[0]
     started = clock()
     oracle.best_placement(part, angle, mirror)
     return clock() - started

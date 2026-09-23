@@ -36,7 +36,7 @@ NOMBRE_DXF = "salida.dxf"
 NOMBRE_PREVIEW = "preview.png"
 NOMBRE_DIAGNOSTICO = "diagnostico.png"
 
-FACTOR_LLENO = 0.825
+FACTOR_LLENO = 3.455
 """Cuánto más cara es, en promedio, una consulta de la corrida que la de la prueba.
 
 La prueba de `estimar_segundos` pregunta sobre una placa VACÍA, y una placa
@@ -46,13 +46,16 @@ que la placa se llena, cada consulta verifica más candidatos contra más
 vecinos. Este factor lleva el costo de la prueba al costo medio de una
 consulta de la corrida.
 
-Desde la fase 2 de pares y cartera, la prueba es la de los hilos: todas las
+La prueba es la de los hilos (desde la fase 2 de pares y cartera): todas las
 orientaciones de la pieza más grande en el pool de hilos de consulta
 (`probe_query_seconds(..., threaded=True)`), y el tiempo dividido por cuántas
-son. Por eso el factor bajó de 1.42 a menos de 1: esa prueba paga además
-rasterizar todas las orientaciones, una detrás de otra desde el hilo que
-llama, mientras que en la corrida cada máscara se rasteriza una vez y se
-reusa (es la explicación probable, no medida por separado).
+son. Y mide sólo consultas: las máscaras se rasterizan ANTES de largar el
+reloj. Hasta la medición anterior (0.825, 2026-09-23) la prueba cobraba
+también el rasterizado de todas las orientaciones, que en la corrida se
+paga una vez por máscara y se reparte en cientos de consultas; eso inflaba
+la prueba de manera distinta en cada archivo, y los factores iban de 0.51 a
+1.99. Sin el rasterizado van de 3.08 a 6.08, y cinco de los seis quedan
+entre 3.08 y 4.39.
 
 MEDIDO EL 2026-09-23 con `bench/calibrate.py --factor-lleno` sobre
 `bench/files/*` (multilam18, sep 8, borde 5, 1 mm/px, esfuerzo normal), en
@@ -61,22 +64,22 @@ la máquina del taller:
     FACTOR_LLENO  (multilam18, veta 5 grados, 4 posiciones con espejo, sep 8, borde 5, 1 mm/px, esfuerzo normal, --copias 1)
     archivo                      piezas orient. previstas  reales s/c prueba  s/c real  factor  s reales
     ----------------------------------------------------------------------------------------------------
-    muestra.dxf                      12       4       672      96     0.0134    0.0221    1.65       2.1
-    banqueta final raulo.ai          40       4      3440     320     0.0359    0.0294    0.82       9.4
-    banqueta-alta.ai                 57       4      4936    3116     0.0798    0.0476    0.60     148.2
+    muestra.dxf                      12       4       672      96     0.0046    0.0200    4.39       1.9
+    banqueta final raulo.ai          40       4      3440     320     0.0091    0.0279    3.08       8.9
+    banqueta-alta.ai                 57       4      4936    3116     0.0121    0.0455    3.76     141.8
 
-    -> mediana del factor: 0.82
+    -> mediana del factor: 3.76
 
     FACTOR_LLENO  (multilam18, veta 180 grados, 8 posiciones con espejo, sep 8, borde 5, 1 mm/px, esfuerzo normal, --copias 1)
     archivo                      piezas orient. previstas  reales s/c prueba  s/c real  factor  s reales
     ----------------------------------------------------------------------------------------------------
-    muestra.dxf                      12      16      2688     384     0.0122    0.0243    1.99       9.3
-    banqueta final raulo.ai          40      16     13760    1280     0.0365    0.0301    0.83      38.5
-    banqueta-alta.ai                 57      16     19744   12224     0.1163    0.0594    0.51     725.8
+    muestra.dxf                      12      16      2688     384     0.0038    0.0229    6.08       8.8
+    banqueta final raulo.ai          40      16     13760    1280     0.0088    0.0276    3.15      35.4
+    banqueta-alta.ai                 57      16     19744   12224     0.0187    0.0582    3.11     711.9
 
-    -> mediana del factor: 0.83
+    -> mediana del factor: 3.15
 
-    Las dos tablas juntas: 0.51 0.60 0.82 0.83 1.65 1.99 -> mediana 0.825.
+    Las dos tablas juntas: 3.08 3.11 3.15 3.76 4.39 6.08 -> mediana 3.455.
 
 Se usa la mediana de los factores de las dos tablas juntas, y no el
 promedio, para que un archivo raro no mueva la estimación de todos. El
@@ -244,10 +247,10 @@ def estimar_segundos(piezas, supply, config) -> float | None:
     hilos, y se usa el primer costo para todo; y si no hay tandas previstas
     (`rapido`) la segunda prueba ni se corre.
 
-    Cada prueba usa una caché de máscaras nueva, así que incluye rasterizar;
-    ver `probe_query_seconds`. `FACTOR_LLENO` sigue siendo lo mismo: cuánto
-    más cara es una consulta sobre la placa que se va llenando que sobre la
-    placa vacía de la prueba.
+    Ninguna prueba cuenta el rasterizado: las máscaras se preparan antes de
+    largar el reloj (ver `probe_query_seconds`). `FACTOR_LLENO` sigue siendo
+    lo mismo: cuánto más cara es una consulta sobre la placa que se va
+    llenando que sobre la placa vacía de la prueba.
     """
     en_hilos = probe_query_seconds(
         piezas, supply, config, RasterOracleFactory(), threaded=True

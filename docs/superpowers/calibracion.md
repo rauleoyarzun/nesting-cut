@@ -486,10 +486,14 @@ tope de procesos sigue valiendo. La estimación previa usa dos costos por
 consulta: el de los hilos para la base y el tramo final, y el de un hilo
 para las tandas en procesos (`corredor.estimar_segundos`). `FACTOR_LLENO`
 se volvió a medir con la prueba en hilos (`bench/calibrate.py
---factor-lleno`, las dos configuraciones de su docstring): la mediana de los
-seis factores pasó de 1.42 a 0.825, con las tablas en el docstring de la
-constante. Con ese valor el test de ×2 sigue pasando, pero con poco margen:
-dentro de `tests/test_calibration.py` el real dio 1.90 y 1.94 veces el
-estimado (0.84 s contra 0.43–0.44 s), cuando el tope es 2.
+--factor-lleno`, las dos configuraciones de su docstring). La primera vez
+dio 0.825, con factores de 0.51 a 1.99 y el test de ×2 al borde (el real
+llegó a 1.90–1.94 veces el estimado). El motivo: la prueba cobraba el
+rasterizado de todas las orientaciones, que en la corrida se paga una vez
+por máscara. Ahora la prueba prepara las máscaras antes de largar el reloj
+y mide sólo consultas. Con eso el factor dio 3.455 (seis factores de 3.08 a
+6.08, cinco de ellos entre 3.08 y 4.39), y dentro de
+`tests/test_calibration.py` el real quedó en 1.05, 1.02 y 1.00 veces el
+estimado en tres corridas.
 
 Máquina: Apple M4 Pro, 14 núcleos, 24 GB, fecha 2026-09-23.
