@@ -316,3 +316,25 @@ def test_con_la_veta_libre_el_mismo_pedido_arranca(cliente, tmp_path):
     })
 
     assert respuesta.status_code == 200
+
+
+def test_el_estado_del_trabajo_trae_las_consultas_y_el_restante(cliente, tmp_path):
+    cuadrados = [(i * 60 % 1500, (i * 60 // 1500) * 60, 50) for i in range(120)]
+    fuente_id = fuente_de(cliente, tmp_path, cuadrados)
+    trabajo_id = cliente.post("/api/trabajos", json={
+        "fuente_id": fuente_id, "params": {"material": "mdf18", "esfuerzo": "lento"},
+    }).json()["id"]
+
+    fin = time.monotonic() + 30
+    cuerpo = None
+    while time.monotonic() < fin:
+        cuerpo = cliente.get(f"/api/trabajos/{trabajo_id}").json()
+        if cuerpo["avance"]:
+            break
+        time.sleep(0.02)
+
+    cliente.post(f"/api/trabajos/{trabajo_id}/cancelar")
+    avance = cuerpo["avance"]
+    assert avance is not None
+    assert avance["consultas_previstas"] >= avance["consultas_hechas"] > 0
+    assert "restante_s" in cuerpo

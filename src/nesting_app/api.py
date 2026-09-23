@@ -346,6 +346,8 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
             "totales": avance.totales,
             "placa": avance.placa,
             "compactando": avance.compactando,
+            "consultas_hechas": avance.consultas_hechas,
+            "consultas_previstas": avance.consultas_previstas,
         }
 
     @app.post("/api/trabajos")
@@ -410,6 +412,7 @@ def crear_app(token: str, deposito: Deposito, registro: Registro) -> FastAPI:
         return {
             "estado": str(trabajo.estado),
             "avance": _avance_a_dict(trabajo.avance),
+            "restante_s": trabajo.restante_s,
             "avisos": trabajo.avisos,
             "error": trabajo.error,
             "es_bug": trabajo.es_bug,

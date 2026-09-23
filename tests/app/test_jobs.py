@@ -9,6 +9,7 @@ from nesting.engine.packer import Avance, Cancelado
 from nesting_app.archivos import Fuente
 from nesting_app.jobs import (
     Estado,
+    EstimadorDeRestante,
     Registro,
     RegistroCerradoError,
     Resultado,
@@ -428,3 +429,129 @@ def test_value_error_se_marca_como_error_del_usuario(registro):
     esperar(trabajo, {Estado.ERROR})
 
     assert trabajo.es_bug is False
+
+
+class RelojFalso:
+    """Un reloj que avanza sólo cuando el test lo dice."""
+
+    def __init__(self):
+        self.ahora = 0.0
+
+    def __call__(self):
+        return self.ahora
+
+
+def test_el_primer_aviso_es_la_referencia_y_no_estima():
+    estimador = EstimadorDeRestante(RelojFalso())
+    assert estimador.actualizar(0, 1000) is None
+
+
+def test_antes_de_cinco_segundos_no_hay_restante():
+    reloj = RelojFalso()
+    estimador = EstimadorDeRestante(reloj)
+    estimador.actualizar(0, 1000)
+
+    reloj.ahora = 4.9
+    assert estimador.actualizar(500, 1000) is None
+
+
+def test_antes_de_veinte_consultas_no_hay_restante():
+    reloj = RelojFalso()
+    estimador = EstimadorDeRestante(reloj)
+    estimador.actualizar(0, 1000)
+
+    reloj.ahora = 30.0
+    assert estimador.actualizar(19, 1000) is None
+
+
+def test_los_umbrales_se_cuentan_desde_el_primer_aviso():
+    """Leer el archivo no son consultas: si el primer aviso llega a los 3 s
+    con 16 consultas, a los 6 s todavía no pasaron 5 s de medición."""
+    reloj = RelojFalso()
+    estimador = EstimadorDeRestante(reloj)
+    reloj.ahora = 3.0
+    estimador.actualizar(16, 1000)
+
+    reloj.ahora = 6.0
+    assert estimador.actualizar(200, 1000) is None
+
+
+def test_la_cuenta_es_segundos_por_consulta_por_consultas_que_faltan():
+    reloj = RelojFalso()
+    estimador = EstimadorDeRestante(reloj)
+    estimador.actualizar(0, 1000)
+
+    reloj.ahora = 10.0
+    # 10 s / 100 consultas = 0.1 s por consulta, y faltan 900.
+    assert estimador.actualizar(100, 1000) == pytest.approx(90.0)
+
+
+def test_una_consulta_lenta_aislada_no_mueve_el_numero_entero():
+    """El promedio móvil: la muestra nueva pesa 0.2 y el promedio 0.8."""
+    reloj = RelojFalso()
+    estimador = EstimadorDeRestante(reloj)
+    estimador.actualizar(0, 300)
+    reloj.ahora = 10.0
+    assert estimador.actualizar(100, 300) == pytest.approx(20.0)
+
+    # 20 s sin una sola consulta nueva: la muestra cruda sube a 0.3 s por
+    # consulta, que daría 60 s. Con el promedio: 0.2*0.3 + 0.8*0.1 = 0.14.
+    reloj.ahora = 30.0
+    assert estimador.actualizar(100, 300) == pytest.approx(0.14 * 200)
+
+
+def test_si_las_previstas_quedan_cortas_no_falta_nada():
+    reloj = RelojFalso()
+    estimador = EstimadorDeRestante(reloj)
+    estimador.actualizar(0, 100)
+    reloj.ahora = 10.0
+    assert estimador.actualizar(150, 100) == 0.0
+
+
+def test_un_avance_sin_consultas_nunca_estima():
+    """Los corredores de mentira arman `Avance` sin consultas: todo queda en
+    cero y el estimador no puede inventar nada."""
+    reloj = RelojFalso()
+    estimador = EstimadorDeRestante(reloj)
+    estimador.actualizar(0, 0)
+    reloj.ahora = 60.0
+    assert estimador.actualizar(0, 0) is None
+
+
+def test_el_registro_publica_el_restante_mientras_corre(tmp_path):
+    """Los `Event` sincronizan exactamente los dos hechos que importan --
+    que el corredor ya publicó cada aviso -- en vez de apostar a un
+    `time.sleep`. El reloj falso lo mueve el propio corredor, en su hilo,
+    que es el mismo en el que el estimador lo lee."""
+    reloj = RelojFalso()
+    registro = Registro(tmp_path / "trabajos", reloj=reloj)
+    primero = threading.Event()
+    seguir = threading.Event()
+    segundo = threading.Event()
+    suelto = threading.Event()
+
+    def corredor(fuente, params, progreso, carpeta):
+        progreso(Avance(1, 1, 0, 10, 1, consultas_hechas=0, consultas_previstas=1000))
+        primero.set()
+        seguir.wait(timeout=5)
+        reloj.ahora = 10.0
+        progreso(Avance(1, 1, 5, 10, 1, consultas_hechas=100, consultas_previstas=1000))
+        segundo.set()
+        suelto.wait(timeout=5)
+        return resultado_falso(carpeta)
+
+    try:
+        trabajo = registro.crear(FUENTE, PARAMS, corredor)
+        assert primero.wait(timeout=5), "el corredor nunca llegó al primer aviso"
+        assert trabajo.restante_s is None
+        seguir.set()
+        assert segundo.wait(timeout=5), "el corredor nunca llegó al segundo aviso"
+        assert trabajo.restante_s == pytest.approx(90.0)
+    finally:
+        seguir.set()
+        suelto.set()
+        registro.cerrar()
+
+
+def test_un_trabajo_recien_creado_no_tiene_restante():
+    assert Trabajo(id="x").restante_s is None

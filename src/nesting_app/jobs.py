@@ -12,6 +12,7 @@ sin tocar nada de lo que está afuera de este archivo.
 import queue
 import shutil
 import threading
+import time
 import traceback
 import uuid
 from collections.abc import Callable
@@ -69,6 +70,61 @@ class Resultado:
     """
 
 
+ESPERA_MINIMA_S = 5.0
+"""Segundos de medición antes de dar un número. Antes no hay datos."""
+
+CONSULTAS_MINIMAS = 20
+"""Consultas medidas antes de dar un número. Con la veta respetada una
+pieza son 4 consultas: 20 son cinco piezas, lo mínimo para que una pieza
+rara no decida sola."""
+
+PESO_DE_LA_MUESTRA = 0.2
+"""Cuánto pesa la muestra nueva en el promedio móvil de segundos por
+consulta. Bajo a propósito: una consulta lenta aislada -- una pieza grande
+contra una placa casi llena -- no tiene que mover el número mostrado."""
+
+
+class EstimadorDeRestante:
+    """Cuántos segundos le faltan a un trabajo, a partir de sus consultas.
+
+        segundos_por_consulta = transcurrido / consultas_hechas
+        restante = segundos_por_consulta * (consultas_previstas - consultas_hechas)
+
+    con un promedio móvil exponencial sobre `segundos_por_consulta`.
+
+    `transcurrido` y `consultas_hechas` se miden desde el PRIMER aviso y no
+    desde que arrancó el trabajo: lo que pasa antes -- leer el archivo,
+    preparar las piezas -- no son consultas, y medirlo cargaría ese tiempo a
+    cada una. El reloj se inyecta para poder probarlo sin esperar.
+    """
+
+    def __init__(self, reloj: Callable[[], float] = time.monotonic) -> None:
+        self._reloj = reloj
+        self._referencia: tuple[float, int] | None = None
+        self._por_consulta: float | None = None
+
+    def actualizar(self, hechas: int, previstas: int) -> float | None:
+        """Segundos que faltan, o `None` mientras no hay datos para decirlo."""
+        ahora = self._reloj()
+        if self._referencia is None:
+            self._referencia = (ahora, hechas)
+            return None
+        desde, hechas_al_empezar = self._referencia
+        transcurrido = ahora - desde
+        medidas = hechas - hechas_al_empezar
+        if transcurrido < ESPERA_MINIMA_S or medidas < CONSULTAS_MINIMAS:
+            return None
+        muestra = transcurrido / medidas
+        if self._por_consulta is None:
+            self._por_consulta = muestra
+        else:
+            self._por_consulta = (
+                PESO_DE_LA_MUESTRA * muestra
+                + (1 - PESO_DE_LA_MUESTRA) * self._por_consulta
+            )
+        return self._por_consulta * max(0, previstas - hechas)
+
+
 @dataclass
 class Trabajo:
     id: str
@@ -86,6 +142,9 @@ class Trabajo:
     """
     resultado: Resultado | None = None
     detalle_tecnico: str | None = None
+    restante_s: float | None = None
+    """Segundos que faltan según `EstimadorDeRestante`, o `None` mientras
+    no hay datos (los primeros 5 s o las primeras 20 consultas)."""
     _cancelar: threading.Event = field(default_factory=threading.Event, repr=False)
 
 
@@ -161,9 +220,12 @@ se comprobó con `issubclass` contra cada una, no de memoria.
 class Registro:
     """Los trabajos de esta corrida del programa, y el hilo que los ejecuta."""
 
-    def __init__(self, carpeta: Path) -> None:
+    def __init__(
+        self, carpeta: Path, reloj: Callable[[], float] = time.monotonic
+    ) -> None:
         self.carpeta = Path(carpeta)
         self.carpeta.mkdir(parents=True, exist_ok=True)
+        self._reloj = reloj
         self._trabajos: dict[str, Trabajo] = {}
         self._trabajos_lock = threading.Lock()
         self._cola: queue.Queue = queue.Queue()
@@ -256,8 +318,13 @@ class Registro:
         propia = self.carpeta / trabajo.id
         propia.mkdir(parents=True, exist_ok=True)
 
+        estimador = EstimadorDeRestante(self._reloj)
+
         def progreso(avance: Avance) -> bool:
             trabajo.avance = avance
+            trabajo.restante_s = estimador.actualizar(
+                avance.consultas_hechas, avance.consultas_previstas
+            )
             return not trabajo._cancelar.is_set()
 
         try:
