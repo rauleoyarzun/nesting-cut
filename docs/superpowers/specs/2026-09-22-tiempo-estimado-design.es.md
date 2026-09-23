@@ -122,11 +122,16 @@ archivo no se leyó, o los parámetros no validan).
 
     segundos = segundos_por_consulta_medido × consultas_previstas_al_arrancar × FACTOR_LLENO
 
-- `segundos_por_consulta_medido` sale de una prueba real: una consulta con la
-  pieza más grande del archivo, en su primera orientación, sobre una placa
-  vacía del material elegido, a la resolución elegida. Incluye rasterizar
-  esa máscara. Tarda menos de un segundo, y así el número vale en cualquier
-  máquina.
+- `segundos_por_consulta_medido` sale de una prueba real con la pieza más
+  grande del archivo, sobre una placa vacía del material elegido, a la
+  resolución elegida, así que el número vale en cualquier máquina. Desde la
+  fase 2 del plan de pares (2026-09-23) se mide de dos maneras: con los
+  hilos de consulta (todas las orientaciones de la pieza, divididas por su
+  cantidad), que es lo que cuesta la pasada base y el tramo final, y con un
+  solo hilo, que es lo que cuesta cada variante de las tandas en los
+  procesos de la cartera. En las dos las máscaras se arman antes de largar el
+  reloj: medir el rasterizado hacía que el factor saltara de 0,5 a 2 según el
+  archivo.
 - `consultas_previstas_al_arrancar` es la misma previsión de 2.1.
 - `FACTOR_LLENO` corrige que una consulta sobre una placa con piezas cuesta
   más que sobre una vacía (la búsqueda exacta recorre más candidatos). Es

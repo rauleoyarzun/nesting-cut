@@ -120,10 +120,15 @@ read, or parameters do not validate).
 
     seconds = measured_seconds_per_query × forecast_queries_at_start × FACTOR_LLENO
 
-- `measured_seconds_per_query` comes from a real probe: one query with the
-  file's largest part, in its first orientation, on an empty sheet of the
-  chosen material, at the chosen resolution. It includes rasterizing that
-  mask. It takes under a second, so the number holds on any machine.
+- `measured_seconds_per_query` comes from a real probe with the file's
+  largest part, on an empty sheet of the chosen material, at the chosen
+  resolution, so the number holds on any machine. Since phase 2 of the pairs
+  plan (2026-09-23) it is measured two ways: with the query threads (all of the
+  part's orientations, divided by their count), which is what the base pass and
+  final phase cost, and with a single thread, which is what each batch variant
+  costs in the portfolio's processes. In both, the masks are built before the
+  clock starts: timing the rasterization made the factor jump from 0.5 to 2
+  depending on the file.
 - `forecast_queries_at_start` is the same forecast as 2.1.
 - `FACTOR_LLENO` corrects for a query on a sheet with parts costing more than
   on an empty one (the exact search walks more candidates). It is a constant,
