@@ -73,7 +73,7 @@ def test_el_mensaje_de_la_cli_nombra_el_flag_y_el_valor():
 def test_todo_campo_con_regla_tiene_su_flag():
     """Un campo sin flag haría reventar a `mensaje_cli` con KeyError justo
     cuando el usuario ya se equivocó, que es el peor momento."""
-    for campo in ("copias", "sep", "borde", "tol_cierre", "resolucion"):
+    for campo in ("copias", "sep", "borde", "tol_cierre", "resolucion", "angulos"):
         assert campo in FLAG_POR_CAMPO
 
 
@@ -267,3 +267,51 @@ def test_las_constantes_de_veta_viven_en_el_modelo():
 
     assert materials_store.VETA_LIBRE is VETA_LIBRE
     assert materials_store.VETA_RESPETAR is VETA_RESPETAR
+
+
+from nesting.params import REGLA_VETA
+
+
+def test_con_la_veta_respetada_un_solo_angulo_cruzado_se_rechaza():
+    params = NestParams(material="fenolico18", angulos=(90.0,))
+
+    with pytest.raises(ParamsInvalidosError) as capturado:
+        validar(params, FENOLICO)
+
+    assert capturado.value.rota.campo == "angulos"
+    assert capturado.value.rota.regla == REGLA_VETA
+    assert capturado.value.rota.valor == (90.0,)
+
+
+def test_con_la_veta_libre_el_mismo_angulo_pasa():
+    validar(NestParams(material="fenolico18", angulos=(90.0,), veta="libre"), FENOLICO)
+
+
+def test_la_veta_de_la_corrida_manda_sobre_la_del_material():
+    params = NestParams(material="mdf18", angulos=(90.0,), veta="respetar")
+
+    with pytest.raises(ParamsInvalidosError):
+        validar(params, MDF)
+
+
+def test_basta_un_angulo_que_sobreviva():
+    """0,90,180,270 con veta: 90 y 270 se descartan, pero 0 y 180 quedan.
+    Eso no es un error de la corrida: es lo que la pantalla ya bloquea."""
+    validar(NestParams(material="fenolico18"), FENOLICO)
+
+
+def test_sin_material_no_se_mira_la_veta():
+    """La CLI valida dos veces: antes de leer el catálogo (sin material) y
+    después (con material). La primera no puede saber nada de la veta."""
+    validar(NestParams(material="fenolico18", angulos=(90.0,)))
+
+
+def test_la_regla_de_la_veta_nombra_los_angulos_que_sirven():
+    assert "0°" in REGLA_VETA and "180°" in REGLA_VETA
+
+
+def test_el_mensaje_de_la_cli_para_la_veta_nombra_el_flag():
+    with pytest.raises(ParamsInvalidosError) as capturado:
+        validar(NestParams(material="fenolico18", angulos=(90.0,)), FENOLICO)
+
+    assert mensaje_cli(capturado.value.rota).startswith("--angulos tiene que ser ")

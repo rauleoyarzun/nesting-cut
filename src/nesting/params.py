@@ -16,7 +16,7 @@ from typing import Literal
 
 from nesting.engine.oracle import NestConfig
 from nesting.model.material import VETA_LIBRE, VETA_RESPETAR, Material
-from nesting.model.sheet import Sheet, SheetSupply
+from nesting.model.sheet import Sheet, SheetSupply, allowed_angles
 from nesting.tolerances import DEFAULT_CHAIN_TOL
 
 DEFAULT_ANGLES: tuple[float, ...] = (0.0, 90.0, 180.0, 270.0)
@@ -89,14 +89,27 @@ FLAG_POR_CAMPO: dict[str, str] = {
     "borde": "--borde",
     "tol_cierre": "--tol-cierre",
     "resolucion": "--resolucion",
+    "angulos": "--angulos",
 }
 
 
-def validar(p: NestParams) -> None:
+REGLA_VETA = "compatible con la veta: al menos un ángulo a 0° o 180°"
+"""La regla que se rompe cuando la veta no deja ningún ángulo en pie.
+
+Se redacta como las demás ("tiene que ser ...") porque sale por los mismos
+dos caminos: `mensaje_cli` en la terminal y el `detail` del 422 en la API.
+"""
+
+
+def validar(p: NestParams, material: Material | None = None) -> None:
     """Levanta `ParamsInvalidosError` en el primer parámetro que no cumple.
 
     El orden es el mismo que tenía `_validate_numeric_args` en `cli.py`, para
     que un comando con dos errores a la vez siga señalando el mismo primero.
+
+    Con `material`, además, se fija que la veta deje en pie al menos uno de
+    los ángulos pedidos. Sin él no puede saberlo: la CLI valida una vez antes
+    de leer el catálogo y otra después.
     """
     if p.copias < 1:
         raise ParamsInvalidosError(ReglaRota("copias", ">= 1", p.copias))
@@ -121,6 +134,19 @@ def validar(p: NestParams) -> None:
             raise ParamsInvalidosError(
                 ReglaRota(f"recorte {indice}: cantidad", ">= 1", recorte.cantidad)
             )
+    if material is not None:
+        # Contra la placa del material y no contra los recortes: si en ella
+        # no sobrevive ningún ángulo, la primera pieza que no entre en un
+        # recorte no tiene dónde ir, y el motor lo cuenta como una pieza
+        # demasiado grande -- un mensaje sobre medidas para un problema de
+        # ángulos.
+        placa = Sheet(
+            width=material.sheet_w,
+            height=material.sheet_h,
+            grain_tolerance=tolerancia_de_veta(p, material),
+        )
+        if not allowed_angles(placa, p.angulos):
+            raise ParamsInvalidosError(ReglaRota("angulos", REGLA_VETA, p.angulos))
 
 
 def mensaje_cli(rota: ReglaRota) -> str:
