@@ -62,6 +62,37 @@ def apply_points(t: Transform, pts: Sequence[Point]) -> tuple[Point, ...]:
     return tuple(apply_point(t, p) for p in pts)
 
 
+def componer(outer: Transform, inner: Transform) -> Transform:
+    """La transformación que aplica `inner` y después `outer`.
+
+    Es lo que hace falta para desarmar una pieza compuesta: el par se colocó
+    con `outer`, y cada miembro estaba adentro del par en `inner`, así que el
+    miembro termina en `componer(outer, inner)`.
+
+    Por qué la fórmula es ésta. `apply_point` hace p -> R(a)·M·p + d, con M el
+    espejo x -> -x. Encadenar las dos da
+
+        R(A)·M_A·(R(a)·M_a·p + d_a) + d_A
+      = R(A)·M_A·R(a)·M_a·p + (R(A)·M_A·d_a + d_A)
+
+    y un espejo invierte el sentido de una rotación: M·R(a) = R(-a)·M. Así
+    que el ángulo es A + a sin espejo afuera y A - a con espejo afuera, el
+    espejo resultante es el "o exclusivo" de los dos, y la traslación es
+    aplicar `outer` entero al punto (d_a). Verificado numéricamente en
+    `tests/geometry/test_componer.py` y, antes, en el experimento de la
+    spec, donde componer por las cajas en vez de por esta fórmula dejaba
+    piezas superpuestas.
+    """
+    angle = outer.angle_deg + (-inner.angle_deg if outer.mirror else inner.angle_deg)
+    dx, dy = apply_point(outer, (inner.dx, inner.dy))
+    return Transform(
+        angle_deg=angle % 360.0,
+        mirror=outer.mirror != inner.mirror,
+        dx=dx,
+        dy=dy,
+    )
+
+
 def apply_entity(t: Transform, e: Entity) -> Entity:
     """Apply `t` to an entity, keeping its exact representation and style."""
     match e:
