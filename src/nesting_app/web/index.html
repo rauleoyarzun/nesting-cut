@@ -178,9 +178,11 @@
           <option value="16">16 — cada 22,5°</option>
           <option value="24">24 — cada 15°</option>
           <option value="personalizado">Personalizado</option>
+          <option value="veta" hidden>2 — 0° y 180°</option>
         </select>
         <svg viewBox="0 0 16 16" class="icono flecha" aria-hidden="true"><path d="M4 6.5l4 4 4-4"></path></svg>
       </div>
+      <p id="nota-veta" class="resumen oculto">Con la veta respetada, sólo se gira a 0° y 180°.</p>
     </div>
 
     <div class="campo oculto" id="campo-angulos">
@@ -331,6 +333,21 @@
       <button type="button" class="boton secundario" data-unidad="m">m</button>
       <button type="button" class="boton secundario" data-unidad="in">in</button>
       <button type="button" class="boton secundario" data-unidad="ft">ft</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dos salidas y ninguna es "cancelar": no hay un estado neutro al que
+     volver. O se respeta la veta y se gira a 0 y 180, o no se la respeta y
+     quedan las posiciones que había. -->
+<div id="cartel-veta" class="cartel oculto">
+  <div class="cartel-caja">
+    <h2 id="titulo-veta">Este material respeta la veta</h2>
+    <p id="texto-veta"></p>
+    <div class="fila">
+      <span class="espaciador"></span>
+      <button type="button" id="btn-veta-libre" class="boton secundario">No me importa la veta</button>
+      <button type="button" id="btn-veta-respetar" class="boton primario">Usar 0° y 180°</button>
     </div>
   </div>
 </div>

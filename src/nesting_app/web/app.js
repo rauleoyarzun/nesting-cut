@@ -340,18 +340,85 @@ function ajustarVetaCruzada() {
   $("etiqueta-cruzada").classList.toggle("deshabilitada", libre);
 }
 
+// El mismo número que `VETA_RESPETAR` en nesting/model/material.py. Está
+// repetido para no preguntarle al servidor algo que no cambia; un test
+// compara los dos.
+const TOLERANCIA_VETA = 5;
+
+// Lo que había en Posiciones antes de bloquearlo, para devolverlo al
+// soltar. `null` mientras no está bloqueado.
+let posicionesAntesDeVeta = null;
+
+function respetaLaVeta(angulo) {
+  const plegado = ((angulo % 180) + 180) % 180;
+  return Math.min(plegado, 180 - plegado) <= TOLERANCIA_VETA + 1e-9;
+}
+
+function bloquearPosiciones() {
+  if (posicionesAntesDeVeta === null) posicionesAntesDeVeta = $("posiciones").value;
+  $("posiciones").value = "veta";
+  $("posiciones").disabled = true;
+  $("campo-angulos").classList.add("oculto");
+  $("nota-veta").classList.remove("oculto");
+}
+
+function soltarPosiciones() {
+  if (posicionesAntesDeVeta !== null) $("posiciones").value = posicionesAntesDeVeta;
+  posicionesAntesDeVeta = null;
+  $("posiciones").disabled = false;
+  $("campo-angulos").classList.toggle("oculto", $("posiciones").value !== "personalizado");
+  $("nota-veta").classList.add("oculto");
+}
+
 // Deja el control en `veta` y todo lo que depende de él al día. No
 // pregunta nada: quien tiene que preguntar antes es `pedirVeta`.
 function ponerVeta(veta) {
   $(veta === "respetar" ? "veta-respetar" : "veta-libre").checked = true;
+  if (veta === "respetar") bloquearPosiciones();
+  else soltarPosiciones();
   ajustarVetaCruzada();
 }
 
+// Lo que pasa cuando el USUARIO cambia algo: elige un material o marca un
+// radio. Si pasar a "respetar" descartaría ángulos que eligió, se lo dice
+// en ese momento y no al tocar Acomodar, después de haber cargado todo.
+// Ya bloqueado (`posicionesAntesDeVeta !== null`) no hay nada que
+// descartar. Con ángulos inválidos tampoco se pregunta: se bloquea, y el
+// texto queda guardado para cuando se suelte.
+function pedirVeta(veta, origen) {
+  if (veta === "respetar" && posicionesAntesDeVeta === null && angulosValidos()) {
+    const angulos = angulosElegidos();
+    if (angulos.some((a) => !respetaLaVeta(a))) {
+      mostrarCartelVeta(angulos.length, origen);
+      return;
+    }
+  }
+  ponerVeta(veta);
+}
+
+function mostrarCartelVeta(cuantas, origen) {
+  $("titulo-veta").textContent = origen === "material"
+    ? "Este material respeta la veta"
+    : "Respetar la veta limita los giros";
+  $("texto-veta").textContent =
+    `Sólo se puede girar a 0° y 180°. Tenías elegidas ${cuantas} posiciones.`;
+  $("cartel-veta").classList.remove("oculto");
+}
+
+$("btn-veta-respetar").onclick = () => {
+  $("cartel-veta").classList.add("oculto");
+  ponerVeta("respetar");
+};
+$("btn-veta-libre").onclick = () => {
+  $("cartel-veta").classList.add("oculto");
+  ponerVeta("libre");
+};
+
 $("material").addEventListener("change", () =>
-  ponerVeta(vetaPorMaterial[$("material").value])
+  pedirVeta(vetaPorMaterial[$("material").value], "material")
 );
 ["veta-respetar", "veta-libre"].forEach((id) =>
-  $(id).addEventListener("change", () => ponerVeta(vetaDeLaCorrida()))
+  $(id).addEventListener("change", () => pedirVeta(vetaDeLaCorrida(), "control"))
 );
 
 // --- analizar ---------------------------------------------------------------
@@ -664,6 +731,7 @@ function parametros() {
 // que usan los demás parámetros.
 function angulosElegidos() {
   const posiciones = $("posiciones").value;
+  if (posiciones === "veta") return [0, 180];
   if (posiciones !== "personalizado") {
     const n = Number(posiciones);
     return Array.from({ length: n }, (_, i) => (i * 360) / n);

@@ -1906,3 +1906,102 @@ def test_refrescar_el_catalogo_pone_la_veta_del_material(js):
 
     assert "ponerVeta(" in cuerpo
     assert "pedirVeta(" not in cuerpo
+
+
+def test_posiciones_tiene_la_opcion_bloqueada_de_la_veta(html):
+    """Oculta: no se elige de la lista, la pone la veta. Y con el grado
+    escrito como símbolo, igual que las demás."""
+    opciones = _opciones_de_posiciones(html)
+    assert re.search(r'<option value="veta" hidden>2 — 0° y 180°</option>', opciones)
+
+
+def test_la_veta_tiene_su_nota_debajo_de_posiciones(html):
+    posiciones = html.index('id="posiciones"')
+    nota = html.index('id="nota-veta"')
+    angulos = html.index('id="campo-angulos"')
+    assert posiciones < nota < angulos
+
+
+def test_con_la_opcion_de_la_veta_los_angulos_son_cero_y_ciento_ochenta(js):
+    cuerpo = _cuerpo_de_funcion(js, "angulosElegidos")
+    assert re.search(r'=== "veta"\)\s*return \[0, 180\]', cuerpo)
+
+
+def test_la_tolerancia_de_la_pantalla_es_la_del_modelo(js):
+    from nesting.model.material import VETA_RESPETAR
+
+    assert f"const TOLERANCIA_VETA = {VETA_RESPETAR:g};" in js
+
+
+def test_un_angulo_respeta_la_veta_si_cae_cerca_del_eje(js):
+    cuerpo = _cuerpo_de_funcion(js, "respetaLaVeta")
+    assert "% 180" in cuerpo
+    assert "TOLERANCIA_VETA" in cuerpo
+
+
+def test_bloquear_recuerda_lo_que_habia(js):
+    cuerpo = _cuerpo_de_funcion(js, "bloquearPosiciones")
+
+    assert "posicionesAntesDeVeta === null" in cuerpo
+    assert 'value = "veta"' in cuerpo
+    assert "disabled = true" in cuerpo
+    assert '"campo-angulos"' in cuerpo
+    assert '"nota-veta"' in cuerpo
+
+
+def test_soltar_devuelve_lo_que_habia(js):
+    cuerpo = _cuerpo_de_funcion(js, "soltarPosiciones")
+
+    assert "value = posicionesAntesDeVeta" in cuerpo
+    assert "posicionesAntesDeVeta = null" in cuerpo
+    assert "disabled = false" in cuerpo
+    assert '"personalizado"' in cuerpo
+
+
+def test_poner_la_veta_bloquea_o_suelta(js):
+    cuerpo = _cuerpo_de_funcion(js, "ponerVeta")
+    assert "bloquearPosiciones()" in cuerpo
+    assert "soltarPosiciones()" in cuerpo
+
+
+def test_pedir_la_veta_muestra_el_cartel_solo_si_hay_conflicto(js):
+    cuerpo = _cuerpo_de_funcion(js, "pedirVeta")
+
+    assert 'veta === "respetar"' in cuerpo
+    assert "respetaLaVeta" in cuerpo
+    assert "mostrarCartelVeta(" in cuerpo
+    assert "ponerVeta(veta)" in cuerpo
+
+
+def test_el_cartel_dice_cuantas_posiciones_habia(js):
+    cuerpo = _cuerpo_de_funcion(js, "mostrarCartelVeta")
+
+    assert "Sólo se puede girar a 0° y 180°." in cuerpo
+    assert "${cuantas} posiciones" in cuerpo
+    assert "Este material respeta la veta" in cuerpo
+    assert '"cartel-veta"' in cuerpo
+
+
+def test_el_cartel_tiene_sus_dos_salidas_y_ninguna_es_cancelar(html):
+    desde = html.index('id="cartel-veta"')
+    cartel = html[desde:html.index("</div>\n</div>", desde)]
+
+    assert 'id="btn-veta-respetar"' in cartel and "Usar 0° y 180°" in cartel
+    assert 'id="btn-veta-libre"' in cartel and "No me importa la veta" in cartel
+    assert "Cancelar" not in cartel
+
+
+def test_los_botones_del_cartel_ponen_la_veta_que_dicen(js):
+    limpio = _sin_comentarios(js)
+    assert re.search(
+        r'\$\("btn-veta-respetar"\)\.onclick = \(\) => \{[^}]*ponerVeta\("respetar"\)', limpio
+    )
+    assert re.search(
+        r'\$\("btn-veta-libre"\)\.onclick = \(\) => \{[^}]*ponerVeta\("libre"\)', limpio
+    )
+
+
+def test_cambiar_material_o_la_veta_a_mano_pasa_por_pedir(js):
+    limpio = _sin_comentarios(js)
+    assert re.search(r'pedirVeta\(vetaPorMaterial\[\$\("material"\)\.value\], "material"\)', limpio)
+    assert re.search(r'pedirVeta\(vetaDeLaCorrida\(\), "control"\)', limpio)
