@@ -6,13 +6,12 @@ same code drives the throwaway shelf engine and the real raster engine.
 
 import random
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
 from nesting.engine.oracle import NestConfig, Oracle, Weights, transformed_bbox
 from nesting.engine.prevision import (
     estimate_sheets,
-    forecast_compaction,
     forecast_pack,
     forecast_recovery,
 )
@@ -95,6 +94,21 @@ class Avance:
     arma un `Avance` a mano con los cinco campos de siempre -- los corredores
     de mentira de `tests/app` -- no tenga que cambiar nada."""
 
+    combinaciones: int = 0
+    """Cuántas variantes prevé la cartera en total, base incluida.
+
+    Cero mientras corre la base: la pantalla muestra entonces el texto de
+    siempre (piezas ubicadas, placa en curso). Distinto de cero mientras se
+    prueban las tandas, cuando varias variantes corren a la vez y "ubicadas
+    de tantas" deja de tener sentido.
+    """
+
+    combinaciones_hechas: int = 0
+    """Variantes terminadas, base incluida."""
+
+    placa_minima: int = 0
+    """Placas de la mejor variante terminada hasta ahora."""
+
 
 class Cancelado(Exception):
     """El motor abandonó porque quien lo miraba se lo pidió.
@@ -103,129 +117,6 @@ class Cancelado(Exception):
     incompleto se puede escribir a un DXF sin que nada avise, y ese DXF va a
     una fresadora.
     """
-
-
-class _QueryCounter:
-    """Cuántas consultas se les hicieron a los oráculos de UN `pack`.
-
-    Un objeto y no un entero porque lo comparten todos los oráculos que la
-    corrida crea -- uno por placa, por intento y por fase -- y cada uno
-    tiene que sumar al mismo número.
-    """
-
-    def __init__(self) -> None:
-        self.count = 0
-
-
-class _CountingOracle:
-    """Un oráculo que cuenta sus `best_placement` y en todo lo demás es el de adentro.
-
-    Se envuelve la FÁBRICA en `pack` en vez de instrumentar cada fase: la
-    recuperación y la compactación piden sus oráculos a la misma fábrica
-    envuelta, así que ninguna consulta puede quedar fuera de la cuenta por
-    olvidarse de pasar un contador.
-    """
-
-    def __init__(self, inner: Oracle, counter: _QueryCounter) -> None:
-        self._inner = inner
-        self._counter = counter
-
-    def reset(self, sheet_w: float, sheet_h: float, config: NestConfig) -> None:
-        self._inner.reset(sheet_w, sheet_h, config)
-
-    def best_placement(
-        self, part: Part, angle: float, mirror: bool
-    ) -> tuple[float, float, float] | None:
-        self._counter.count += 1
-        return self._inner.best_placement(part, angle, mirror)
-
-    def place(self, part: Part, angle: float, mirror: bool, x: float, y: float) -> None:
-        self._inner.place(part, angle, mirror, x, y)
-
-
-def _counting(
-    oracle_factory: Callable[[], Oracle], counter: _QueryCounter
-) -> Callable[[], Oracle]:
-    return lambda: _CountingOracle(oracle_factory(), counter)
-
-
-class _Informe:
-    """Arma cada `Avance` de un `pack` y corta si quien mira pide cancelar.
-
-    Vive aparte porque `pack` avisa desde cuatro lugares -- la pasada
-    golosa, la entrada al tramo final, la recuperación y la compactación --
-    y los cuatro tienen que poner las mismas consultas y cortar igual.
-    """
-
-    def __init__(
-        self,
-        progreso: Callable[[Avance], bool] | None,
-        intentos: int,
-        totales: int,
-        consultas: _QueryCounter,
-    ) -> None:
-        self._progreso = progreso
-        self._intentos = intentos
-        self._totales = totales
-        self._consultas = consultas
-        self.previstas = 0
-
-    def emitir(
-        self, intento: int, ubicadas: int, placa: int, compactando: bool = False
-    ) -> None:
-        if self._progreso is None:
-            return
-        hechas = self._consultas.count
-        avance = Avance(
-            intento,
-            self._intentos,
-            ubicadas,
-            self._totales,
-            placa,
-            compactando,
-            consultas_hechas=hechas,
-            consultas_previstas=max(self.previstas, hechas),
-        )
-        if not self._progreso(avance):
-            raise Cancelado("el trabajo se canceló")
-
-    def corregir_tras_intentos(self, hechos: int, restantes_finales: int) -> None:
-        """Ya terminaron `hechos` pasadas golosas completas, y todo lo
-        contado hasta acá es de ellas: los intentos que faltan se prevén
-        como el promedio de los hechos, y las fases finales con las placas
-        reales del mejor layout hasta ahora."""
-        por_intento = self._consultas.count / hechos
-        self.previstas = round(por_intento * self._intentos) + restantes_finales
-
-    def prever_desde_ahora(self, restantes: int) -> None:
-        """Lo que falta ya se sabe contar desde el estado actual."""
-        self.previstas = self._consultas.count + restantes
-
-    def aviso_de(self, intento: int) -> Callable[[int, int], None] | None:
-        """El `aviso` de la pasada golosa número `intento`."""
-        if self._progreso is None:
-            return None
-
-        def avisar(ubicadas: int, placa: int) -> None:
-            self.emitir(intento, ubicadas, placa)
-
-        return avisar
-
-    def aviso_final(self) -> Callable[[int, int], None] | None:
-        """El `aviso` de la recuperación y la compactación: "compactando".
-
-        Las dos reportan con el mismo rótulo a propósito (ver el comentario
-        en `pack`): para quien mira la barra las dos son reempaque de placas
-        ya armadas. Lo que las distingue ahora son las consultas, no el
-        texto.
-        """
-        if self._progreso is None:
-            return None
-
-        def avisar(ubicadas: int, placa: int) -> None:
-            self.emitir(self._intentos, self._totales, 0, compactando=True)
-
-        return avisar
 
 
 def replicate(parts: Sequence[Part], copies: int) -> list[Part]:
@@ -300,6 +191,7 @@ def _pack_once(
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
     aviso: Callable[[int, int], None] | None = None,
+    orientation_ranks: Mapping[int, int] | None = None,
 ) -> PackResult:
     """One greedy pass, placing `order` in exactly the order given.
 
@@ -309,6 +201,11 @@ def _pack_once(
     contador de consultas ni el pedido de cancelar la verian. Puede levantar
     para abandonar: esta funcion no atrapa nada, asi que la excepcion sale
     limpia sin dejar estado a medias en el oraculo.
+
+    `orientation_ranks`, si se pasa, dice para algunas piezas (por id) qué
+    orientación tomar en vez de la mejor: 0 es la mejor, 1 la segunda, y
+    así. Es la perturbación de orientaciones de `lento` (ver
+    `cartera.VariantSource`); sin pasarlo, todo es exactamente como antes.
     """
     started = time.perf_counter()
     result = PackResult()
@@ -344,7 +241,8 @@ def _pack_once(
         placed_count = 0
 
         for part in remaining:
-            spot = _best_over_orientations(oracle, part, choices)
+            rank = orientation_ranks.get(part.id, 0) if orientation_ranks else 0
+            spot = _best_over_orientations(oracle, part, choices, rank)
             if spot is None:
                 still_pending.append(part)
             else:
@@ -406,21 +304,41 @@ def _best_over_orientations(
     oracle: Oracle,
     part: Part,
     choices: Sequence[tuple[float, bool]],
+    rank: int = 0,
 ) -> tuple[float, bool, float, float] | None:
-    """Ask the oracle about every orientation and keep the best-scoring one."""
-    best: tuple[float, bool, float, float] | None = None
-    best_score = float("-inf")
+    """Ask the oracle about every orientation and keep the best-scoring one.
 
-    for angle, mirror in choices:
+    Con `rank > 0` se queda con la `rank`-ésima mejor (o con la peor que
+    entra, si hay menos). El camino de `rank == 0` es el de siempre, tal
+    cual: la primera de `choices` con el puntaje más alto. Se deja separado
+    a propósito para que ninguna corrida sin perturbación pueda cambiar un
+    solo número por culpa de esto.
+    """
+    if rank == 0:
+        best: tuple[float, bool, float, float] | None = None
+        best_score = float("-inf")
+        for angle, mirror in choices:
+            spot = oracle.best_placement(part, angle, mirror)
+            if spot is None:
+                continue
+            x, y, score = spot
+            if score > best_score:
+                best_score = score
+                best = (angle, mirror, x, y)
+        return best
+
+    spots: list[tuple[float, int, float, bool, float, float]] = []
+    for position, (angle, mirror) in enumerate(choices):
         spot = oracle.best_placement(part, angle, mirror)
         if spot is None:
             continue
         x, y, score = spot
-        if score > best_score:
-            best_score = score
-            best = (angle, mirror, x, y)
-
-    return best
+        spots.append((-score, position, angle, mirror, x, y))
+    if not spots:
+        return None
+    spots.sort()
+    _, _, angle, mirror, x, y = spots[min(rank, len(spots) - 1)]
+    return angle, mirror, x, y
 
 
 def _raise_too_large(
@@ -455,88 +373,6 @@ def _raise_too_large(
         f"{usable_w:.1f} x {usable_h:.1f} mm (margen {config.margin} mm)."
     )
 
-
-EFFORT_RESTARTS: dict[str, int] = {"rapido": 1, "normal": 3, "lento": 12}
-"""How many insertion orders each effort level tries.
-
-Los tres números siguen siendo los de la Task 19
-(`.superpowers/sdd/task-19-report.md`), que los midió contra reloj: una
-pasada golosa sobre `bench/files/muestra.dxf` (mdf18, sep/margen por
-omisión, 1 mm/px) tardaba ~46s a --copias 4 y ~81s a --copias 6, el tiempo
-de `pack()` escala lineal con los reintentos, `normal = 4` ya cruzaba el
-objetivo de 5 minutos (317s a --copias 6) y `lento = 12` mostraba una caída
-monótona del costo de compactación al crecer los reintentos. Nada de eso
-cambió de signo, y por eso la tabla no se tocó.
-
-QUÉ SÍ CAMBIÓ, Y POR QUÉ ESTA NOTA SE REESCRIBIÓ. La versión anterior
-cerraba con un dato que hoy engaña: "normal empata con rapido en 5 de 7
-escenarios". Ese empate se midió con la función de costo vieja
-`(placas, alto de la última)`, que NO PODÍA VER la diferencia entre los
-layouts que estaba eligiendo -- peor, prefería el equivocado. Sobre
-`NESTING 2.ai` (mdf15, sep 10, borde 10, 2.0 mm/px), medido en la Tarea 6
-con `contact = 1.0` -- el peso vigente mientras se corrió este barrido,
-antes de que la misma Tarea 6 lo recalibrara a 4.0 (ver `Weights.contact`
-en `oracle.py`):
-
-| nivel  | reparto | material última | alto última | seg   |
-|--------|---------|-----------------|-------------|-------|
-| rapido | 32 / 4  | 0.1432 m²       | 235 mm      | 37.7  |
-| normal | 33 / 3  | 0.1106 m²       | 308 mm      | 48.3  |
-| lento  | 35 / 1  | 0.1061 m²       | 491 mm      | 136.2 |
-
-Los reintentos mejoran de verdad y de forma monótona -- de 4 piezas varadas
-a 1 -- pero el ALTO de la última placa CRECE con cada mejora. Con el
-desempate viejo, `normal` y `lento` encontraban esos layouts y después los
-tiraban, porque 308 mm y 491 mm puntúan peor que 235 mm. Parte del "empate"
-que esta nota reportaba era eso: el esfuerzo extra sí encontraba algo, y el
-costo lo descartaba. Con `CostoLayout` (Tarea 1) la mejora se registra.
-
-CUÁNDO SIGUE SIN COMPRAR NADA. Sobre `muestra.dxf` a --copias 8, los tres
-niveles dieron exactamente el mismo layout (50/46, 2.1206 m²) por 70.1s,
-132.1s y 401.9s. La regla vieja se sostiene: el esfuerzo extra rinde cerca
-de un salto de placa -- que es donde está el archivo de referencia, con 1 a
-4 piezas varadas en la segunda placa -- y no rinde lejos de uno. Lo que
-cambió es que ahora, cuando rinde, se nota.
-
-LO QUE ESTA TABLA NO RESPONDE. Todo lo de arriba -- la tabla de la Tarea 6
-y la de la Task 19 con la que se compara -- se midió con `contact = 1.0`.
-Esta misma Tarea 6 deja de usar ese valor: el default pasa a 4.0. El
-barrido de esfuerzo NO se volvió a correr con contact = 4.0, y hay una
-razón concreta para sospechar que el resultado podría no ser el mismo. En
-`tests/engine/test_effort.py::test_different_seeds_can_give_different_results`
-(líneas 157-163 de ese archivo), subir contacto de 1.0 a 4.0 sobre las
-mismas 43 piezas colapsó 3 layouts distintos entre 4 semillas a UNO SOLO:
-ninguna perturbación del orden de inserción mejoraba al orden por área, así
-que `best` nunca se reemplazaba. Eso es exactamente lo que los reintentos
-de `normal` y `lento` son -- perturbaciones del orden de inserción de las
-que se conserva la mejor -- así que si `contact = 4.0` aplana el espacio de
-búsqueda de la misma manera sobre archivos reales, los reintentos podrían
-estar comprando menos de lo que dice la tabla de arriba. No hay medición en
-ningún sentido: ni que lo confirme ni que lo descarte. La tabla y la
-conclusión "nada cambió de signo" quedan tal cual porque no hay evidencia
-para moverlas, no porque se haya verificado que siguen valiendo a
-contact = 4.0.
-
-EL PRESUPUESTO DE 5 MINUTOS, HONESTAMENTE. A 2.0 mm/px (el default entre la
-Task 24 y los recortes; ver el último párrafo) `normal` salía mucho más
-barato que lo medido en la Task 19: 48.3s sobre el archivo de referencia
-(36 piezas) y 132.1s sobre `muestra.dxf` a --copias 8 (96 piezas). Pero el
-objetivo no es universal: una sola pasada sobre `banqueta final raulo.ai`
-a --copias 5 (200 piezas) ya tarda 450.6s,
-o sea que `normal` ahí se va muy por encima de los 5 minutos. El objetivo
-vale para trabajos del tamaño contra el que se calibró, no para cualquier
-carga.
-
-TODO LO DE ARRIBA SE MIDIÓ A 2.0 mm/px, QUE YA NO ES EL VALOR POR OMISIÓN.
-Desde los recortes, `NestParams.resolucion` arranca en 1.0: cuatro veces los
-píxeles del raster, así que cuatro veces el trabajo de rasterizar y de
-buscar. Ninguno de los números de esta nota se volvió a medir a 1.0, y no
-hay razón para creer que escalen de forma simple. Valen como comparación
-entre niveles de esfuerzo a una misma resolución, no como pronóstico de
-cuánto va a tardar una corrida con los valores de hoy.
-
-`pack()` garantiza `lento <= normal <= rapido` por construcción (ver el
-superconjunto de reintentos más abajo), nunca por suerte de la semilla."""
 
 COMPACTION_BOOST = 3.0
 """How much the bottom-left weight is multiplied by on the final compaction pass."""
@@ -615,13 +451,23 @@ def layout_cost(result: PackResult, parts: Sequence[Part]) -> CostoLayout:
 
 
 def _restarts_for(config: NestConfig) -> int:
-    """Cuántas pasadas golosas corre este nivel de esfuerzo, o el error de siempre."""
-    if config.effort not in EFFORT_RESTARTS:
+    """Cuántas pasadas golosas prevé la cartera para esta config, o el error de siempre.
+
+    Antes era `EFFORT_RESTARTS[config.effort]`. Ahora cada variante de la
+    cartera es una pasada, así que son `planned_variants`: la base más las
+    tandas de `config.workers`. `initial_forecast` lo usa para la previsión
+    de arranque, que cuenta consultas TOTALES -- sumadas entre procesos, como
+    las cuenta el avance --; la estimación previa de tiempo usa
+    `cartera.wall_forecast` (Tarea 7), que las divide por los núcleos.
+    """
+    from nesting.engine.cartera import EFFORT_BATCHES, planned_variants
+
+    if config.effort not in EFFORT_BATCHES:
         raise UnknownEffortError(
             f"nivel de esfuerzo {config.effort!r} desconocido; "
-            f"use uno de {', '.join(EFFORT_RESTARTS)}"
+            f"use uno de {', '.join(EFFORT_BATCHES)}"
         )
-    return EFFORT_RESTARTS[config.effort]
+    return planned_variants(config.effort, config.workers)
 
 
 def _usable_area(sheet: Sheet, margin: float) -> float:
@@ -651,31 +497,6 @@ def initial_forecast(
     )
 
 
-def _compaction_forecast(result: PackResult, config: NestConfig) -> int:
-    """Consultas de compactar la última placa de `result`, contadas sobre ella."""
-    if result.sheets_used == 0:
-        return 0
-    last = result.sheets_used - 1
-    on_last = sum(1 for p in result.placements if p.sheet == last)
-    return forecast_compaction(on_last, len(orientations(result.sheets[last], config)))
-
-
-def _forecast_final_phases(result: PackResult, config: NestConfig) -> int:
-    """Consultas de la recuperación y la compactación sobre las placas reales de `result`."""
-    if result.sheets_used == 0:
-        return 0
-    per_sheet = [0] * result.sheets_used
-    for placement in result.placements:
-        per_sheet[placement.sheet] += 1
-    last = result.sheets_used - 1
-    previous = [
-        (per_sheet[i], len(orientations(result.sheets[i], config))) for i in range(last)
-    ]
-    return forecast_recovery(previous, per_sheet[last]) + _compaction_forecast(
-        result, config
-    )
-
-
 def pack(
     parts: Sequence[Part],
     supply: SheetSupply,
@@ -683,123 +504,23 @@ def pack(
     oracle_factory: Callable[[], Oracle],
     progreso: Callable[[Avance], bool] | None = None,
 ) -> PackResult:
-    """Place every part, trying several insertion orders and keeping the best.
+    """Acomoda todo probando la cartera de variantes; ver `nesting.engine.cartera`.
 
-    `progreso`, si se pasa, se llama con un `Avance` despues de cada pieza
-    que la pasada golosa intenta ubicar (entre o no), una vez con
-    `compactando=True` al entrar al tramo final, otra vez por cada pieza que
-    intentan la recuperacion (`_recuperar_de_la_ultima_placa`) y la
-    compactacion (`_compact_last_sheet`), y una ultima vez al terminar. Cada
-    `Avance` lleva las consultas hechas hasta ese momento, contadas sobre
-    TODOS los oraculos que la corrida pidio a `oracle_factory`. Devolver
-    `False` en cualquiera de esas llamadas pide abandonar, y `pack` levanta
-    `Cancelado`. No pasarlo deja el layout exactamente como estaba: es lo
-    que hace la CLI.
+    La firma es la de siempre. `progreso`, si se pasa, recibe un `Avance`
+    por pieza intentada durante la base, cada `cartera.QUERY_REPORT_EVERY`
+    consultas durante las tandas, y durante el tramo final (recuperación y
+    compactación) con `compactando=True`: al entrar, por pieza intentada y
+    al terminar. Devolver `False` en cualquiera de
+    esas llamadas pide abandonar, y `pack` levanta `Cancelado`. No pasarlo
+    deja el comportamiento exactamente como estaba.
+
+    El resultado trae sólo piezas reales: las compuestas se desarman antes
+    de volver.
     """
-    intentos = _restarts_for(config)
+    # Import tardío: la cartera importa este módulo.
+    from nesting.engine.cartera import run_portfolio
 
-    started = time.perf_counter()
-    if not parts:
-        return PackResult(seconds=time.perf_counter() - started)
-
-    rng = random.Random(config.seed)
-    by_area = sorted(parts, key=lambda p: p.area, reverse=True)
-
-    totales = len(parts)
-
-    consultas = _QueryCounter()
-    contado = _counting(oracle_factory, consultas)
-    informe = _Informe(progreso, intentos, totales, consultas)
-    informe.previstas = initial_forecast(parts, supply, config)
-
-    best_order = list(by_area)
-    best = _pack_once(best_order, supply, config, contado, informe.aviso_de(1))
-    best_cost = layout_cost(best, parts)
-    informe.corregir_tras_intentos(1, _forecast_final_phases(best, config))
-
-    # Garantia: "lento" nunca puede ser peor que "normal", igual que "normal"
-    # nunca puede ser peor que "rapido". Para "rapido"/"normal" esa garantia
-    # sale gratis de que ambos comparten la misma primera pasada
-    # deterministica y solo reemplazan `best` cuando estrictamente mejora.
-    # Pero "normal" y "lento" corrian trayectorias que divergian desde el
-    # primer paso -- "normal" siempre perturbaba desde `by_area` (reintentos
-    # al azar) y "lento" siempre perturbaba desde `best_order` (escalada de
-    # colina) -- y sin ningun superconjunto entre ambas, no habia forma de
-    # garantizar `lento <= normal` por construccion; con la misma semilla
-    # podian terminar en layouts no comparables.
-    #
-    # El arreglo: "lento" ejecuta primero, exactamente, los mismos
-    # `EFFORT_RESTARTS["normal"] - 1` reintentos que haria "normal" -- misma
-    # base de perturbacion (`by_area`) y mismo generador `rng`, consumido en
-    # la misma secuencia -- y solo despues de agotar ese prefijo compartido
-    # pasa a perturbar desde `best_order` (escalada de colina) para el resto
-    # de sus reintentos. `_perturb` consume `rng.randrange` la misma
-    # cantidad de veces sin importar el contenido de la lista que reciba
-    # (depende solo de `len(parts)`), asi que el stream de `rng` avanza
-    # exactamente igual en ambos niveles durante el prefijo compartido, y
-    # las `candidate_order` de esos pasos resultan identicas byte a byte
-    # entre una corrida en "normal" y una en "lento" con la misma semilla.
-    # Al final del prefijo, el estado (`best`, `best_cost`, `best_order`) de
-    # "lento" es entonces exactamente el mismo que el resultado final de
-    # "normal". Los reintentos restantes de "lento" solo pueden mantenerlo o
-    # mejorarlo (el `if candidate_cost < best_cost` de abajo nunca lo
-    # empeora), asi que el costo final de "lento" no puede superar al de
-    # "normal" -- queda garantizado por construccion, no por casualidad de
-    # la semilla.
-    shared_restarts = EFFORT_RESTARTS["normal"] - 1
-
-    for i in range(intentos - 1):
-        if config.effort == "lento" and i >= shared_restarts:
-            perturb_base = best_order
-        else:
-            perturb_base = by_area
-        candidate_order = _perturb(perturb_base, rng)
-        candidate = _pack_once(
-            candidate_order, supply, config, contado, informe.aviso_de(i + 2)
-        )
-        candidate_cost = layout_cost(candidate, parts)
-        if candidate_cost < best_cost:
-            best, best_cost, best_order = candidate, candidate_cost, candidate_order
-        informe.corregir_tras_intentos(i + 2, _forecast_final_phases(best, config))
-
-    informe.emitir(intentos, totales, 0, compactando=True)
-
-    # Antes de compactar, y después del aviso de arriba a propósito: la
-    # recuperación es la parte más lenta de este tramo final (un
-    # `_pack_once` por placa anterior), así que quien mire la barra ya la ve
-    # en "compactando" en vez de quedarse mirando el último aviso de la
-    # pasada golosa.
-    #
-    # La recuperación reporta como "compactando" y no con una fase propia
-    # a propósito: para quien mira la barra, "compactando" ya es verdad --
-    # es reempaque de placas ya armadas, no la pasada golosa inicial. Lo que
-    # distingue una fase de otra ahora son las consultas del `Avance`, que
-    # el estimador de tiempo usa sin saber qué fase es.
-    choices_ultima = len(orientations(best.sheets[-1], config))
-
-    def prever_recuperacion(restantes: int, pendientes: int) -> None:
-        # Mientras dura la recuperación, la compactación se prevé con las
-        # pendientes de ahora: la recuperación sólo puede sacar piezas de
-        # la última placa, así que es cota superior.
-        informe.prever_desde_ahora(
-            restantes + forecast_compaction(pendientes, choices_ultima)
-        )
-
-    best = _recuperar_de_la_ultima_placa(
-        best, parts, config, contado, supply.material_name,
-        informe.aviso_final(), prever_recuperacion,
-    )
-    informe.prever_desde_ahora(_compaction_forecast(best, config))
-    best = _compact_last_sheet(
-        best, parts, config, contado, supply.material_name, informe.aviso_final(),
-    )
-    # El último aviso: todo lo consultado ya está contado, así que quien
-    # estime el tiempo ve cero restante en vez de quedarse con el último
-    # aviso de la compactación.
-    informe.prever_desde_ahora(0)
-    informe.emitir(intentos, totales, 0, compactando=True)
-    best.seconds = time.perf_counter() - started
-    return best
+    return run_portfolio(parts, supply, config, oracle_factory, progreso).result
 
 
 def _perturb(order: Sequence[Part], rng: random.Random) -> list[Part]:

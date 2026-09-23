@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from nesting.engine.oracle import NestConfig
+from nesting.engine.cartera import EFFORT_BATCHES
 from nesting.engine.packer import (
-    EFFORT_RESTARTS,
     PackResult,
     UnknownEffortError,
     layout_cost,
@@ -57,8 +57,8 @@ def circle_part(part_id, radius, segments=40):
 
 
 def test_the_effort_table_has_the_three_levels():
-    assert set(EFFORT_RESTARTS) == {"rapido", "normal", "lento"}
-    assert EFFORT_RESTARTS["rapido"] < EFFORT_RESTARTS["normal"] < EFFORT_RESTARTS["lento"]
+    assert set(EFFORT_BATCHES) == {"rapido", "normal", "lento"}
+    assert EFFORT_BATCHES["rapido"] < EFFORT_BATCHES["normal"] < EFFORT_BATCHES["lento"]
 
 
 def test_an_unknown_effort_level_is_rejected():
@@ -163,31 +163,30 @@ def test_the_same_seed_gives_the_same_result():
 
 
 def test_different_seeds_can_give_different_results():
-    """Piezas variadas, en una cantidad pasada apenas el quiebre a dos placas.
+    """Con la cartera, la semilla decide las perturbaciones de orden, que
+    llegan cuando no hay clases emparejables (o cuando se acaban las
+    combinaciones). Estas medidas son las del fixture viejo con las tres que
+    pasaban el 2% del área útil (970 x 970 = 940.900 mm², el 2% son 18.818)
+    achicadas por debajo: 150x150 -> 150x120, 140x140 -> 140x130,
+    90x220 -> 85x220. Sin pares, la tanda de normal con `workers=2` son dos
+    perturbaciones desde `by_area` con el mismo generador: exactamente los
+    dos reintentos del normal viejo.
 
-    El fixture tiene que caer donde el orden de insercion importa. El
-    anterior (18 rectangulos identicos) no lo hacia: cualquier orden daba el
-    mismo resultado y la asercion se cumplia trivialmente. El que lo
-    reemplazo (43 piezas de estos tamanios) si lo hacia con el peso de
-    contacto de entonces, pero dejo de hacerlo cuando la Tarea 6 recalibro
-    `Weights.contact` a 4.0: medido con 4 semillas (1, 2, 3, 4) sobre este
-    mismo material, sep y margen, 43 piezas dan 3 layouts distintos con
-    contacto 1.0 y UNO SOLO con contacto 4.0 -- ninguna perturbacion mejora
-    al orden por area, asi que `best` nunca se reemplaza.
-
-    52 es la cantidad medida que sigue siendo sensible con los dos pesos: 4
-    layouts distintos entre esas 4 semillas tanto a contacto 1.0 como a 4.0.
-    No se baja la exigencia de la asercion -- sigue siendo que dos semillas
-    dan placements distintos -- se corrige el fixture para que vuelva a
-    estar donde el orden decide.
-    """
-    sizes = [(120.0, 90.0), (200.0, 60.0), (150.0, 150.0), (80.0, 200.0),
+    Se miran cuatro semillas y se pide al menos dos layouts distintos, que
+    es lo que el docstring viejo medía (cuatro layouts entre cuatro
+    semillas), en vez de apostar a que justo las semillas 1 y 2 difieran."""
+    sizes = [(120.0, 90.0), (200.0, 60.0), (150.0, 120.0), (80.0, 200.0),
              (250.0, 40.0), (100.0, 100.0), (170.0, 110.0), (60.0, 300.0),
-             (140.0, 140.0), (90.0, 220.0)]
+             (140.0, 130.0), (85.0, 220.0)]
     parts = [rect_part(i, *sizes[i % len(sizes)]) for i in range(52)]
-    a = pack(parts, PLAN_LIBRE, base_config(effort="normal", seed=1), RasterOracle)
-    b = pack(parts, PLAN_LIBRE, base_config(effort="normal", seed=2), RasterOracle)
-    assert a.placements != b.placements
+    layouts = {
+        tuple((p.part_id, p.sheet, p.transform) for p in pack(
+            parts, PLAN_LIBRE,
+            base_config(effort="normal", seed=seed, workers=2), RasterOracle,
+        ).placements)
+        for seed in (1, 2, 3, 4)
+    }
+    assert len(layouts) >= 2
 
 
 def test_normal_is_never_worse_than_rapido():
@@ -228,7 +227,10 @@ def test_the_last_sheet_gets_compacted():
 
 
 def test_the_reported_time_grows_with_the_effort():
-    parts = [circle_part(i, 90.0) for i in range(10)]
+    """Treinta círculos: entran 25 por placa, así que la base abre dos y la
+    cota por área es una. Con diez, la base ya igualaba la cota, normal no
+    buscaba nada y tardaba lo mismo que rápido."""
+    parts = [circle_part(i, 90.0) for i in range(30)]
     quick = pack(parts, PLAN_LIBRE, base_config(effort="rapido"), RasterOracle)
     normal = pack(parts, PLAN_LIBRE, base_config(effort="normal"), RasterOracle)
     assert normal.seconds > quick.seconds

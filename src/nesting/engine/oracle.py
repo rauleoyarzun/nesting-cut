@@ -187,6 +187,16 @@ class NestConfig:
     """One of "rapido", "normal", "lento"."""
 
     seed: int = 0
+    workers: int = 1
+    """Cuántas variantes por tanda prueba la cartera: la `N` de la spec.
+
+    Es a la vez cuántos procesos corren a la par (Tarea 6 del plan de pares
+    y cartera). Con 1 todo corre en el proceso que llama, sin crear nada: es
+    el valor por omisión para que el motor, usado como biblioteca o desde un
+    test, no dispare procesos que nadie pidió. La CLI y la interfaz pasan el
+    valor que corresponde a la máquina (`nesting.params.nucleos_efectivos`).
+    """
+
     weights: Weights = field(default_factory=Weights)
 
 

@@ -5,8 +5,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from nesting.engine.cartera import EFFORT_BATCHES
 from nesting.engine.packer import (
-    EFFORT_RESTARTS,
     PackResult,
     PartTooLargeError,
     layout_cost,
@@ -416,7 +416,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--resolucion", type=float, default=1.0, dest="resolucion",
                         help="resolución del raster, en mm por píxel: más fino "
                              "acomoda un poco mejor pero tarda mucho más")
-    parser.add_argument("--esfuerzo", choices=sorted(EFFORT_RESTARTS), default="normal",
+    parser.add_argument("--esfuerzo", choices=sorted(EFFORT_BATCHES), default="normal",
                         help="cuánto tiempo dedicarle a mejorar el resultado")
     parser.add_argument("--preview", type=Path, default=None,
                         help="ruta del PNG de previsualización a generar")

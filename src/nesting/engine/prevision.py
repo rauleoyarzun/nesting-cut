@@ -20,8 +20,9 @@ TYPICAL_UTILIZATION = 0.4
 """Fracción del área útil que una placa termina cubriendo, para prever
 cuántas placas va a abrir una corrida antes de correrla.
 
-Sólo vale hasta que termina el primer intento: ahí la cantidad real de
-placas reemplaza a esta estimación (ver `packer._Informe`). Es baja a
+Sólo vale hasta que termina la base de la cartera: ahí lo que costó de
+verdad esa pasada, con sus placas reales, reemplaza a esta estimación (ver
+`cartera._Progress.base_done`). Es baja a
 propósito: prever una placa de más sobreestima el tiempo, prever una de
 menos lo subestima, y una espera más corta que la anunciada es la que
 molesta.

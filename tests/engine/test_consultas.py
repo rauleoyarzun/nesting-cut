@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from nesting.engine.cartera import planned_variants
 from nesting.engine.oracle import NestConfig
 from nesting.engine.packer import (
     Avance,
@@ -204,11 +205,14 @@ def test_sin_callback_no_hay_avisos_pero_el_resultado_es_el_mismo():
 def test_la_prevision_de_arranque_de_un_caso_a_mano():
     """Diez cuadrados de 100 en una placa de 1000: área de piezas 1e5 contra
     980 x 980 x 0.4 = 384160 útiles, así que una placa. Cuatro ángulos con
-    espejo son 8 orientaciones, y normal son 3 intentos."""
+    espejo son 8 orientaciones, y normal son `planned_variants('normal', 1)`
+    pasadas."""
     piezas = [cuadrado(i) for i in range(10)]
     cfg = config(effort="normal")
 
-    assert initial_forecast(piezas, PLAN, cfg) == forecast_pack(10, 8, 1, 3) == 320
+    assert initial_forecast(piezas, PLAN, cfg) == forecast_pack(
+        10, 8, 1, planned_variants("normal", 1)
+    )
 
 
 def test_la_prevision_de_arranque_rechaza_un_esfuerzo_desconocido():
@@ -332,13 +336,17 @@ def test_despues_del_primer_intento_la_prevision_erra_menos_de_un_cuarto(nombre,
     """Spec, 4: después del primer intento, el error de la previsión contra
     el total real es menor al 25% sobre los archivos del bench.
 
-    El primer aviso del intento 2 es el primero que lleva la previsión
-    corregida con lo que costó el intento 1 y con sus placas reales."""
+    El primer aviso después de la base es el primero que lleva la previsión
+    corregida con lo que costó la base. Con la cartera puede ser uno de la
+    tanda (`combinaciones_hechas >= 1`) o, si la base ya igualó la cota por
+    área y no se busca nada más -- `muestra` --, la entrada al tramo final."""
     piezas, plan, cfg, fabrica = _caso(nombre, tmp_path)
 
     avances = correr(piezas, cfg, fabrica, plan=plan)
 
-    tras_el_primero = next(a for a in avances if a.intento == 2 and not a.compactando)
+    tras_el_primero = next(
+        a for a in avances if a.combinaciones_hechas >= 1 or a.compactando
+    )
     reales = avances[-1].consultas_hechas
     error = abs(tras_el_primero.consultas_previstas - reales) / reales
     assert error < 0.25, (

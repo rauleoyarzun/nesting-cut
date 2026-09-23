@@ -53,3 +53,6 @@ nesting_app = ["web/*", "web/.*", "web/**/*", "web/**/.*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "minimo_real: usa `cartera.MIN_BATCH` de verdad en vez del 1 de los tests",
+]

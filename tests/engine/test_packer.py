@@ -3,6 +3,7 @@ import pytest
 from nesting.engine.oracle import NestConfig
 from nesting.engine.packer import (
     PartTooLargeError,
+    _pack_once,
     layout_cost,
     orientations,
     pack,
@@ -331,3 +332,55 @@ def test_sheets_used_sale_de_las_placas_y_no_se_puede_desincronizar():
 
     with pytest.raises(AttributeError):
         PackResult().sheets_used = 2
+
+
+from nesting.engine.packer import _best_over_orientations
+
+
+class _PuntajesFijos:
+    """Un oráculo que puntúa cada ángulo con un número fijo y no ubica nada."""
+
+    def __init__(self, puntajes):
+        self.puntajes = puntajes
+
+    def reset(self, sheet_w, sheet_h, config):
+        pass
+
+    def best_placement(self, part, angle, mirror):
+        puntaje = self.puntajes.get(angle)
+        return None if puntaje is None else (angle, 0.0, puntaje)
+
+    def place(self, part, angle, mirror, x, y):
+        pass
+
+
+ANGULOS = [(0.0, False), (90.0, False), (180.0, False), (270.0, False)]
+
+
+def test_el_rango_cero_es_la_mejor_orientacion_de_siempre():
+    oraculo = _PuntajesFijos({0.0: 1.0, 90.0: 3.0, 180.0: 2.0})
+    assert _best_over_orientations(oraculo, rect_part(0, 10, 10), ANGULOS)[0] == 90.0
+    assert _best_over_orientations(oraculo, rect_part(0, 10, 10), ANGULOS, 0)[0] == 90.0
+
+
+def test_el_rango_uno_es_la_segunda_mejor():
+    oraculo = _PuntajesFijos({0.0: 1.0, 90.0: 3.0, 180.0: 2.0})
+    assert _best_over_orientations(oraculo, rect_part(0, 10, 10), ANGULOS, 1)[0] == 180.0
+
+
+def test_un_rango_mayor_que_las_opciones_se_queda_con_la_peor_que_entra():
+    """Una pieza que entra en dos orientaciones no puede quedar sin lugar
+    porque la perturbación pidió la tercera."""
+    oraculo = _PuntajesFijos({0.0: 1.0, 90.0: 3.0})
+    assert _best_over_orientations(oraculo, rect_part(0, 10, 10), ANGULOS, 2)[0] == 0.0
+
+
+def test_pack_once_aplica_el_rango_solo_a_las_piezas_que_lo_piden():
+    parts = [rect_part(0, 300.0, 100.0), rect_part(1, 300.0, 100.0)]
+    sin = _pack_once(parts, PLAN_LIBRE, CONFIG, ShelfOracle)
+    con = _pack_once(parts, PLAN_LIBRE, CONFIG, ShelfOracle, orientation_ranks={1: 1})
+
+    angulo = {p.part_id: p.transform.angle_deg for p in con.placements}
+    angulo_sin = {p.part_id: p.transform.angle_deg for p in sin.placements}
+    assert angulo[0] == angulo_sin[0]
+    assert angulo[1] != angulo_sin[1]

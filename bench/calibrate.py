@@ -391,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     print("Antes de bajar el contacto, correr")
     print("tests/engine/raster/test_raster_oracle.py::test_a_small_part_is_nested_inside_a_big_hole:")
     print("este barrido no ejercita el anidado en agujeros y ese test es el que manda.")
-    print("Ajustar EFFORT_RESTARTS en engine/packer.py para que 'normal' quede por")
+    print("Ajustar EFFORT_BATCHES en engine/cartera.py para que 'normal' quede por")
     print("debajo de 5 minutos y 'lento' mejore de forma medible.")
     return 0
 

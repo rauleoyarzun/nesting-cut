@@ -183,7 +183,8 @@ def test_el_avance_se_ve_mientras_corre(cliente, tmp_path):
     cliente.post(f"/api/trabajos/{trabajo_id}/cancelar")
     assert visto is not None
     assert visto["totales"] == 120
-    assert visto["intentos"] == 12
+    from nesting.engine.cartera import planned_variants
+    assert visto["intentos"] == planned_variants("lento", 1)
 
 
 def test_un_trabajo_que_no_existe_da_404(cliente):

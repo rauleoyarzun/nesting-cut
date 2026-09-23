@@ -3,7 +3,8 @@
 import pytest
 
 from nesting.engine.oracle import NestConfig
-from nesting.engine.packer import Avance, Cancelado, EFFORT_RESTARTS, pack
+from nesting.engine.cartera import planned_variants
+from nesting.engine.packer import Avance, Cancelado, pack
 from nesting.engine.raster.masks import MaskCache
 from nesting.engine.raster.oracle import RasterOracle
 from nesting.model.material import Material
@@ -78,26 +79,29 @@ def test_las_piezas_ubicadas_solo_suben_dentro_de_un_intento():
 
 def test_la_cantidad_de_intentos_se_sabe_desde_el_primer_aviso():
     """La interfaz necesita poder escribir 'intento 1 de 3' antes de que
-    termine el primero. Sale de EFFORT_RESTARTS, no de haber terminado."""
+    termine el primero. Sale de planned_variants, no de haber terminado."""
     piezas = [cuadrado(i) for i in range(4)]
     avances = []
 
     pack(piezas, PLAN_LIBRE, config(effort="normal"), fabrica(),
          progreso=lambda a: avances.append(a) or True)
 
-    assert avances[0].intentos == EFFORT_RESTARTS["normal"]
+    assert avances[0].intentos == planned_variants("normal", 1)
     assert avances[0].intento == 1
 
 
 def test_los_intentos_llegan_hasta_el_ultimo():
-    piezas = [cuadrado(i) for i in range(4)]
+    """Doce cuadrados de 400: cuatro por placa, tres placas, y la cota por
+    área es dos, así que la tanda corre. Con cuatro cuadrados de 100 la base
+    igualaba la cota y no había segundo intento que ver."""
+    piezas = [cuadrado(i, lado=400.0) for i in range(12)]
     avances = []
 
     pack(piezas, PLAN_LIBRE, config(effort="normal"), fabrica(),
          progreso=lambda a: avances.append(a) or True)
 
     intentos = {a.intento for a in avances if not a.compactando}
-    assert intentos == set(range(1, EFFORT_RESTARTS["normal"] + 1))
+    assert intentos == set(range(1, planned_variants("normal", 1) + 1))
 
 
 def test_la_compactacion_final_se_avisa_aparte():
