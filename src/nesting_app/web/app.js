@@ -219,6 +219,7 @@ async function registrar(fuente) {
   $("texto-avance").classList.add("oculto");
   $("texto-restante").classList.add("oculto");
   estado.restante = null;
+  mostrarEstimacion(null);
   $("resultado").classList.add("oculto");
   $("resultado").textContent = "";
   $("placa-actual").textContent = "";
@@ -254,6 +255,7 @@ function dibujarRecortes() {
     fila.append(texto, quitar);
     lista.append(fila);
   });
+  pedirEstimacion();
 }
 
 function abrirAltaRecorte(abierta) {
@@ -443,6 +445,7 @@ async function analizar() {
     link.classList.toggle("oculto", analisis.descartes.length === 0);
     mostrarAvisos(analisis.avisos);
     mostrarRevision();
+    pedirEstimacion();
   } catch (error) {
     if (error.estado === 409 && error.detalle?.faltan_unidades) {
       // No es un error: es una pregunta. Por eso tiene cartel propio.
@@ -765,6 +768,7 @@ function corriendo(si) {
   $("pista-avance").classList.toggle("oculto", !si);
   $("texto-avance").classList.toggle("oculto", !si);
   $("texto-restante").classList.toggle("oculto", !si);
+  $("tiempo-estimado").classList.toggle("oculto", si || !$("tiempo-estimado").textContent);
   $("resultado").classList.toggle("oculto", si);
   $("btn-guardar").disabled = si || !estado.terminado;
 }
@@ -918,6 +922,65 @@ function actualizarRestante(restanteS) {
   }
   estado.restante = estabilizar(estado.restante, minutosRedondeados(restanteS), Date.now());
   $("texto-restante").textContent = textoDeRestante(estado.restante.mostrado, new Date());
+}
+
+function textoDeTarda(minutos) {
+  return minutos === 0 ? "Tarda menos de 2 min" : `Tarda aprox. ${minutos} min`;
+}
+
+// Quien elige 8 posiciones no sabe que acaba de quintuplicar la espera: la
+// banqueta alta tarda 126 s con la veta y 651 s con giro libre y 8
+// posiciones. Por eso el número se recalcula al cambiar cualquiera de las
+// opciones que pesan, 400 ms después del último cambio para no pedir uno
+// por cada tecla.
+const ESPERA_ESTIMACION_MS = 400;
+const CONTROLES_QUE_PESAN = ["posiciones", "angulos", "espejo", "esfuerzo", "resolucion", "material", "veta-respetar", "veta-libre", "copias"];
+let temporizadorEstimacion = null;
+let numeroDeEstimacion = 0;
+
+function pedirEstimacion() {
+  clearTimeout(temporizadorEstimacion);
+  temporizadorEstimacion = setTimeout(calcularEstimacion, ESPERA_ESTIMACION_MS);
+}
+
+// Mientras calcula deja el valor anterior. No pide nada sin archivo ni con
+// un trabajo corriendo: la prueba de una consulta le robaría CPU al
+// trabajo. Un error -- un 422 por un ángulo a medio tipear, un 500 -- no
+// abre ningún cartel: es un número de ayuda, y Acomodar va a dar el error
+// de verdad si lo hay.
+async function calcularEstimacion() {
+  if (!estado.fuenteId || $("btn-acomodar").classList.contains("oculto")) return;
+  const numero = ++numeroDeEstimacion;
+  let segundos = null;
+  try {
+    const respuesta = await postJson("/api/estimar", {
+      fuente_id: estado.fuenteId,
+      params: parametros(),
+    });
+    segundos = respuesta.segundos;
+  } catch (_) {
+    segundos = null;
+  }
+  if (numero !== numeroDeEstimacion) return;
+  mostrarEstimacion(segundos);
+}
+
+function mostrarEstimacion(segundos) {
+  const lugar = $("tiempo-estimado");
+  if (typeof segundos !== "number") {
+    lugar.textContent = "";
+    lugar.classList.add("oculto");
+    return;
+  }
+  lugar.textContent = textoDeTarda(minutosRedondeados(segundos));
+  lugar.classList.remove("oculto");
+}
+
+// El evento va en una variable y no como literal a propósito: los tests
+// ubican los handlers en línea por su `addEventListener("change", ...)`, y
+// un literal acá les ganaría de mano a los que buscan.
+for (const id of CONTROLES_QUE_PESAN) {
+  for (const evento of ["input", "change"]) $(id).addEventListener(evento, pedirEstimacion);
 }
 
 function terminar(t) {

@@ -2164,3 +2164,116 @@ def test_el_numero_baja_libre_y_sube_solo_si_se_sostiene(js):
 
 def test_la_subida_se_sostiene_cinco_segundos(js):
     assert re.search(r"^const SUBIDA_SOSTENIDA_MS = 5000;", _sin_comentarios(js), re.M)
+
+
+# --- tiempo estimado antes de arrancar ----------------------------------------
+
+CONTROLES_QUE_PESAN = [
+    "posiciones", "angulos", "espejo", "esfuerzo", "resolucion",
+    "material", "veta-respetar", "veta-libre", "copias",
+]
+"""Spec, 3.2: Posiciones, Ángulos, espejo, Esfuerzo, Resolución, Material,
+Veta, Copias. Recortes no tiene un control: se engancha en `dibujarRecortes`."""
+
+
+def test_el_tiempo_estimado_va_al_lado_de_acomodar(html):
+    pie = html[html.index('<footer class="barra-accion">'):html.index("</footer>")]
+    acomodar = pie.index('id="btn-acomodar"')
+    estimado = pie.index('id="tiempo-estimado"')
+    cancelar = pie.index('id="btn-cancelar"')
+    assert acomodar < estimado < cancelar
+    assert re.search(r'id="tiempo-estimado"[^>]*class="texto-avance oculto"', pie)
+
+
+def test_usa_la_ruta_de_estimar(js):
+    assert '"/api/estimar"' in _cuerpo_de_funcion(js, "calcularEstimacion")
+
+
+def test_la_estimacion_manda_lo_mismo_que_acomodar(js):
+    cuerpo = _cuerpo_de_funcion(js, "calcularEstimacion")
+    assert "fuente_id: estado.fuenteId" in cuerpo
+    assert "params: parametros()" in cuerpo
+
+
+def test_una_estimacion_que_llega_tarde_se_descarta(js):
+    """Dos cambios seguidos disparan dos pedidos que pueden volver en
+    cualquier orden. Sin el número, el viejo pisaría al nuevo."""
+    cuerpo = _cuerpo_de_funcion(js, "calcularEstimacion")
+    assert "++numeroDeEstimacion" in cuerpo
+    assert "numero !== numeroDeEstimacion" in cuerpo
+
+
+def test_no_se_estima_sin_archivo_ni_mientras_corre(js):
+    cuerpo = _cuerpo_de_funcion(js, "calcularEstimacion")
+    assert "!estado.fuenteId" in cuerpo
+    assert '$("btn-acomodar").classList.contains("oculto")' in cuerpo
+
+
+def test_si_la_ruta_falla_no_se_muestra_nada(js):
+    cuerpo = _cuerpo_de_funcion(js, "calcularEstimacion")
+    assert "catch" in cuerpo
+    assert "mostrarError" not in cuerpo, "un 422 al tipear no merece un cartel"
+
+
+def test_sin_numero_la_estimacion_se_esconde(js):
+    cuerpo = _cuerpo_de_funcion(js, "mostrarEstimacion")
+    assert 'typeof segundos !== "number"' in cuerpo
+    assert 'classList.add("oculto")' in cuerpo
+    assert "textoDeTarda(minutosRedondeados(segundos))" in cuerpo
+
+
+def test_la_estimacion_espera_cuatrocientos_ms_al_ultimo_cambio(js):
+    assert re.search(r"^const ESPERA_ESTIMACION_MS = 400;", _sin_comentarios(js), re.M)
+    cuerpo = _cuerpo_de_funcion(js, "pedirEstimacion")
+    assert "clearTimeout(temporizadorEstimacion)" in cuerpo
+    assert "setTimeout(calcularEstimacion, ESPERA_ESTIMACION_MS)" in cuerpo
+
+
+def test_los_controles_que_pesan_son_los_de_la_spec_y_existen(js, html):
+    hallazgo = re.search(
+        r"const CONTROLES_QUE_PESAN = \[([^\]]*)\]", _sin_comentarios(js)
+    )
+    assert hallazgo, "app.js ya no declara CONTROLES_QUE_PESAN"
+    ids = re.findall(r'"([^"]+)"', hallazgo.group(1))
+    assert sorted(ids) == sorted(CONTROLES_QUE_PESAN)
+    ids_del_html = set(re.findall(r'id="([^"]+)"', html))
+    faltantes = set(ids) - ids_del_html
+    assert not faltantes, (
+        f"ids que la estimación escucha y no están en index.html: {faltantes}. "
+        "`$(id)` daría null y la pantalla entera dejaría de cargar"
+    )
+
+
+def test_cada_control_que_pesa_escucha_input_y_change(js):
+    """`input` para lo que se tipea (Ángulos, Copias, Resolución), `change`
+    para desplegables, casillas y radios."""
+    limpio = _sin_comentarios(js)
+    bucle = limpio[limpio.index("for (const id of CONTROLES_QUE_PESAN)"):]
+    bucle = bucle[:bucle.index("\n}")]
+    assert '["input", "change"]' in bucle
+    assert "addEventListener(evento, pedirEstimacion)" in bucle
+
+
+def test_agregar_o_quitar_un_recorte_recalcula(js):
+    assert "pedirEstimacion()" in _cuerpo_de_funcion(js, "dibujarRecortes")
+
+
+def test_terminar_de_analizar_un_archivo_recalcula(js):
+    assert "pedirEstimacion()" in _cuerpo_de_funcion(js, "analizar")
+
+
+def test_la_estimacion_no_se_ve_mientras_corre(js):
+    cuerpo = _cuerpo_de_funcion(js, "corriendo")
+    assert '$("tiempo-estimado").classList.toggle("oculto", si ||' in cuerpo
+
+
+def test_registrar_borra_la_estimacion_del_archivo_anterior(js):
+    assert "mostrarEstimacion(null)" in _cuerpo_de_funcion(js, "registrar")
+
+
+@requiere_node
+def test_el_texto_de_cuanto_tarda(js):
+    obtenidos = _evaluar_en_node(
+        js, ["textoDeTarda"], [], "[textoDeTarda(10), textoDeTarda(3), textoDeTarda(0)]"
+    )
+    assert obtenidos == ["Tarda aprox. 10 min", "Tarda aprox. 3 min", "Tarda menos de 2 min"]
