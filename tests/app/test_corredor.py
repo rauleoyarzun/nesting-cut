@@ -561,6 +561,22 @@ def test_estimar_con_un_material_que_no_existe_da_none(tmp_path, deposito):
     assert corredor.estimar(fuente, NestParams(material="no-existe")) is None
 
 
+def test_estimar_con_un_catalogo_roto_no_se_disfraza_de_none(tmp_path, deposito, monkeypatch):
+    """Un catálogo corrupto es `ValueError`, que está en `ERRORES_DEL_USUARIO`
+    por ambigüedad de origen -- pero acá el origen no es ambiguo: es un bug
+    o un archivo de datos roto, no `tu archivo o tus parámetros`. Tiene que
+    salir tal cual, igual que `POST /api/trabajos` lo surte como 500."""
+    fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
+
+    def explota():
+        raise ValueError("el catálogo de materiales no se pudo leer")
+
+    monkeypatch.setattr(materials_store, "leer", explota)
+
+    with pytest.raises(ValueError, match="el catálogo de materiales"):
+        corredor.estimar(fuente, params())
+
+
 def test_estimar_con_parametros_invalidos_da_none(tmp_path, deposito):
     fuente = deposito.registrar_local(dxf_con(tmp_path, [(0, 0, 200)]))
 

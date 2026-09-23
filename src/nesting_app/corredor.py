@@ -220,12 +220,26 @@ def estimar(fuente: Fuente, params: NestParams) -> float | None:
     parámetros tienen un problema" da `None`: la pantalla no muestra nada, y
     el error de verdad lo va a dar Acomodar, con su cartel. Un bug del
     programa no está en esa tupla y sale como tal.
+
+    `materials_store.leer()` corre AFUERA de ese `try` a propósito: un
+    catálogo corrupto es `ValueError`, que está en `ERRORES_DEL_USUARIO`
+    por ambigüedad de origen, pero acá el origen no es ambiguo -- es un bug
+    o un archivo de datos roto, no "tu archivo o tus parámetros". Adentro
+    del `try`, ese `ValueError` se hubiera disfrazado de `{"segundos":
+    None}` mientras `POST /api/trabajos` (`api.py`) surte la misma
+    condición como 500: la misma rotura, dos caras. Se propaga tal cual,
+    para que salga 500 acá también.
     """
+    materiales = materials_store.leer()
+    material = materiales.get(params.material)
     try:
-        material = materials_store.leer().get(params.material)
+        # `validar` primero y no después, igual que `POST /api/trabajos`:
+        # acepta `material=None` y así un pedido con dos errores (parámetros
+        # inválidos Y material inexistente) señala primero el mismo problema
+        # en las dos rutas.
+        validar(params, material)
         if material is None:
             return None
-        validar(params, material)
         drawing = _leer(fuente, params.unidades)
         piezas, _, _ = prepare_parts(drawing, chain_tol=params.tol_cierre)
         piezas, _ = discard_plate_outline(piezas, material.sheet_w, material.sheet_h)

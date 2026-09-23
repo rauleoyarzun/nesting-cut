@@ -6,7 +6,7 @@ import ezdxf
 import pytest
 from fastapi.testclient import TestClient
 
-from nesting_app import rutas
+from nesting_app import materials_store, rutas
 from nesting_app.api import crear_app
 from nesting_app.archivos import Deposito
 from nesting_app.jobs import Registro
@@ -379,6 +379,32 @@ def test_estimar_con_un_material_que_no_existe_devuelve_null(cliente, tmp_path):
     })
 
     assert respuesta.json() == {"segundos": None}
+
+
+def test_estimar_con_un_catalogo_roto_da_500_y_no_null(tmp_path, monkeypatch):
+    """Un catálogo corrupto es un bug/dato roto, no `tu archivo o tus
+    parámetros`: tiene que salir como 500, igual que `POST /api/trabajos`,
+    y no disfrazarse de `{"segundos": None}`.
+
+    Cliente propio con `raise_server_exceptions=False`: el de la fixture
+    de arriba deja que una excepción sin atrapar se re-levante en el test
+    en vez de convertirse en la respuesta 500 que vería un cliente HTTP de
+    verdad."""
+    monkeypatch.setattr(rutas, "_base_de_datos", lambda: tmp_path / "datos")
+    registro = Registro(tmp_path / "trabajos")
+    app = crear_app(TOKEN, Deposito(tmp_path / "fuentes"), registro)
+
+    with TestClient(app, raise_server_exceptions=False) as cliente:
+        cliente.headers["X-Token"] = TOKEN
+        fuente_id = fuente_de(cliente, tmp_path)
+        materials_store.ruta_catalogo().write_text("roto: [\n", encoding="utf-8")
+
+        respuesta = cliente.post("/api/estimar", json={
+            "fuente_id": fuente_id, "params": {"material": "mdf18"},
+        })
+
+    registro.cerrar()
+    assert respuesta.status_code == 500
 
 
 def test_estimar_exige_el_token(cliente):
