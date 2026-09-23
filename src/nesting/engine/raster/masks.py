@@ -6,6 +6,7 @@ accumulate artefacts and quietly drift from the real geometry.
 """
 
 import math
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 
@@ -385,12 +386,22 @@ class MaskCache:
     nothing. Bounding the cache by entry *count* is blind to that: a full
     cache of sheet-sized entries can be gigabytes. So the cache is bounded by
     *bytes* instead, and evicts least-recently-used entries until it fits.
+
+    Es seguro entre hilos: las consultas de una pieza corren en hilos
+    (`packer._query_orientations`), y `warm` sólo evita las altas
+    concurrentes cuando todas las orientaciones de la pieza entran en el
+    presupuesto. A una resolución fina no entran, y sin el cerrojo un hilo
+    podía expulsar la clave que otro estaba por mover al final (`KeyError`)
+    o dos altas a la vez perder una suma de `_nbytes`. El cerrojo cubre
+    también el rasterizado: con `warm` adelante casi nunca se rasteriza desde
+    un hilo, y así dos hilos no rasterizan la misma orientación dos veces.
     """
 
     def __init__(self, max_bytes: int = DEFAULT_CACHE_BUDGET_BYTES) -> None:
         self._entries: OrderedDict[tuple, PartMasks] = OrderedDict()
         self._max_bytes = max_bytes
         self._nbytes = 0
+        self._lock = threading.Lock()
 
     def get(
         self, part: Part, angle: float, mirror: bool, resolution: float, sep: float
@@ -401,15 +412,16 @@ class MaskCache:
         # comparten `id` por error, indexar solo por `id` devolveria la
         # mascara de la pieza equivocada sin ningun aviso (Hallazgo 2).
         key = (part, angle, mirror, resolution, sep)
-        cached = self._entries.get(key)
-        if cached is not None:
-            self._entries.move_to_end(key)
-            return cached
+        with self._lock:
+            cached = self._entries.get(key)
+            if cached is not None:
+                self._entries.move_to_end(key)
+                return cached
 
-        masks = rasterize(part, angle, mirror, resolution, sep)
-        self._entries[key] = masks
-        self._nbytes += _masks_nbytes(masks)
-        while self._nbytes > self._max_bytes and len(self._entries) > 1:
-            _, evicted = self._entries.popitem(last=False)
-            self._nbytes -= _masks_nbytes(evicted)
-        return masks
+            masks = rasterize(part, angle, mirror, resolution, sep)
+            self._entries[key] = masks
+            self._nbytes += _masks_nbytes(masks)
+            while self._nbytes > self._max_bytes and len(self._entries) > 1:
+                _, evicted = self._entries.popitem(last=False)
+                self._nbytes -= _masks_nbytes(evicted)
+            return masks

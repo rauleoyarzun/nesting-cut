@@ -511,3 +511,42 @@ def test_occupied_never_under_represents_under_a_harsh_sweep():
                     missing += int((inside & ~masks.occupied).sum())
 
     assert missing == 0, f"faltan {missing} pixeles de material en la mascara"
+
+
+def test_the_cache_survives_being_hammered_from_several_threads():
+    """Las consultas de una pieza corren en hilos (fase 2 de pares y cartera).
+
+    `warm` pide las máscaras antes desde un solo hilo, pero eso sólo evita
+    altas concurrentes si todas las orientaciones entran en el presupuesto; a
+    una resolución fina no entran, y los hilos terminan insertando y
+    expulsando a la vez. Con un presupuesto chiquito eso pasa todo el
+    tiempo: sin cerrojo, `move_to_end` sobre una clave recién expulsada
+    levanta `KeyError` y `_nbytes` pierde sumas.
+    """
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    from nesting.engine.raster.masks import _masks_nbytes
+
+    # Cambiar de hilo cada microsegundo y no cada 5 ms: sin esto la carrera
+    # existe igual, pero aparece de vez en cuando y no siempre.
+    previo = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        cache = MaskCache(max_bytes=20_000)
+        parts = [rect_part(40.0 + 3 * i, 30.0, part_id=i) for i in range(6)]
+        pedidos = [(parts[(k * 7) % 6], (0.0, 90.0, 180.0, 270.0)[k % 4], bool(k % 3 == 0))
+                   for k in range(3000)]
+
+        def pedir(pedido):
+            part, angle, mirror = pedido
+            return cache.get(part, angle, mirror, RES, 5.0)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            resultados = list(pool.map(pedir, pedidos))
+    finally:
+        sys.setswitchinterval(previo)
+
+    assert all(isinstance(m, PartMasks) for m in resultados)
+    assert cache._nbytes == sum(_masks_nbytes(m) for m in cache._entries.values())
+    assert cache._nbytes <= 20_000 or len(cache._entries) == 1
