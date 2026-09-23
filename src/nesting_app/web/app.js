@@ -27,6 +27,9 @@ const estado = {
   // después ya se cortó o se traspapeló, así que guardarlo en disco sería
   // guardar una mentira.
   recortes: [],
+  // El último número de minutos que se mostró, y desde cuándo el servidor
+  // viene diciendo uno más alto. Ver `estabilizar()`.
+  restante: null,
 };
 
 // --- el cliente HTTP --------------------------------------------------------
@@ -214,6 +217,8 @@ async function registrar(fuente) {
   $("btn-cancelar").classList.add("oculto");
   $("pista-avance").classList.add("oculto");
   $("texto-avance").classList.add("oculto");
+  $("texto-restante").classList.add("oculto");
+  estado.restante = null;
   $("resultado").classList.add("oculto");
   $("resultado").textContent = "";
   $("placa-actual").textContent = "";
@@ -759,6 +764,7 @@ function corriendo(si) {
   $("btn-cancelar").classList.toggle("oculto", !si);
   $("pista-avance").classList.toggle("oculto", !si);
   $("texto-avance").classList.toggle("oculto", !si);
+  $("texto-restante").classList.toggle("oculto", !si);
   $("resultado").classList.toggle("oculto", si);
   $("btn-guardar").disabled = si || !estado.terminado;
 }
@@ -793,6 +799,8 @@ $("btn-acomodar").onclick = async () => {
       params: parametros(),
     });
     estado.trabajoId = creado.id;
+    estado.restante = null;
+    $("texto-restante").textContent = "Calculando el tiempo…";
     corriendo(true);
     estado.sondeo = setInterval(sondear, SONDEO_MS);
   } catch (error) {
@@ -819,6 +827,7 @@ async function sondear() {
   }
 
   if (t.avance) $("texto-avance").textContent = textoDeAvance(t.avance);
+  if (t.estado === "corriendo") actualizarRestante(t.restante_s);
   if (t.avance && !t.avance.compactando) {
     // El conteo de `ubicadas` se reinicia en cada intento nuevo (ver
     // nesting/engine/packer.py): una barra armada sólo con
@@ -863,6 +872,52 @@ function textoDeAvance(a) {
   if (a.compactando) return "Compactando la última placa…";
   const intento = a.intentos > 1 ? `Intento ${a.intento} de ${a.intentos} · ` : "";
   return `${intento}ubicadas ${a.ubicadas} de ${a.totales} · placa ${a.placa}`;
+}
+
+// --- tiempo -----------------------------------------------------------------
+
+// Para no fingir una precisión que no hay: de a 5 minutos arriba de 10, de
+// a 1 entre 2 y 10, y abajo de 2 un "menos de 2 min", que acá es el 0. La
+// hora de fin sale de este número ya redondeado y no del crudo, para que
+// "9 min" y "termina ~17:42" cierren entre sí.
+function minutosRedondeados(segundos) {
+  if (segundos < 120) return 0;
+  if (segundos <= 600) return Math.round(segundos / 60);
+  return Math.max(10, Math.round(segundos / 300) * 5);
+}
+
+// Con 0 no hay hora de fin: "termina ~17:33" a las 17:33 diría que ya
+// terminó.
+function textoDeRestante(minutos, ahora) {
+  if (minutos === 0) return "Faltan menos de 2 min";
+  const fin = new Date(ahora.getTime() + minutos * 60000);
+  const hh = String(fin.getHours()).padStart(2, "0");
+  const mm = String(fin.getMinutes()).padStart(2, "0");
+  return `Faltan aprox. ${minutos} min · termina ~${hh}:${mm}`;
+}
+
+const SUBIDA_SOSTENIDA_MS = 5000;
+
+// El número mostrado baja libremente, pero sólo sube si los valores más
+// altos se sostienen 5 segundos seguidos. Un número que salta de 8 a 12 y
+// vuelve a 8 es peor que uno que se queda en 8: la gente planifica con él.
+function estabilizar(previo, nuevo, ahora) {
+  if (!previo || nuevo <= previo.mostrado) return { mostrado: nuevo, subidaDesde: null };
+  const desde = previo.subidaDesde ?? ahora;
+  if (ahora - desde >= SUBIDA_SOSTENIDA_MS) return { mostrado: nuevo, subidaDesde: null };
+  return { mostrado: previo.mostrado, subidaDesde: desde };
+}
+
+// El servidor manda `null` durante los primeros 5 segundos o las primeras
+// 20 consultas: antes de eso no hay datos, y un número inventado es peor
+// que decir que se está calculando.
+function actualizarRestante(restanteS) {
+  if (typeof restanteS !== "number") {
+    $("texto-restante").textContent = "Calculando el tiempo…";
+    return;
+  }
+  estado.restante = estabilizar(estado.restante, minutosRedondeados(restanteS), Date.now());
+  $("texto-restante").textContent = textoDeRestante(estado.restante.mostrado, new Date());
 }
 
 function terminar(t) {

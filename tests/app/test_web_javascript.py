@@ -8,7 +8,10 @@ que hace que un botón no haga nada, un estado que el servidor manda y que
 nadie contempla.
 """
 
+import json
 import re
+import shutil
+import subprocess
 
 import pytest
 
@@ -2017,3 +2020,147 @@ def test_el_globo_de_veta_dice_que_es_de_esta_corrida(js_info):
     texto = claves_y_textos(js_info)["veta"]
     assert "catálogo" in texto
     assert "0° y 180°" in texto
+
+
+# --- tiempo restante ---------------------------------------------------------
+
+requiere_node = pytest.mark.skipif(
+    shutil.which("node") is None,
+    reason="estos casos corren las funciones de app.js de verdad y necesitan "
+           "`node` en el PATH; los tests de texto de la misma función siguen "
+           "corriendo sin él",
+)
+
+
+def _evaluar_en_node(js: str, funciones: list[str], constantes: list[str], expresion: str):
+    """Arma un programa con las `constantes` y las `funciones` de `js`, tal
+    como están en el archivo y sin comentarios, y devuelve lo que evalúa
+    `expresion`, pasado por JSON.
+
+    Las funciones salen de `_cuerpo_de_funcion`, que corta justo antes del
+    `}` que las cierra: se lo devuelve acá. Las constantes tienen que estar
+    declaradas en una sola línea, `const NOMBRE = valor;`."""
+    limpio = _sin_comentarios(js)
+    partes = []
+    for nombre in constantes:
+        hallazgo = re.search(rf"^const {nombre} = [^;\n]+;", limpio, re.M)
+        if not hallazgo:
+            pytest.fail(f"app.js ya no declara `const {nombre} = ...;` en una sola línea")
+        partes.append(hallazgo.group(0))
+    for nombre in funciones:
+        partes.append(_cuerpo_de_funcion(js, nombre) + "\n}")
+    partes.append(f"process.stdout.write(JSON.stringify({expresion}));")
+    proceso = subprocess.run(
+        ["node", "-e", "\n".join(partes)], capture_output=True, text=True, timeout=30
+    )
+    if proceso.returncode != 0:
+        pytest.fail(f"node no pudo correr el programa armado:\n{proceso.stderr}")
+    return json.loads(proceso.stdout)
+
+
+def test_el_restante_tiene_su_lugar_en_la_barra_de_abajo(html):
+    pie = html[html.index('<footer class="barra-accion">'):html.index("</footer>")]
+    assert 'id="texto-restante"' in pie
+    assert pie.index('id="texto-avance"') < pie.index('id="texto-restante"'), (
+        "el tiempo va debajo del avance, no arriba"
+    )
+    assert re.search(r'id="texto-restante"[^>]*class="texto-avance oculto"', pie)
+
+
+def test_sondear_le_pasa_el_restante_a_la_pantalla(js):
+    assert "actualizarRestante(t.restante_s)" in _cuerpo_de_funcion(js, "sondear")
+
+
+def test_sin_datos_dice_que_esta_calculando(js):
+    cuerpo = _cuerpo_de_funcion(js, "actualizarRestante")
+    assert "Calculando el tiempo…" in cuerpo
+    assert 'typeof restanteS !== "number"' in cuerpo
+
+
+def test_con_datos_redondea_estabiliza_y_escribe(js):
+    cuerpo = _cuerpo_de_funcion(js, "actualizarRestante")
+    assert "estabilizar(estado.restante, minutosRedondeados(restanteS)" in cuerpo
+    assert "textoDeRestante(estado.restante.mostrado" in cuerpo
+
+
+def test_el_restante_se_ve_solo_mientras_corre(js):
+    assert '$("texto-restante").classList.toggle("oculto", !si)' in _cuerpo_de_funcion(
+        js, "corriendo"
+    )
+
+
+def test_registrar_olvida_el_restante_del_trabajo_anterior(js):
+    cuerpo = _cuerpo_de_funcion(js, "registrar")
+    assert "estado.restante = null" in cuerpo
+    assert '$("texto-restante").classList.add("oculto")' in cuerpo
+
+
+def test_acomodar_arranca_el_restante_de_cero(js):
+    """Sin esto, el número estabilizado del trabajo anterior -- que sólo baja
+    libremente -- se quedaría mostrando un tiempo viejo hasta 5 segundos."""
+    limpio = _sin_comentarios(js)
+    inicio = limpio.index('$("btn-acomodar").onclick')
+    fin = limpio.index('$("btn-cancelar").onclick')
+    handler = limpio[inicio:fin]
+    assert "estado.restante = null" in handler
+    assert handler.index("estado.restante = null") < handler.index("corriendo(true)")
+
+
+def test_el_redondeo_tiene_los_cortes_de_la_spec(js):
+    cuerpo = _cuerpo_de_funcion(js, "minutosRedondeados")
+    assert "segundos < 120" in cuerpo
+    assert "segundos <= 600" in cuerpo
+    assert "/ 300) * 5" in cuerpo
+
+
+@requiere_node
+def test_el_redondeo_caso_por_caso(js):
+    casos = {
+        0: 0, 119: 0, 120: 2, 149: 2, 150: 3, 540: 9, 600: 10,
+        601: 10, 749: 10, 750: 15, 900: 15, 3600: 60,
+    }
+    obtenidos = _evaluar_en_node(
+        js, ["minutosRedondeados"], [],
+        f"{list(casos)}.map(minutosRedondeados)",
+    )
+    assert dict(zip(casos, obtenidos)) == casos
+
+
+@requiere_node
+def test_el_texto_del_restante_con_su_hora_de_fin(js):
+    obtenidos = _evaluar_en_node(
+        js, ["textoDeRestante"], [],
+        "[textoDeRestante(9, new Date(2026, 8, 22, 17, 33)),"
+        " textoDeRestante(15, new Date(2026, 8, 22, 23, 50)),"
+        " textoDeRestante(0, new Date(2026, 8, 22, 17, 33))]",
+    )
+    assert obtenidos == [
+        "Faltan aprox. 9 min · termina ~17:42",
+        "Faltan aprox. 15 min · termina ~00:05",
+        "Faltan menos de 2 min",
+    ]
+
+
+@requiere_node
+def test_el_numero_baja_libre_y_sube_solo_si_se_sostiene(js):
+    """Spec, 3.1: un número que salta de 8 a 12 y vuelve a 8 es peor que
+    uno que se queda en 8."""
+    mostrados = _evaluar_en_node(
+        js, ["estabilizar"], ["SUBIDA_SOSTENIDA_MS"],
+        """(() => {
+          const vistos = [];
+          let e = estabilizar(null, 8, 0);           vistos.push(e.mostrado);
+          e = estabilizar(e, 12, 1000);              vistos.push(e.mostrado);
+          e = estabilizar(e, 8, 2000);               vistos.push(e.mostrado);
+          e = estabilizar(e, 12, 3000);              vistos.push(e.mostrado);
+          e = estabilizar(e, 11, 7999);              vistos.push(e.mostrado);
+          e = estabilizar(e, 12, 8000);              vistos.push(e.mostrado);
+          e = estabilizar(e, 6, 8100);               vistos.push(e.mostrado);
+          return vistos;
+        })()""",
+    )
+    assert mostrados == [8, 8, 8, 8, 8, 12, 6]
+
+
+def test_la_subida_se_sostiene_cinco_segundos(js):
+    assert re.search(r"^const SUBIDA_SOSTENIDA_MS = 5000;", _sin_comentarios(js), re.M)
