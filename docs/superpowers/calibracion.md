@@ -452,15 +452,16 @@ con todos los layouts idénticos (`bench/medir_rapido.py --comparar`).
 | antes | 226.6 s | — | — | — |
 | A: transformada de la placa reusada | 217.2 s | 4.1% | no (`banqueta-alta.ai`) | no |
 | B: orientaciones en 4 hilos | 78.8 s | 65.2% | sí | sí |
+| B después de la revisión (hilos sólo en el proceso principal) | 74.0 s | 67.3% | sí | sí |
 
 Por archivo (segundos; la de base es la segunda corrida, la primera dio
 58.0 / 158.5 / 10.6 = 227.1 s con las mismas huellas):
 
-| archivo | antes | A | B |
-|---|---|---|---|
-| `banqueta final raulo.ai` | 59.3 | 48.3 | 19.5 |
-| `banqueta-alta.ai` | 156.8 | 159.0 (layout distinto) | 55.3 |
-| `muestra.dxf` | 10.5 | 9.9 | 4.0 |
+| archivo | antes | A | B | B revisada |
+|---|---|---|---|---|
+| `banqueta final raulo.ai` | 59.3 | 48.3 | 19.5 | 18.8 |
+| `banqueta-alta.ai` | 156.8 | 159.0 (layout distinto) | 55.3 | 51.3 |
+| `muestra.dxf` | 10.5 | 9.9 | 4.0 | 3.9 |
 
 A no llega ni de lejos, y encima cambia un layout: la transformada de la
 placa a un tamaño de FFT común no redondea igual que `fftconvolve`, y en
@@ -471,8 +472,20 @@ pieza son independientes.
 Con `normal` y los núcleos por omisión (5 en esta máquina, por memoria) el
 tiempo quedó parecido al de `rapido` en los tres archivos —la cota corta la
 búsqueda antes de las tandas—, así que B baja lo mismo ahí: 11.2 → 4.0 s,
-61.3 → 19.2 s y 163.9 → 53.9 s, con las mismas huellas. Lo que esto NO mide
-es una tanda con todos los procesos ocupados, donde los 4 hilos de cada uno
-compiten por los mismos núcleos.
+61.3 → 19.2 s y 163.9 → 53.9 s, con las mismas huellas.
+
+La revisión midió además el pico de memoria de un proceso con `rapido`: de
+1234 a 1613 MB en `muestra.dxf` y de 1133 a 1985 MB en `banqueta final
+raulo.ai`, pasando de 1 a 4 hilos (cada consulta en vuelo tiene sus propios
+arreglos de FFT). `workers.MEMORY_PER_WORKER_BYTES` (2300 MB) está medido
+con un hilo, y 5 procesos con 4 hilos cada uno son 20 hilos sobre 14
+núcleos. Por eso los hilos quedaron SÓLO en el proceso principal —la base,
+la recuperación y la compactación, que corren solas— y los procesos de la
+cartera consultan con uno (`cartera._init_worker` los apaga), así que el
+tope de procesos sigue valiendo. La estimación previa usa dos costos por
+consulta: el de los hilos para la base y el tramo final, y el de un hilo
+para las tandas en procesos (`corredor.estimar_segundos`). `FACTOR_LLENO`
+no se volvió a medir; el test de ×2 sigue pasando (estimado 0.78–0.88 s,
+real 0.90–0.92 s en la muestra sintética).
 
 Máquina: Apple M4 Pro, 14 núcleos, 24 GB, fecha 2026-09-23.
