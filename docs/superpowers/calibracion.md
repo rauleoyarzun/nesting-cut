@@ -485,7 +485,11 @@ cartera consultan con uno (`cartera._init_worker` los apaga), así que el
 tope de procesos sigue valiendo. La estimación previa usa dos costos por
 consulta: el de los hilos para la base y el tramo final, y el de un hilo
 para las tandas en procesos (`corredor.estimar_segundos`). `FACTOR_LLENO`
-no se volvió a medir; el test de ×2 sigue pasando (estimado 0.78–0.88 s,
-real 0.90–0.92 s en la muestra sintética).
+se volvió a medir con la prueba en hilos (`bench/calibrate.py
+--factor-lleno`, las dos configuraciones de su docstring): la mediana de los
+seis factores pasó de 1.42 a 0.825, con las tablas en el docstring de la
+constante. Con ese valor el test de ×2 sigue pasando, pero con poco margen:
+dentro de `tests/test_calibration.py` el real dio 1.90 y 1.94 veces el
+estimado (0.84 s contra 0.43–0.44 s), cuando el tope es 2.
 
 Máquina: Apple M4 Pro, 14 núcleos, 24 GB, fecha 2026-09-23.

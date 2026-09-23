@@ -171,15 +171,17 @@ def probe_query_seconds(
     rasteriza cada orientación la primera vez. `reset` queda afuera del
     tiempo: se paga una vez por placa, no por consulta.
 
-    Una sola consulta y no un promedio: tarda menos de un segundo, y el
-    número vale en cualquier máquina porque se mide en ella. Devuelve `None`
-    si no hay piezas o si la veta no deja ninguna orientación.
+    Sin `threaded`, una sola consulta y no un promedio: tarda menos de un
+    segundo, y el número vale en cualquier máquina porque se mide en ella.
+    Es lo que cuesta una consulta en un proceso de la cartera, con un hilo.
+    Devuelve `None` si no hay piezas o si la veta no deja ninguna orientación.
 
     Con `threaded=True` mide lo que cuesta una consulta en el proceso
     principal, donde corren en hilos (`QUERY_THREADS`): pregunta por TODAS
     las orientaciones de la pieza con `_query_orientations`, como hace la
-    corrida, y divide el tiempo por cuántas son. Sin eso, la consulta de un
-    hilo solo, que es lo que cuesta en un proceso de la cartera.
+    corrida -- con sus rasterizados, desde el hilo que llama --, y divide el
+    tiempo por cuántas son. Tarda más que una sola consulta, del orden de
+    las orientaciones divididas por los hilos.
     """
     if not parts:
         return None
@@ -609,6 +611,11 @@ def pack(
     al terminar. Devolver `False` en cualquiera de
     esas llamadas pide abandonar, y `pack` levanta `Cancelado`. No pasarlo
     deja el comportamiento exactamente como estaba.
+
+    `progreso` puede llamarse desde un hilo de consulta (`QUERY_THREADS`) y
+    no desde el hilo que llamó a `pack`: nunca dos llamadas a la vez (van
+    bajo el cerrojo del contador de consultas), pero tiene que volver
+    rápido, porque mientras corre las demás consultas esperan para avisar.
 
     El resultado trae sólo piezas reales: las compuestas se desarman antes
     de volver.
