@@ -497,3 +497,26 @@ y mide sólo consultas. Con eso el factor dio 3.455 (seis factores de 3.08 a
 estimado en tres corridas.
 
 Máquina: Apple M4 Pro, 14 núcleos, 24 GB, fecha 2026-09-23.
+
+### Estimación previa contra una corrida real: banqueta alta con giro libre
+
+Control después de la revisión final, sin tocar constantes. El trabajo:
+`bench/files/banqueta-alta.ai` (57 piezas), placa de 1220 × 2440 con giro
+libre, sep 8, borde 5, 8 posiciones con espejo, `normal`, 4 núcleos,
+1 mm/px (`MIN_BATCH` real, 12). La estimación es la misma cuenta que usa
+`/api/estimar` (`corredor.estimar_segundos`, con `wall_forecast_parts` =
+3232 consultas de la base y el tramo final y 4128 de reloj de las tandas):
+
+| medición | estimado | real / estimado |
+|---|---|---|
+| 1 | 924.1 s | 0.83 |
+| 2 | 910.1 s | 0.85 |
+| 3 | 839.4 s | 0.92 |
+
+La corrida real con 4 núcleos tardó ~770 s. El estimado queda entre 8% y
+20% por encima, adentro del ×2 que pide `tests/test_calibration.py`, y del
+lado que la spec prefiere: una espera más corta que la anunciada no molesta.
+La variación entre mediciones (840 a 925 s) es la de la consulta de prueba,
+que dura menos de un segundo.
+
+Máquina: Apple M4 Pro, 14 núcleos, 24 GB, fecha 2026-09-23.
