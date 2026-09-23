@@ -10,6 +10,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 
 from nesting.engine.oracle import NestConfig, Oracle, Weights, transformed_bbox
+from nesting.engine.prevision import (
+    estimate_sheets,
+    forecast_compaction,
+    forecast_pack,
+    forecast_recovery,
+)
 from nesting.model.entities import Transform
 from nesting.model.part import Part, Placement
 from nesting.model.sheet import Sheet, SheetSupply, allowed_angles
@@ -182,6 +188,18 @@ class _Informe:
         )
         if not self._progreso(avance):
             raise Cancelado("el trabajo se canceló")
+
+    def corregir_tras_intentos(self, hechos: int, restantes_finales: int) -> None:
+        """Ya terminaron `hechos` pasadas golosas completas, y todo lo
+        contado hasta acá es de ellas: los intentos que faltan se prevén
+        como el promedio de los hechos, y las fases finales con las placas
+        reales del mejor layout hasta ahora."""
+        por_intento = self._consultas.count / hechos
+        self.previstas = round(por_intento * self._intentos) + restantes_finales
+
+    def prever_desde_ahora(self, restantes: int) -> None:
+        """Lo que falta ya se sabe contar desde el estado actual."""
+        self.previstas = self._consultas.count + restantes
 
     def aviso_de(self, intento: int) -> Callable[[int, int], None] | None:
         """El `aviso` de la pasada golosa número `intento`."""
@@ -562,6 +580,68 @@ def layout_cost(result: PackResult, parts: Sequence[Part]) -> CostoLayout:
     return CostoLayout(placas_nuevas, material, top)
 
 
+def _restarts_for(config: NestConfig) -> int:
+    """Cuántas pasadas golosas corre este nivel de esfuerzo, o el error de siempre."""
+    if config.effort not in EFFORT_RESTARTS:
+        raise UnknownEffortError(
+            f"nivel de esfuerzo {config.effort!r} desconocido; "
+            f"use uno de {', '.join(EFFORT_RESTARTS)}"
+        )
+    return EFFORT_RESTARTS[config.effort]
+
+
+def _usable_area(sheet: Sheet, margin: float) -> float:
+    return max(0.0, sheet.width - 2 * margin) * max(0.0, sheet.height - 2 * margin)
+
+
+def initial_forecast(
+    parts: Sequence[Part], supply: SheetSupply, config: NestConfig
+) -> int:
+    """Cuántas consultas se prevé que cueste `pack(parts, supply, config, ...)`, antes de correrlo.
+
+    Es la misma cuenta con la que `pack` arranca su previsión, y la que usa
+    la estimación de tiempo previa (`nesting_app.corredor.estimar_segundos`).
+    Las orientaciones se cuentan sobre la placa del Material: un recorte con
+    la veta cruzada puede permitir otras, pero la cantidad es la misma.
+    """
+    passes = _restarts_for(config)
+    if not parts:
+        return 0
+    sheets = estimate_sheets(
+        sum(p.area for p in parts),
+        [_usable_area(s, config.margin) for s in supply.scraps],
+        _usable_area(supply.stock, config.margin),
+    )
+    return forecast_pack(
+        len(parts), len(orientations(supply.stock, config)), sheets, passes
+    )
+
+
+def _compaction_forecast(result: PackResult, config: NestConfig) -> int:
+    """Consultas de compactar la última placa de `result`, contadas sobre ella."""
+    if result.sheets_used == 0:
+        return 0
+    last = result.sheets_used - 1
+    on_last = sum(1 for p in result.placements if p.sheet == last)
+    return forecast_compaction(on_last, len(orientations(result.sheets[last], config)))
+
+
+def _forecast_final_phases(result: PackResult, config: NestConfig) -> int:
+    """Consultas de la recuperación y la compactación sobre las placas reales de `result`."""
+    if result.sheets_used == 0:
+        return 0
+    per_sheet = [0] * result.sheets_used
+    for placement in result.placements:
+        per_sheet[placement.sheet] += 1
+    last = result.sheets_used - 1
+    previous = [
+        (per_sheet[i], len(orientations(result.sheets[i], config))) for i in range(last)
+    ]
+    return forecast_recovery(previous, per_sheet[last]) + _compaction_forecast(
+        result, config
+    )
+
+
 def pack(
     parts: Sequence[Part],
     supply: SheetSupply,
@@ -582,11 +662,7 @@ def pack(
     `Cancelado`. No pasarlo deja el layout exactamente como estaba: es lo
     que hace la CLI.
     """
-    if config.effort not in EFFORT_RESTARTS:
-        raise UnknownEffortError(
-            f"nivel de esfuerzo {config.effort!r} desconocido; "
-            f"use uno de {', '.join(EFFORT_RESTARTS)}"
-        )
+    intentos = _restarts_for(config)
 
     started = time.perf_counter()
     if not parts:
@@ -595,16 +671,17 @@ def pack(
     rng = random.Random(config.seed)
     by_area = sorted(parts, key=lambda p: p.area, reverse=True)
 
-    intentos = EFFORT_RESTARTS[config.effort]
     totales = len(parts)
 
     consultas = _QueryCounter()
     contado = _counting(oracle_factory, consultas)
     informe = _Informe(progreso, intentos, totales, consultas)
+    informe.previstas = initial_forecast(parts, supply, config)
 
     best_order = list(by_area)
     best = _pack_once(best_order, supply, config, contado, informe.aviso_de(1))
     best_cost = layout_cost(best, parts)
+    informe.corregir_tras_intentos(1, _forecast_final_phases(best, config))
 
     # Garantia: "lento" nunca puede ser peor que "normal", igual que "normal"
     # nunca puede ser peor que "rapido". Para "rapido"/"normal" esa garantia
@@ -637,7 +714,7 @@ def pack(
     # la semilla.
     shared_restarts = EFFORT_RESTARTS["normal"] - 1
 
-    for i in range(EFFORT_RESTARTS[config.effort] - 1):
+    for i in range(intentos - 1):
         if config.effort == "lento" and i >= shared_restarts:
             perturb_base = best_order
         else:
@@ -649,6 +726,7 @@ def pack(
         candidate_cost = layout_cost(candidate, parts)
         if candidate_cost < best_cost:
             best, best_cost, best_order = candidate, candidate_cost, candidate_order
+        informe.corregir_tras_intentos(i + 2, _forecast_final_phases(best, config))
 
     informe.emitir(intentos, totales, 0, compactando=True)
 
@@ -663,15 +741,28 @@ def pack(
     # es reempaque de placas ya armadas, no la pasada golosa inicial. Lo que
     # distingue una fase de otra ahora son las consultas del `Avance`, que
     # el estimador de tiempo usa sin saber qué fase es.
+    choices_ultima = len(orientations(best.sheets[-1], config))
+
+    def prever_recuperacion(restantes: int, pendientes: int) -> None:
+        # Mientras dura la recuperación, la compactación se prevé con las
+        # pendientes de ahora: la recuperación sólo puede sacar piezas de
+        # la última placa, así que es cota superior.
+        informe.prever_desde_ahora(
+            restantes + forecast_compaction(pendientes, choices_ultima)
+        )
+
     best = _recuperar_de_la_ultima_placa(
-        best, parts, config, contado, supply.material_name, informe.aviso_final(),
+        best, parts, config, contado, supply.material_name,
+        informe.aviso_final(), prever_recuperacion,
     )
+    informe.prever_desde_ahora(_compaction_forecast(best, config))
     best = _compact_last_sheet(
         best, parts, config, contado, supply.material_name, informe.aviso_final(),
     )
     # El último aviso: todo lo consultado ya está contado, así que quien
     # estime el tiempo ve cero restante en vez de quedarse con el último
     # aviso de la compactación.
+    informe.prever_desde_ahora(0)
     informe.emitir(intentos, totales, 0, compactando=True)
     best.seconds = time.perf_counter() - started
     return best
@@ -695,6 +786,7 @@ def _recuperar_de_la_ultima_placa(
     oracle_factory: Callable[[], Oracle],
     material_name: str,
     aviso: Callable[[int, int], None] | None = None,
+    prever: Callable[[int, int], None] | None = None,
 ) -> PackResult:
     """Reintentar en las placas anteriores lo que quedó en la última.
 
@@ -710,6 +802,12 @@ def _recuperar_de_la_ultima_placa(
     `pack` (un `_pack_once` completo por placa anterior, ver "CUÁNTO CUESTA"
     abajo) corría sordo: ni la barra de progreso se movía ni el botón de
     cancelar hacía nada durante esos segundos.
+
+    `prever`, si se pasa, se llama antes de cada intento con (consultas que
+    se prevé que cueste lo que queda de la recuperación, pendientes que
+    quedan en la última placa). Se vuelve a llamar en cada intento porque la
+    cuenta cambia: un intento que recupera algo paga OTRO sobre la misma
+    placa, y las pendientes que quedan son menos.
 
     Es literalmente lo que el usuario hizo a mano: sacar un disco de la
     placa 2 y meterlo en un hueco de la placa 1.
@@ -794,6 +892,20 @@ def _recuperar_de_la_ultima_placa(
         anteriores = por_placa.get(placa, [])
         en_placa = [by_id[p.part_id] for p in anteriores]
         while pendientes:
+            if prever is not None:
+                prever(
+                    forecast_recovery(
+                        [
+                            (
+                                len(por_placa.get(k, [])),
+                                len(orientations(result.sheets[k], config)),
+                            )
+                            for k in range(placa, ultima)
+                        ],
+                        len(pendientes),
+                    ),
+                    len(pendientes),
+                )
             orden = [pendientes[0], *en_placa, *pendientes[1:]]
             try:
                 redone = _pack_once(
