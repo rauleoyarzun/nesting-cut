@@ -440,3 +440,39 @@ Resolución 1.0 mm/px, contacto 1.0, esfuerzo `rapido`.
 | `muestra.dxf` (x8) | raster | 2 | 62.93% | 54.23% |
 | `banqueta final raulo.ai` (x5) | shelf (bounding box) | 3 | 54.87% | 42.24% |
 | `banqueta final raulo.ai` (x5) | raster | 3 | 60.25% | 42.24% |
+
+## Fase 2 de pares y cartera — acelerar una sola combinación
+
+Criterio fijado antes de medir: al menos 30% menos de tiempo total de
+`rapido` sobre `bench/files` (mdf18, valores por omisión de la CLI, 1 mm/px),
+con todos los layouts idénticos (`bench/medir_rapido.py --comparar`).
+
+| variante | total | baja | layouts idénticos | se queda |
+|---|---|---|---|---|
+| antes | 226.6 s | — | — | — |
+| A: transformada de la placa reusada | 217.2 s | 4.1% | no (`banqueta-alta.ai`) | no |
+| B: orientaciones en 4 hilos | 78.8 s | 65.2% | sí | sí |
+
+Por archivo (segundos; la de base es la segunda corrida, la primera dio
+58.0 / 158.5 / 10.6 = 227.1 s con las mismas huellas):
+
+| archivo | antes | A | B |
+|---|---|---|---|
+| `banqueta final raulo.ai` | 59.3 | 48.3 | 19.5 |
+| `banqueta-alta.ai` | 156.8 | 159.0 (layout distinto) | 55.3 |
+| `muestra.dxf` | 10.5 | 9.9 | 4.0 |
+
+A no llega ni de lejos, y encima cambia un layout: la transformada de la
+placa a un tamaño de FFT común no redondea igual que `fftconvolve`, y en
+`banqueta-alta.ai` esa diferencia de redondeo alcanza para cambiar una
+elección. B sí: scipy suelta el GIL en las FFT, y las 16 consultas de una
+pieza son independientes.
+
+Con `normal` y los núcleos por omisión (5 en esta máquina, por memoria) el
+tiempo quedó parecido al de `rapido` en los tres archivos —la cota corta la
+búsqueda antes de las tandas—, así que B baja lo mismo ahí: 11.2 → 4.0 s,
+61.3 → 19.2 s y 163.9 → 53.9 s, con las mismas huellas. Lo que esto NO mide
+es una tanda con todos los procesos ocupados, donde los 4 hilos de cada uno
+compiten por los mismos núcleos.
+
+Máquina: Apple M4 Pro, 14 núcleos, 24 GB, fecha 2026-09-23.
