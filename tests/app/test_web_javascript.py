@@ -2005,3 +2005,15 @@ def test_cambiar_material_o_la_veta_a_mano_pasa_por_pedir(js):
     limpio = _sin_comentarios(js)
     assert re.search(r'pedirVeta\(vetaPorMaterial\[\$\("material"\)\.value\], "material"\)', limpio)
     assert re.search(r'pedirVeta\(vetaDeLaCorrida\(\), "control"\)', limpio)
+
+
+def test_el_globo_de_angulos_ya_no_explica_la_veta(js_info):
+    """Ahora la pantalla lo muestra: Posiciones se bloquea y dice por qué.
+    Explicarlo además en el globo es contar dos veces lo mismo."""
+    assert "veta" not in claves_y_textos(js_info)["angulos"]
+
+
+def test_el_globo_de_veta_dice_que_es_de_esta_corrida(js_info):
+    texto = claves_y_textos(js_info)["veta"]
+    assert "catálogo" in texto
+    assert "0° y 180°" in texto
