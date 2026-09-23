@@ -4,7 +4,9 @@ Knows nothing about how placement is computed. It talks to an `Oracle`, so the
 same code drives the throwaway shelf engine and the real raster engine.
 """
 
+import os
 import random
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -158,6 +160,7 @@ def probe_query_seconds(
     config: NestConfig,
     oracle_factory: Callable[[], Oracle],
     clock: Callable[[], float] = time.perf_counter,
+    threaded: bool = False,
 ) -> float | None:
     """Cuánto tarda UNA consulta en esta máquina, con estas opciones.
 
@@ -171,6 +174,12 @@ def probe_query_seconds(
     Una sola consulta y no un promedio: tarda menos de un segundo, y el
     número vale en cualquier máquina porque se mide en ella. Devuelve `None`
     si no hay piezas o si la veta no deja ninguna orientación.
+
+    Con `threaded=True` mide lo que cuesta una consulta en el proceso
+    principal, donde corren en hilos (`QUERY_THREADS`): pregunta por TODAS
+    las orientaciones de la pieza con `_query_orientations`, como hace la
+    corrida, y divide el tiempo por cuántas son. Sin eso, la consulta de un
+    hilo solo, que es lo que cuesta en un proceso de la cartera.
     """
     if not parts:
         return None
@@ -180,6 +189,10 @@ def probe_query_seconds(
     part = max(parts, key=lambda p: p.area)
     oracle = oracle_factory()
     oracle.reset(supply.stock.width, supply.stock.height, config)
+    if threaded:
+        started = clock()
+        _query_orientations(oracle, part, choices)
+        return (clock() - started) / len(choices)
     angle, mirror = choices[0]
     started = clock()
     oracle.best_placement(part, angle, mirror)
@@ -302,25 +315,88 @@ def _pack_once(
 
 
 QUERY_THREADS = 4
-"""Cuántos hilos consultan las orientaciones de una pieza a la vez (fase 2, idea B)."""
+"""Cuántos hilos consultan a la vez las orientaciones de una pieza (fase 2, idea B).
 
-_query_pool: ThreadPoolExecutor | None = None
+Sólo en el proceso principal, y nunca más que los núcleos de la máquina
+(`query_threads`). Ahí corren solas la base, la recuperación y la
+compactación, y scipy suelta el GIL en las FFT: medido sobre `bench/files`,
+`rapido` tarda un 65% menos con el mismo layout (docs/superpowers/calibracion.md).
+
+En los procesos de la cartera, uno solo: `cartera._init_worker` apaga los
+hilos. Una tanda ya ocupa un núcleo por proceso, así que más hilos no suman
+nada y sólo compiten por los mismos núcleos; y cada consulta en vuelo tiene
+sus propios arreglos de FFT, así que con 4 hilos el pico de un proceso subió
+de 1,1-1,2 GB a 1,6-2,0 GB (`rapido` sobre `bench/files`), y
+`workers.MEMORY_PER_WORKER_BYTES`, que fija cuántos procesos entran en la
+memoria, está medido con uno.
+"""
+
+_threads_allowed = True
+_pool_lock = threading.Lock()
+_pool: ThreadPoolExecutor | None = None
+_pool_size = 0
+
+
+def allow_query_threads(allowed: bool) -> None:
+    """Prender o apagar los hilos de consulta en ESTE proceso.
+
+    La cartera los apaga en cada proceso de su pool (`cartera._init_worker`).
+    Apagarlos cierra el pool, si había uno.
+    """
+    global _threads_allowed
+    _threads_allowed = allowed
+    if not allowed:
+        shutdown_query_pool()
+
+
+def query_threads() -> int:
+    """Cuántos hilos usa `_query_orientations` en este proceso: 1 es sin hilos."""
+    if not _threads_allowed:
+        return 1
+    return max(1, min(QUERY_THREADS, os.cpu_count() or 1))
+
+
+def _pool_for(n: int) -> ThreadPoolExecutor:
+    """El pool de `n` hilos, uno solo por proceso.
+
+    Se arma bajo cerrojo la primera vez, y se reusa mientras `n` no cambie.
+    Si cambia (un test que toca `QUERY_THREADS`), el anterior se cierra
+    esperando lo que tenga en vuelo y se arma otro: nunca quedan dos vivos.
+    """
+    global _pool, _pool_size
+    with _pool_lock:
+        if _pool is None or _pool_size != n:
+            if _pool is not None:
+                _pool.shutdown(wait=True)
+            _pool = ThreadPoolExecutor(max_workers=n, thread_name_prefix="consultas")
+            _pool_size = n
+        return _pool
+
+
+def shutdown_query_pool() -> None:
+    """Cerrar el pool de consultas, si hay uno. El próximo pedido arma otro."""
+    global _pool, _pool_size
+    with _pool_lock:
+        if _pool is not None:
+            _pool.shutdown(wait=True)
+        _pool, _pool_size = None, 0
 
 
 def _query_orientations(oracle, part, choices):
-    """Todas las consultas de una pieza, en hilos, en el orden de `choices`.
+    """Todas las consultas de una pieza, en el orden de `choices`.
 
-    Las máscaras se piden antes, desde este hilo: `MaskCache` no es seguro
-    entre hilos para las altas, y `best_placement` es de sólo lectura sobre
-    todo lo demás (la grilla, el árbitro).
+    En `query_threads()` hilos, o acá mismo si es 1. Las máscaras se piden
+    antes, desde este hilo (`warm`, si el oráculo lo tiene), para que los
+    hilos no rastericen; `best_placement` es de sólo lectura sobre todo lo
+    demás (la grilla, el árbitro), que es lo que el protocolo `Oracle` exige.
     """
-    global _query_pool
     warm = getattr(oracle, "warm", None)
     if warm is not None:
         warm(part, choices)
-    if _query_pool is None:
-        _query_pool = ThreadPoolExecutor(max_workers=QUERY_THREADS)
-    return list(_query_pool.map(lambda c: oracle.best_placement(part, c[0], c[1]), choices))
+    n = query_threads()
+    if n <= 1 or len(choices) <= 1:
+        return [oracle.best_placement(part, angle, mirror) for angle, mirror in choices]
+    return list(_pool_for(n).map(lambda c: oracle.best_placement(part, c[0], c[1]), choices))
 
 
 def _best_over_orientations(

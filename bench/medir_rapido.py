@@ -12,7 +12,6 @@ termina en el DXF.
 
 import argparse
 import hashlib
-import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path

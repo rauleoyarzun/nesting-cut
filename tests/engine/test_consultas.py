@@ -20,6 +20,7 @@ from nesting.engine.packer import (
     _pack_once,
     _recuperar_de_la_ultima_placa,
     initial_forecast,
+    orientations,
     pack,
     probe_query_seconds,
 )
@@ -378,6 +379,25 @@ def test_la_prueba_mide_una_consulta_con_la_pieza_mas_grande():
 
     assert segundos == pytest.approx(0.25)
     assert anotadas == [(1, 0.0, False)], "una sola consulta, la primera orientación"
+
+
+def test_la_prueba_en_hilos_pregunta_por_todas_las_orientaciones_y_divide():
+    """La consulta del proceso principal: todas las orientaciones de la
+    pieza, como en la corrida (en hilos), y el tiempo dividido por cuántas son."""
+    chica, grande = cuadrado(0, 100.0), cuadrado(1, 300.0)
+    anotadas = []
+    tiempos = iter([10.0, 10.8])
+    cfg = config()
+
+    segundos = probe_query_seconds(
+        [chica, grande], PLAN, cfg, lambda: Anotador(anotadas),
+        clock=lambda: next(tiempos), threaded=True,
+    )
+
+    todas = orientations(PLAN.stock, cfg)
+    assert len(todas) == 8
+    assert segundos == pytest.approx(0.8 / 8)
+    assert sorted(anotadas) == sorted((1, a, m) for a, m in todas)
 
 
 def test_sin_orientaciones_permitidas_no_hay_prueba():

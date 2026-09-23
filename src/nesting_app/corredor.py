@@ -222,21 +222,36 @@ def analizar(fuente: Fuente, unidades: str | None, tol_cierre: float) -> Analisi
 def estimar_segundos(piezas, supply, config) -> float | None:
     """Cuántos segundos va a tardar `pack(piezas, supply, config, ...)`, antes de correrlo.
 
-        segundos = segundos_por_consulta_medido
-                   * consultas_previstas_al_arrancar
+        segundos = (s/consulta en hilos  * consultas de la base y el tramo final
+                    + s/consulta en un hilo * consultas de reloj de las tandas)
                    * FACTOR_LLENO
 
-    La prueba usa una caché de máscaras nueva, así que incluye rasterizar;
-    ver `probe_query_seconds`.
+    Dos costos por consulta porque la corrida tiene dos: la base, la
+    recuperación y la compactación corren en el proceso principal, con las
+    consultas de cada pieza en hilos (`packer.QUERY_THREADS`), y las tandas
+    en los procesos de la cartera, con un hilo cada uno. Con `workers == 1`
+    las tandas también corren en el principal (`cartera._Evaluator.run`), en
+    hilos, y se usa el primer costo para todo; y si no hay tandas previstas
+    (`rapido`) la segunda prueba ni se corre.
+
+    Cada prueba usa una caché de máscaras nueva, así que incluye rasterizar;
+    ver `probe_query_seconds`. `FACTOR_LLENO` sigue siendo lo mismo: cuánto
+    más cara es una consulta sobre la placa que se va llenando que sobre la
+    placa vacía de la prueba.
     """
-    por_consulta = probe_query_seconds(
-        piezas, supply, config, RasterOracleFactory()
+    en_hilos = probe_query_seconds(
+        piezas, supply, config, RasterOracleFactory(), threaded=True
     )
-    if por_consulta is None:
+    if en_hilos is None:
         return None
-    # En un núcleo: la prueba mide UNA consulta en UN núcleo, y las tandas
-    # corren repartidas en `config.workers` (spec de pares y cartera, 6).
-    return por_consulta * cartera.wall_forecast(piezas, supply, config) * FACTOR_LLENO
+    # En un núcleo por proceso: las tandas corren repartidas en
+    # `config.workers` (spec de pares y cartera, 6), y eso ya lo cuenta
+    # `wall_forecast_parts`.
+    base, tandas = cartera.wall_forecast_parts(piezas, supply, config)
+    en_un_hilo = en_hilos
+    if tandas > 0 and config.workers > 1:
+        en_un_hilo = probe_query_seconds(piezas, supply, config, RasterOracleFactory())
+    return (en_hilos * base + en_un_hilo * tandas) * FACTOR_LLENO
 
 
 def estimar(fuente: Fuente, params: NestParams) -> float | None:

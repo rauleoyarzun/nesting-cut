@@ -202,7 +202,14 @@ class NestConfig:
 
 @runtime_checkable
 class Oracle(Protocol):
-    """Where can this part go on this sheet, and how good is that spot?"""
+    """Where can this part go on this sheet, and how good is that spot?
+
+    Un oráculo puede tener además `warm(part, choices)`, opcional: el
+    empacador lo llama desde su hilo antes de consultar las orientaciones de
+    una pieza en hilos, para que prepare lo que `best_placement` va a
+    necesitar (el `RasterOracle` rasteriza ahí las máscaras). Quien no lo
+    tiene se consulta igual.
+    """
 
     def reset(self, sheet_w: float, sheet_h: float, config: NestConfig) -> None:
         """Start a fresh, empty sheet."""
@@ -215,6 +222,12 @@ class Oracle(Protocol):
 
         Higher scores are better. Must NOT mutate state: the packer asks about
         several orientations before committing to one.
+
+        Y puede llamarse desde VARIOS HILOS A LA VEZ, sobre el mismo oráculo:
+        el empacador consulta las orientaciones de una pieza en hilos
+        (`packer.QUERY_THREADS`). Tiene que ser de sólo lectura sobre todo su
+        estado, y cualquier caché que llene, protegida con un cerrojo (como
+        `MaskCache`). `reset` y `place` nunca corren a la vez que una consulta.
         """
         ...
 

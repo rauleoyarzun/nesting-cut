@@ -45,6 +45,7 @@ from nesting.engine.packer import (
     _perturb,
     _recuperar_de_la_ultima_placa,
     _usable_area,
+    allow_query_threads,
     initial_forecast,
     layout_cost,
     orientations,
@@ -258,8 +259,22 @@ def wall_forecast(parts: Sequence[Part], supply: SheetSupply, config: NestConfig
     TOTALES, sumadas entre procesos, y sirve para la barra; ésta sirve para
     multiplicarla por los segundos que tarda una consulta en UN núcleo.
     """
+    base, tandas = wall_forecast_parts(parts, supply, config)
+    return base + tandas
+
+
+def wall_forecast_parts(parts: Sequence[Part], supply: SheetSupply,
+                        config: NestConfig) -> tuple[float, float]:
+    """`wall_forecast` en dos: (base y tramo final, tandas).
+
+    Por separado porque no cuestan lo mismo por consulta: la base, la
+    recuperación y la compactación corren en el proceso principal, con las
+    consultas en hilos (`packer.QUERY_THREADS`), y las tandas en los
+    procesos del pool, con un hilo cada uno. `nesting_app.corredor.
+    estimar_segundos` multiplica cada parte por su propio costo medido.
+    """
     if not parts:
-        return 0.0
+        return 0.0, 0.0
     una = initial_forecast(parts, supply, replace(config, effort="rapido"))
     sheets = prevision.estimate_sheets(
         sum(p.area for p in parts),
@@ -269,7 +284,7 @@ def wall_forecast(parts: Sequence[Part], supply: SheetSupply, config: NestConfig
     pasada = prevision.forecast_greedy_pass(
         len(parts), len(orientations(supply.stock, config)), sheets
     )
-    return una + (wall_passes(config.effort, config.workers) - 1.0) * pasada
+    return una, (wall_passes(config.effort, config.workers) - 1.0) * pasada
 
 
 def smallest_combinations(
@@ -595,16 +610,22 @@ class _QueryCounter:
         self._watch = watch
         self._lock = threading.Lock()
 
+    # Con las consultas en hilos (`packer.QUERY_THREADS`), `add` llega desde
+    # varios hilos a la vez. Todo pasa bajo el cerrojo, el aviso incluido:
+    # sin él, `+= 1` puede perder cuentas, dos avisos pueden llegar al revés
+    # (y `consultas_hechas` retroceder), y el `progreso` de quien llama
+    # podría correr en dos hilos a la vez.
     def add(self) -> None:
-        # Con las consultas en hilos (fase 2, idea B), `+= 1` desde varios
-        # hilos a la vez puede perder cuentas.
         with self._lock:
             self.total += 1
-            due = self.total - self._reported >= self._watch.report_every
-        if due:
-            self.flush()
+            if self.total - self._reported >= self._watch.report_every:
+                self._report()
 
     def flush(self) -> None:
+        with self._lock:
+            self._report()
+
+    def _report(self) -> None:
         if self.total != self._reported:
             self._reported = self.total
             self._watch.on_queries(self.total)
@@ -858,6 +879,10 @@ def _init_worker(factory, cancel, best, reports) -> None:
     # `shutdown` se cuelga con el proceso vivo. Perder las últimas cuentas de
     # consultas al cerrar no le hace nada a nadie.
     reports.cancel_join_thread()
+    # Un hilo de consulta por proceso: la tanda ya ocupa los núcleos, y la
+    # memoria por proceso (`workers.MEMORY_PER_WORKER_BYTES`) está medida
+    # sin hilos. Ver `packer.QUERY_THREADS`.
+    allow_query_threads(False)
     _worker.update(factory=factory, cancel=cancel, best=best, reports=reports)
 
 

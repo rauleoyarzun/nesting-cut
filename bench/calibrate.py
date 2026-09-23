@@ -207,8 +207,11 @@ def measure_fill_factor(
     for path in files:
         parts = _parts_of(path, copies)
         supply = SheetSupply(stock=material.stock_sheet(), material_name=material.name)
+        # En hilos, como la corrida de abajo: con `workers=1` todo corre en
+        # el proceso principal, con las consultas en hilos, y el factor tiene
+        # que comparar consultas del mismo tipo (placa llena contra vacía).
         probe = probe_query_seconds(
-            parts, supply, config, RasterOracleFactory()
+            parts, supply, config, RasterOracleFactory(), threaded=True
         )
         if probe is None:
             print(f"aviso: {path.name} no deja ninguna orientación con esta veta; se salta")

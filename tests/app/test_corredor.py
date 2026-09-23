@@ -549,6 +549,64 @@ def test_la_estimacion_es_prueba_por_prevision_por_factor(monkeypatch):
     )
 
 
+def prueba_falsa(en_hilos, en_un_hilo, pedidas):
+    """Una `probe_query_seconds` que no mide: devuelve un costo por tipo de consulta."""
+    def probar(*a, threaded=False, **k):
+        pedidas.append(threaded)
+        return en_hilos if threaded else en_un_hilo
+    return probar
+
+
+def test_con_hilos_rapido_se_estima_con_la_consulta_en_hilos(monkeypatch):
+    """Rápido es la base y el tramo final, que corren en el proceso principal
+    con las consultas en hilos: si en hilos una consulta cuesta un tercio, la
+    estimación baja a un tercio. La consulta de un hilo ni se mide."""
+    piezas = [pieza_cuadrada(i) for i in range(5)]
+    cfg = NestConfig(sep=5.0, margin=10.0, effort="rapido", workers=5)
+    pedidas = []
+    forecast = initial_forecast(piezas, PLAN_MDF18, cfg)
+
+    monkeypatch.setattr(corredor, "probe_query_seconds", prueba_falsa(0.03, 0.03, pedidas))
+    sin_hilos = corredor.estimar_segundos(piezas, PLAN_MDF18, cfg)
+    monkeypatch.setattr(corredor, "probe_query_seconds", prueba_falsa(0.01, 0.03, pedidas))
+    con_hilos = corredor.estimar_segundos(piezas, PLAN_MDF18, cfg)
+
+    assert sin_hilos == pytest.approx(0.03 * forecast * corredor.FACTOR_LLENO)
+    assert con_hilos == pytest.approx(0.01 * forecast * corredor.FACTOR_LLENO)
+    assert pedidas == [True, True], "sin tandas no se prueba la consulta de un hilo"
+
+
+def test_las_tandas_en_procesos_se_estiman_con_la_consulta_de_un_hilo(monkeypatch):
+    from nesting.engine.cartera import wall_forecast_parts
+
+    piezas = [pieza_cuadrada(i) for i in range(5)]
+    cfg = NestConfig(sep=5.0, margin=10.0, effort="normal", workers=5)
+    base, tandas = wall_forecast_parts(piezas, PLAN_MDF18, cfg)
+    assert base > 0 and tandas > 0
+    pedidas = []
+    monkeypatch.setattr(corredor, "probe_query_seconds", prueba_falsa(0.01, 0.03, pedidas))
+
+    assert corredor.estimar_segundos(piezas, PLAN_MDF18, cfg) == pytest.approx(
+        (0.01 * base + 0.03 * tandas) * corredor.FACTOR_LLENO
+    )
+    assert pedidas == [True, False]
+
+
+def test_con_un_proceso_las_tandas_tambien_van_en_hilos(monkeypatch):
+    """Con `workers=1` la cartera evalúa las tandas en el proceso principal."""
+    from nesting.engine.cartera import wall_forecast
+
+    piezas = [pieza_cuadrada(i) for i in range(5)]
+    cfg = NestConfig(sep=5.0, margin=10.0, effort="normal", workers=1)
+    pedidas = []
+    monkeypatch.setattr(corredor, "probe_query_seconds", prueba_falsa(0.01, 0.03, pedidas))
+
+    assert corredor.estimar_segundos(piezas, PLAN_MDF18, cfg) == pytest.approx(
+        0.01 * wall_forecast(piezas, PLAN_MDF18, cfg) * corredor.FACTOR_LLENO
+    )
+    assert pedidas == [True]
+
+
 def test_la_estimacion_mide_de_verdad_si_no_se_la_fija():
     piezas = [pieza_cuadrada(i) for i in range(3)]
     cfg = NestConfig(sep=5.0, margin=10.0, effort="rapido", resolution=4.0)
