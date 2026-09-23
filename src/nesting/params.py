@@ -69,7 +69,10 @@ class NestParams:
     nucleos: int | None = None
     """Cuántos núcleos usa la cartera. `None` es el valor por omisión de la
     máquina (`workers.machine().default`): todos menos dos, con el tope por
-    memoria. Más núcleos prueban más combinaciones en el mismo tiempo."""
+    memoria. Cada tanda prueba al menos `cartera.MIN_BATCH` (12) variantes:
+    con menos de 12 núcleos corren las mismas 12 en varias vueltas y sólo
+    cambia el tiempo; con más de 12, la tanda crece y prueba variantes de
+    más en el mismo tiempo."""
 
 
 @dataclass(frozen=True)

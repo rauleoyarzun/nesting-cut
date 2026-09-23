@@ -804,6 +804,20 @@ def test_el_texto_del_globo_entra_en_un_globo(js_info, clave):
     assert len(texto) <= 300, f"{clave}: {len(texto)} caracteres"
 
 
+
+def test_esfuerzo_y_nucleos_dicen_que_la_tanda_es_de_al_menos_doce(js_info):
+    """`cartera.MIN_BATCH`: toda máquina de hasta 12 núcleos prueba las
+    mismas 12 variantes, así que ahí más núcleos sólo ahorran tiempo. Los
+    textos viejos decían "una tanda de tantas como núcleos" y "más núcleos
+    prueban más combinaciones", que es falso por debajo de 12."""
+    textos = claves_y_textos(js_info)
+    assert "al menos 12" in textos["esfuerzo"]
+    assert "tanda de tantas como núcleos" not in textos["esfuerzo"]
+    assert "12" in textos["nucleos"]
+    assert "sólo cambia cuánto tarda" in textos["nucleos"]
+    assert "prueban más combinaciones en el mismo tiempo" not in textos["nucleos"]
+
+
 def _cuerpo_de_funcion(js_info: str, nombre: str) -> str:
     """El cuerpo de la función `<nombre>`, sin comentarios.
 
