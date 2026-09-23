@@ -255,6 +255,42 @@ def test_un_recorte_cruzado_que_no_cierra_apaga_los_pares():
     assert VariantSource(seis_eles(), plan, cfg)._pair_plan().classes == ()
 
 
+
+TE = ((0.0, 0.0), (300.0, 0.0), (300.0, 80.0), (190.0, 80.0), (190.0, 300.0),
+      (110.0, 300.0), (110.0, 80.0), (0.0, 80.0))
+
+
+def test_con_dos_clases_emparejables_las_combinaciones_cruzan_las_dos_y_verifican():
+    """El camino de `_combinations` con dos clases -- el producto de las
+    combinaciones de cada una -- no tenía test: cuatro L y cuatro T, cada
+    variante de pares de la tanda desarmada tiene que verificar limpia, y la
+    corrida entera también."""
+    from nesting.engine import pares
+
+    piezas = [Part(i, ELE_CHICA if i < 4 else TE, (), (i,)) for i in range(8)]
+    plan = SheetSupply(stock=Sheet(1000.0, 800.0, grain_tolerance=180.0), material_name="prueba")
+    cfg = config(sep=5.0, margin=5.0, resolution=2.0, mirror=True)
+    fuente = VariantSource(piezas, plan, cfg)
+    assert len(fuente._pair_plan().classes) == 2
+
+    tanda = fuente.batch(1, 6, fuente.base())
+    de_pares = [v for v in tanda if v.kind == "pares"]
+    clases_usadas = {clase for v in de_pares for clase, _ in v.pair_types}
+    assert clases_usadas == {0, 1}, "alguna combinación tiene que emparejar las dos"
+    for variante in de_pares:
+        salida = evaluate(variante, piezas, plan, cfg, RasterOracle, NUNCA)
+        if salida is None:
+            continue
+        reales = pares.disassemble(salida.packed, variante.composites, piezas)
+        assert sorted(p.part_id for p in reales.placements) == list(range(8))
+        assert verify(piezas, reales.placements, reales.sheets, sep=5.0, margin=5.0) == []
+
+    salida = run_portfolio(piezas, plan, cfg, RasterOracle)
+    resultado = salida.result
+    assert sorted(p.part_id for p in resultado.placements) == list(range(8))
+    assert verify(piezas, resultado.placements, resultado.sheets, sep=5.0, margin=5.0) == []
+
+
 # --- evaluar ----------------------------------------------------------------
 
 def test_una_variante_que_abre_mas_placas_que_la_mejor_se_corta():
