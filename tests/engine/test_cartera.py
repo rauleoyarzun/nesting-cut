@@ -313,7 +313,17 @@ def test_las_pasadas_de_reloj_multiplican_por_la_tanda_y_dividen_por_n():
     assert wall_passes("normal", 1) == 2.0
 
 
-def test_la_prevision_de_reloj_suma_una_pasada_por_tanda_y_no_depende_de_n():
+def test_la_prevision_de_reloj_suma_una_pasada_por_tanda_con_el_minimo_bajado():
+    """Con `MIN_BATCH` bajado a 1 (el fixture `_tanda_minima_de_uno` de
+    `tests/conftest.py`), la tanda es siempre de exactamente `N` variantes en
+    `N` núcleos, así que cada tanda cuesta una pasada -- y por eso, acá, la
+    previsión no depende de con cuántos núcleos se llame.
+
+    Eso NO es una propiedad general de `wall_forecast`: con el `MIN_BATCH`
+    real (12), una tanda por debajo de 12 núcleos reparte más de una
+    variante por núcleo y sí depende de `N` (`ceil(batch_size(N) / N)` deja
+    de ser 1) -- ver
+    `test_la_prevision_de_reloj_a_escala_real_depende_de_n_por_debajo_del_minimo`."""
     rapido = wall_forecast(siete(), PLAN, config(effort="rapido", workers=4))
     normal = wall_forecast(siete(), PLAN, config(effort="normal", workers=4))
     lento = wall_forecast(siete(), PLAN, config(effort="lento", workers=4))
@@ -322,6 +332,22 @@ def test_la_prevision_de_reloj_suma_una_pasada_por_tanda_y_no_depende_de_n():
     assert pasada > 0
     assert lento == pytest.approx(rapido + 3 * pasada)
     assert wall_forecast(siete(), PLAN, config(effort="normal", workers=1)) == pytest.approx(normal)
+
+
+@pytest.mark.minimo_real
+def test_la_prevision_de_reloj_a_escala_real_depende_de_n_por_debajo_del_minimo():
+    """Con el `MIN_BATCH` real (12) -- sin el fixture que lo baja a 1 --, la
+    tanda tiene `batch_size(N)` variantes, no `N`: por debajo del mínimo son
+    siempre 12, repartidas en `N` núcleos, y `ceil(12 / N)` sí depende de
+    `N`. `wall_passes("normal", 4) == 4.0` porque `ceil(12 / 4) == 3` (una
+    base + 3 vueltas), mientras que con `MIN_BATCH` bajado a 1 esa misma
+    llamada da 2.0 (ver el test de arriba)."""
+    assert wall_passes("rapido", 4) == 1.0
+    assert wall_passes("normal", 1) == 13.0
+    assert wall_passes("normal", 4) == 4.0
+    assert wall_passes("normal", 12) == 2.0
+    assert wall_passes("normal", 14) == 2.0
+    assert wall_passes("lento", 4) == 10.0
 
 
 def test_la_prevision_de_reloj_de_rapido_es_la_de_arranque():
